@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8fc8f2e6814b540dda0602fa0dc81b06, type: 3}
+  m_Name: SemiAutoBlaster
+  m_EditorClassIdentifier: 
+  type: 1
+  GunName: Semi-Auto Blaster
+  ModelPrefab: {fileID: 7598915565659394106, guid: f922dffc9647a4044a3d9fba3acf6ac7, type: 3}
+  SpawnPoint: {x: 0, y: 0, z: 0}
+  SpawnRotation: {x: 0, y: 0, z: 0}
+  shootConfig: {fileID: 11400000, guid: d968859c2a1644bafb160dd3fba44f1c, type: 2}
+  trailConfig: {fileID: 11400000, guid: c627a34baaabc45d58bf6a87b0749734, type: 2}

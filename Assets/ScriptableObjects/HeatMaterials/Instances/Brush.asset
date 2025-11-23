@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5662c7f0161ce45fa868cbb0962690fc, type: 3}
+  m_Name: Brush
+  m_EditorClassIdentifier: 
+  containerType: 3
+  specificHeatCapacity: 1200
+  mass: 40
+  fluidInteractionConstant: 10
+  thermalConductivity: 10000
+  ignitionTemperature: 400
+  fuelBurnRate: 0.0001
+  burnTemperatureMultiplier: 2
+  radiationConstant: 10000

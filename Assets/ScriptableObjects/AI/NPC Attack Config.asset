@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f91903fd3565745d4ae6b6b867a20d85, type: 3}
+  m_Name: NPC Attack Config
+  m_EditorClassIdentifier: 
+  SensorRadius: 600
+  FOVAngle: 90
+  LineOfSightSphereCastRadius: 0.2
+  AttackableLayerMask:
+    serializedVersion: 2
+    m_Bits: 256
+  EnvironmentalCoolingLayerMask:
+    serializedVersion: 2
+    m_Bits: 2048
+  EyeLevel: {x: 0, y: 0.2, z: 0}
+  SiphonableLayerMask:
+    serializedVersion: 2
+    m_Bits: 1024
+  HideSensitivity: 1.13
+  MinPlayerDistance: 3
+  MinObstacleHeight: 0.62
+  ObstructionLayerMask:
+    serializedVersion: 2
+    m_Bits: 512
+  AttackDelay: 4
+  AttackCost: 4
+  SiphonDelay: 1
