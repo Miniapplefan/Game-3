@@ -59,7 +59,7 @@ public class DefendSiphonAction : ActionBase<AttackData>, IInjectable
 
 	public override void Start(IMonoAgent agent, AttackData data)
 	{
-		data.Timer = AttackConfig.AttackDelay;
+		data.Timer = AttackConfig.TimeBetweenAttacks;
 		limbConsiderations = new List<LimbConsideration>();
 		limbConsiderations.Add(new LimbConsideration(LimbToTarget.Head, () => ConsiderHead(agent, data)));
 		limbConsiderations.Add(new LimbConsideration(LimbToTarget.RightArm, () => ConsiderRightArm(agent, data)));

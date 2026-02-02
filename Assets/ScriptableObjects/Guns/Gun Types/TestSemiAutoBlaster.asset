@@ -17,5 +17,7 @@ MonoBehaviour:
   ModelPrefab: {fileID: 7598915565659394106, guid: f922dffc9647a4044a3d9fba3acf6ac7, type: 3}
   SpawnPoint: {x: 0, y: 0, z: 0}
   SpawnRotation: {x: 0, y: 0, z: 0}
-  shootConfig: {fileID: 11400000, guid: d68810066711344a49e653ab62298190, type: 2}
-  trailConfig: {fileID: 11400000, guid: 4e8bbff187e284be4a8c1426fe9dd00e, type: 2}
+  isNPCWeapon: 0
+  npcBulletPrefab: {fileID: 5413632779564383119, guid: ef7ef5cd4ed854851aeb14ae2a35d38f, type: 3}
+  shootConfig: {fileID: 11400000, guid: 44daf31cea3dc4e609b16a26513e8a94, type: 2}
+  trailConfig: {fileID: 11400000, guid: c627a34baaabc45d58bf6a87b0749734, type: 2}

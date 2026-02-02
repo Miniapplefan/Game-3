@@ -9,6 +9,7 @@ public abstract class SystemModel
     public int maxLevel;
     public int currentLevelWithoutDamage;
     public int currentLevel;
+    public float currentHealth;
 
     public SystemModel(int currentLvl)
     {
@@ -41,6 +42,15 @@ public abstract class SystemModel
     public virtual void Damage(int amount)
     {
         currentLevel = Mathf.Clamp(currentLevel - amount, 0, currentLevel);
+    }
+
+    public virtual void DamageHealth(float amount)
+    {
+        currentHealth = Mathf.Clamp(currentHealth - amount, 0, currentHealth);
+        if (currentHealth <= 0)
+        {
+            Damage(currentLevel);
+        }
     }
 
     public virtual void Repair(int amount)

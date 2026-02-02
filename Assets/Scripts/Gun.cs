@@ -19,12 +19,17 @@ public class Gun : MonoBehaviour
 	private ObjectPool<TrailRenderer> TrailPool;
 	private ObjectPool<ParticleSystem> HitParticlePool;
 	public bool isPowered;
+	public int currentShotsInMag;
+	public bool isReloading = false;
+	public float reloadTimeCache;
 	private float chargeTimeLeftCache;
 	private float prepTimeLeftCache;
 	private Transform prepInd;
 	private Vector3 prepIndicatorSizeCache;
 	public bool isFiringBurst = false;
 	public bool isFiring = false;
+	bool isAI;
+	private BodyController bodyController;
 
 
 	public void SetParent(GameObject parent, Rigidbody weap)
@@ -48,6 +53,8 @@ public class Gun : MonoBehaviour
 		shootSystem = model.GetComponentInChildren<ParticleSystem>();
 		laser = model.GetComponentInChildren<LineRenderer>();
 
+		currentShotsInMag = gunData.shootConfig.magSize;
+		reloadTimeCache = gunData.shootConfig.reloadTime;
 
 		prepTimeLeftCache = gunData.shootConfig.prepTime;
 		prepInd = model.transform.Find("prep");
@@ -55,6 +62,10 @@ public class Gun : MonoBehaviour
 		prepInd.gameObject.SetActive(false);
 
 		raycastInterval += Random.Range(0.01f, 0.02f);
+
+		isAI = weapon.GetComponentInParent<AIController>() != null ? true : false;
+
+		if (!isAI) bodyController = weapon.GetComponentInParent<BodyController>();
 	}
 
 	public bool isCharged()
@@ -116,6 +127,21 @@ public class Gun : MonoBehaviour
 
 	public bool SingleShot()
 	{
+
+		if (isReloading) return false;
+
+		if (!isAI)
+		{
+			if (currentShotsInMag > 0)
+			{
+				currentShotsInMag--;
+			}
+			else
+			{
+				return false;
+			}
+		}
+
 		for (int i = 0; i < gunData.shootConfig.bulletsPerShot; i++)
 		{
 			//lastShootTime = Time.time;
@@ -139,35 +165,65 @@ public class Gun : MonoBehaviour
 			shootDirection.Normalize();
 			weapon.AddForce((-weaponSlotLocation.GetComponentInParent<GunSelector>().gameObject.transform.right).normalized * gunData.shootConfig.recoil, ForceMode.Impulse);
 
-			if (Physics.Raycast(
-					shootSystem.transform.position,
-					shootDirection,
-					out RaycastHit hit,
-					gunData.shootConfig.maxRange,
-					gunData.shootConfig.HitMask
-				))
+			if (isAI)
 			{
-				StartCoroutine(
-					PlayTrail(
-						shootSystem.transform.position,
-						hit.point,
-						hit
-					)
-				);
-				ManageHit(hit);
+				//				Debug.Log("FIRING AI BULLET");
+				Instantiate(gunData.npcBulletPrefab, shootSystem.transform.position, Quaternion.LookRotation(shootDirection));
 			}
 			else
 			{
-				StartCoroutine(
-					PlayTrail(
+				if (Physics.Raycast(
 						shootSystem.transform.position,
-						shootSystem.transform.position + (shootDirection * gunData.shootConfig.maxRange),
-						new RaycastHit()
-					)
-				);
+						shootDirection,
+						out RaycastHit hit,
+						gunData.shootConfig.maxRange,
+						gunData.shootConfig.HitMask
+					))
+				{
+					StartCoroutine(
+						PlayTrail(
+							shootSystem.transform.position,
+							hit.point,
+							hit
+						)
+					);
+					ManageHit(hit);
+				}
+				else
+				{
+					StartCoroutine(
+						PlayTrail(
+							shootSystem.transform.position,
+							shootSystem.transform.position + (shootDirection * gunData.shootConfig.maxRange),
+							new RaycastHit()
+						)
+					);
+				}
 			}
 		}
 		return true;
+	}
+
+	public void StartReload()
+	{
+		if (isReloading || currentShotsInMag == gunData.shootConfig.magSize) return;
+		isReloading = true;
+		reloadTimeCache = gunData.shootConfig.reloadTime;
+		Debug.Log("started reload");
+	}
+
+	private void ProcessReload()
+	{
+		if (reloadTimeCache > 0)
+		{
+			reloadTimeCache -= Time.fixedDeltaTime;
+		}
+		else
+		{
+			Debug.Log("finished reload");
+			isReloading = false;
+			currentShotsInMag = gunData.shootConfig.magSize;
+		}
 	}
 
 	private void ManageHit(RaycastHit hit)
@@ -192,7 +248,7 @@ public class Gun : MonoBehaviour
 		{
 			Vector3 impulse = shootSystem.transform.forward * gunData.shootConfig.impactForce;
 			//Debug.Log("hit limb");
-			DamageInfo damageInfo = new DamageInfo(gunData.shootConfig.heatPerShot);
+			DamageInfo damageInfo = new DamageInfo(gunData.shootConfig.rawDamage);
 			damageInfo.impactForce = gunData.shootConfig.impactForce;
 			damageInfo.impactVector = impulse;
 			limb.TakeDamage(damageInfo);
@@ -330,6 +386,9 @@ public class Gun : MonoBehaviour
 
 	private void Update()
 	{
+
+		if (isReloading) ProcessReload();
+
 		//Debug.Log(chargeTimeLeftCache);
 		if (chargeTimeLeftCache > 0)
 		{

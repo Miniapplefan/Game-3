@@ -22,7 +22,6 @@ public class NPCBrain : MonoBehaviour
 	public float ConsiderDefendSiphonVal;
 	public float ConsiderTakeCoverVal;
 
-
 	private void Awake()
 	{
 		AgentBehaviour = GetComponent<AgentBehaviour>();
@@ -43,6 +42,12 @@ public class NPCBrain : MonoBehaviour
 
 	private void FixedUpdate()
 	{
+		if (bodyState.hitStunAmount > 0)
+		{
+			Mathf.Clamp01(bodyState.hitStunAmount -= 0.015f);
+			return;
+		}
+
 		//ConsiderCooldownVal = ConsiderCooldownGoal();
 		ConsiderOverheatTargetVal = ConsiderOverheatTargetGoal();
 		//ConsiderDeploySiphonVal = ConsiderDeploySiphonGoal();
@@ -78,37 +83,70 @@ public class NPCBrain : MonoBehaviour
 
 		// else
 		// {
-		if (currentGoalInertia <= 0)
+
+		//************************
+		// if (currentGoalInertia <= 0)
+		// {
+		// 	GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
+		// 	switch (chosenGoal.goal)
+		// 	{
+		// 		case OverheatHostileGoal:
+		// 			AgentBehaviour.SetGoal<OverheatHostileGoal>(chosenGoal.cancelable);
+		// 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+		// 			break;
+		// 		case TakeCoverGoal:
+		// 			AgentBehaviour.SetGoal<TakeCoverGoal>(chosenGoal.cancelable);
+		// 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+		// 			break;
+		// 		case DeploySiphonGoal:
+		// 			AgentBehaviour.SetGoal<DeploySiphonGoal>(chosenGoal.cancelable);
+		// 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+		// 			break;
+		// 		case DefendSiphonGoal:
+		// 			AgentBehaviour.SetGoal<DefendSiphonGoal>(chosenGoal.cancelable);
+		// 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+		// 			break;
+		// 		case CooldownGoal:
+		// 			AgentBehaviour.SetGoal<CooldownGoal>(chosenGoal.cancelable);
+		// 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+		// 			break;
+		// 		default:
+		// 			AgentBehaviour.SetGoal<TakeCoverGoal>(chosenGoal.cancelable);
+		// 			break;
+		// 	}
+		// 	//DebugLogGoal(chosenGoal.goal);
+		// }
+		//************************
+
+		if (bodyState.isBeingAimedAt)
+		{
+			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel += 0.0065f, 0, 1);
+		}
+		else
+		{
+			if (bodyState.hasLOS)
+			{
+				bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.0002f, 0, 1);
+			}
+			else
+			{
+				bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.003f, 0, 1);
+			}
+		}
+
+		if (bodyState.dangerLevel > 0.6f)
 		{
 			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
-			switch (chosenGoal.goal)
-			{
-				case OverheatHostileGoal:
-					AgentBehaviour.SetGoal<OverheatHostileGoal>(chosenGoal.cancelable);
-					currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
-					break;
-				case TakeCoverGoal:
-					AgentBehaviour.SetGoal<TakeCoverGoal>(chosenGoal.cancelable);
-					currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
-					break;
-				case DeploySiphonGoal:
-					AgentBehaviour.SetGoal<DeploySiphonGoal>(chosenGoal.cancelable);
-					currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
-					break;
-				case DefendSiphonGoal:
-					AgentBehaviour.SetGoal<DefendSiphonGoal>(chosenGoal.cancelable);
-					currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
-					break;
-				case CooldownGoal:
-					AgentBehaviour.SetGoal<CooldownGoal>(chosenGoal.cancelable);
-					currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
-					break;
-				default:
-					AgentBehaviour.SetGoal<TakeCoverGoal>(chosenGoal.cancelable);
-					break;
-			}
-			//DebugLogGoal(chosenGoal.goal);
+			AgentBehaviour.SetGoal<TakeCoverGoal>(true);
+			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
 		}
+		else if (bodyState.dangerLevel < 0.2f)
+		{
+			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
+			AgentBehaviour.SetGoal<OverheatHostileGoal>(true);
+			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+		}
+
 		//}
 		currentGoalInertia -= Time.deltaTime;
 	}

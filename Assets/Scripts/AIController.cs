@@ -130,6 +130,11 @@ public class AIController : MonoBehaviour, InputController
         return false;
     }
 
+    public bool getReload()
+    {
+        return false;
+    }
+
     public bool getSiphon()
     {
         return pressingSiphon;

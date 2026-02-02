@@ -42,6 +42,7 @@ public class ActiveRagdollController : MonoBehaviour
 
 	public float downwardStabilizerForce = 10f;
 
+	public BodyState bodyState;
 
 	public Vector3 TargetDirection { get; set; }
 	private Quaternion _targetRotation;
@@ -107,6 +108,8 @@ public class ActiveRagdollController : MonoBehaviour
 
 		//setUp();
 		bodyController = GetComponentInParent<BodyController>();
+		bodyState = GetComponentInParent<BodyState>();
+
 	}
 
 	// Update is called once per frame
@@ -257,33 +260,39 @@ public class ActiveRagdollController : MonoBehaviour
 	{
 		// if (RagdollRightArmRb.velocity.magnitude < 0.5f && rb.velocity.magnitude < 0.1f)
 		// {
-		float speedR = (1f / RagdollRightArmRb.velocity.magnitude);
-		Vector3 direction = target.transform.position - RagdollRightArm.transform.position;
-		Quaternion toRotation = Quaternion.LookRotation(direction, transform.up);
-		//AnimatedRightArm.transform.rotation = toRotation;
-		//AnimatedRightWeapon.transform.rotation = toRotation;
-		//RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, toRotation, speed * Time.deltaTime);
-		//RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speed * Time.deltaTime);
-		//RagdollRightArm.transform.rotation = toRotation;
 
-		RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speedR * Time.deltaTime);
+		if (bodyState.hitStunAmount <= 0 && !bodyController.isDead)
+		{
 
-		Vector3 d = target.transform.position - RagdollRightWeapon.transform.position;
-		Quaternion t = Quaternion.LookRotation(d, transform.right);
+			float speedR = (1f / RagdollRightArmRb.velocity.magnitude);
+			Vector3 direction = target.transform.position - RagdollRightArm.transform.position;
+			Quaternion toRotation = Quaternion.LookRotation(direction, transform.up);
+			//AnimatedRightArm.transform.rotation = toRotation;
+			//AnimatedRightWeapon.transform.rotation = toRotation;
+			//RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, toRotation, speed * Time.deltaTime);
+			//RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speed * Time.deltaTime);
+			//RagdollRightArm.transform.rotation = toRotation;
 
-		RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, t, speedR * Time.deltaTime);
+			RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speedR * Time.deltaTime);
+
+			Vector3 d = target.transform.position - RagdollRightWeapon.transform.position;
+			Quaternion t = Quaternion.LookRotation(d, transform.right);
+
+			RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, t, speedR * Time.deltaTime);
 
 
-		float speedL = (1f / RagdollLeftArmRb.velocity.magnitude);
-		direction = targetL.transform.position - RagdollLeftArm.transform.position;
-		toRotation = Quaternion.LookRotation(direction, transform.up);
+			float speedL = (1f / RagdollLeftArmRb.velocity.magnitude);
+			direction = targetL.transform.position - RagdollLeftArm.transform.position;
+			toRotation = Quaternion.LookRotation(direction, transform.up);
 
-		RagdollLeftArm.transform.rotation = Quaternion.Lerp(RagdollLeftArm.transform.rotation, toRotation, speedL * Time.deltaTime);
+			RagdollLeftArm.transform.rotation = Quaternion.Lerp(RagdollLeftArm.transform.rotation, toRotation, speedL * Time.deltaTime);
 
-		d = targetL.transform.position - RagdollLeftWeapon.transform.position;
-		t = Quaternion.LookRotation(d, transform.right);
+			d = targetL.transform.position - RagdollLeftWeapon.transform.position;
+			t = Quaternion.LookRotation(d, transform.right);
 
-		RagdollLeftWeapon.transform.rotation = Quaternion.Lerp(RagdollLeftWeapon.transform.rotation, t, speedL * Time.deltaTime);
+			RagdollLeftWeapon.transform.rotation = Quaternion.Lerp(RagdollLeftWeapon.transform.rotation, t, speedL * Time.deltaTime);
+
+		}
 
 		//AnimatedRightWeapon.transform.rotation = t;
 		//RagdollRightArm.LookAt(target.transform.position, Vector3.up);

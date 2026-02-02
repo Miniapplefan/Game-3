@@ -113,6 +113,7 @@ MonoBehaviour:
   ConsiderDeploySiphonVal: 0
   ConsiderDefendSiphonVal: 0
   ConsiderTakeCoverVal: 0
+  dangerLevel: 0
 --- !u!114 &2103951502302954486
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2755,6 +2756,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 60973815555145022}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: headAimConstraint
+      value: 
+      objectReference: {fileID: 60973816147224921}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: upperRightArmJoint
       value: 
       objectReference: {fileID: 60973815555145018}
@@ -2778,6 +2783,14 @@ PrefabInstance:
       propertyPath: headObjectTransformCache
       value: 
       objectReference: {fileID: 3993451949880274167}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: upperTorsoLeanConstraint
+      value: 
+      objectReference: {fileID: 60973816457229567}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: middleTorsoLeanConstraint
+      value: 
+      objectReference: {fileID: 60973815872197481}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: bodyColliders.Array.data[0]
       value: 
@@ -3941,6 +3954,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2c8cc2faf6fb14d71bd9934ba1fc53a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &60973816147224921 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 5897900685755924014, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+  m_PrefabInstance: {fileID: 5836966589467826039}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3c430f382484144e925c097c2d33cfe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!4 &60973816342979525 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5897900685851407538, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
@@ -4050,7 +4074,10 @@ MonoBehaviour:
   siphonTarget: {fileID: 0}
   ObstructionLayerMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 512
+  AttackableLayerMask:
+    serializedVersion: 2
+    m_Bits: 384
   desiredGunToUse: {fileID: 0}
 --- !u!114 &294930462487425286
 MonoBehaviour:

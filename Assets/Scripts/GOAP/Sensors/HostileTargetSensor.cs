@@ -5,6 +5,7 @@ using CrashKonijn.Goap.Sensors;
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 {
@@ -14,6 +15,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float circleRadius = 5f;
 	public int numberOfPoints = 36;
 	private Collider[] Colliders = new Collider[1];
+
+	private List<Vector3> DebugPoints = new List<Vector3>();
 
 	public override void Created()
 	{
@@ -68,7 +71,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				//We do not see the player from our position
 				while (count < 5)
 				{
-					Vector3 randomPointOnCircle = GetRandomPointOnCircle(Colliders[0].transform.position, inRangeDistance / 2);
+					Vector3 randomPointOnCircle = GetRandomPointOnCircle(Colliders[0].transform.position, inRangeDistance / 2, agent);
 					float distance = Vector3.Distance(agent.transform.position, randomPointOnCircle);
 
 					//&& HasLineOfSight(point, Colliders[0].transform.position
@@ -84,7 +87,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 					}
 				}
 			}
-			else if (!seeTarget && distanceToPlayer <= inRangeDistance / 2)
+
+			else if (!seeTarget)//&& distanceToPlayer <= inRangeDistance / 2
 			{
 				//Debug.Log("Do not see player and in range " + inRangeDistance);
 
@@ -96,9 +100,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				for (int i = numberOfPoints - 1; i >= 0; i--) // Reverse the order
 				{
 					float t = (float)i / (numberOfPoints - 1); // Normalize to range [0, 1]
-					Vector3 point = agent.transform.position + direction * (t * lineLength - lineLength / 2);
+					Vector3 point = agent.transform.position + new Vector3(0, 2f, 0) + direction * (t * lineLength - lineLength / 2);
 					points.Add(point);
 				}
+				DebugPoints = points;
 
 				Vector3 closestPoint = Vector3.zero;
 				float closestDistance = float.MaxValue;
@@ -107,8 +112,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				{
 					//Debug.Log("checking points");
 					float distanceToAI = Vector3.Distance(point, agent.transform.position);
-
-					if (distanceToAI < distanceToPlayer && HasLineOfSight(point, Colliders[0].transform.position))
+					// distanceToAI < distanceToPlayer &&
+					if (HasLineOfSight(point, Colliders[0].transform.position))
 					{
 						//Debug.Log("point within range and has los");
 						if (distanceToAI < closestDistance)
@@ -125,7 +130,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 					return new PositionTarget(closestPoint);
 				}
 				//Debug.Log("no point found");
-				return new PositionTarget(Colliders[0].transform.position);
+				// return new PositionTarget(agent.transform.position);
+				return new PositionTarget(GetRandomPointOnCircle(Colliders[0].transform.position, distanceToPlayer, agent));
 			}
 
 			// List<Vector3> points = new List<Vector3>();
@@ -205,23 +211,54 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		//   }
 		// }
 		//Debug.Log("Advancing ");
-		return new PositionTarget(GetRandomPointOnCircle(Colliders[0].transform.position, UnityEngine.Random.Range(1f, 5f)));
+		return new PositionTarget(GetRandomPointOnCircle(Colliders[0].transform.position, UnityEngine.Random.Range(1f, 5f), agent));
 	}
 
-	private Vector3 GetRandomPointOnCircle(Vector3 center, float radius)
+	private Vector3 GetRandomPointOnCircle(Vector3 center, float radius, IMonoAgent agent)
 	{
-		// Generate a random angle between 0 and 2π
-		float randomAngle = UnityEngine.Random.Range(0f, 2f * Mathf.PI);
+		// // Generate a random angle between 0 and 2π
+		// float randomAngle = UnityEngine.Random.Range(0f, 2f * Mathf.PI);
 
-		// Calculate the x and z coordinates of the random point on the circle
-		float x = center.x + radius * Mathf.Cos(randomAngle);
-		float z = center.z + radius * Mathf.Sin(randomAngle);
+		// // Calculate the x and z coordinates of the random point on the circle
+		// float x = center.x + radius * Mathf.Cos(randomAngle);
+		// float z = center.z + radius * Mathf.Sin(randomAngle);
 
-		// Set the y coordinate to the center's y coordinate (assuming the circle is on the same plane)
-		float y = center.y;
+		// // Set the y coordinate to the center's y coordinate (assuming the circle is on the same plane)
+		// float y = center.y;
+
+		// if (NavMesh.SamplePosition(position, out NavMeshHit hit, 1, NavMesh.AllAreas))
+		// {
+		// 	return hit.position;
+		// }
 
 		// Return the random point on the circle
-		return new Vector3(x, y, z);
+		// return new Vector3(x, y, z);
+
+		int count = 0;
+
+		while (count < 15)
+		{
+			// Generate a random angle between 0 and 2π
+			float randomAngle = UnityEngine.Random.Range(0f, 2f * Mathf.PI);
+
+			// Calculate the x and z coordinates of the random point on the circle
+			float x = center.x + radius * Mathf.Cos(randomAngle);
+			float z = center.z + radius * Mathf.Sin(randomAngle);
+
+			// Set the y coordinate to the center's y coordinate (assuming the circle is on the same plane)
+			float y = center.y;
+
+			Vector3 position = new Vector3(x, y, z);
+
+			if (NavMesh.SamplePosition(position, out NavMeshHit hit, 1, NavMesh.AllAreas))
+			{
+				return hit.position;
+			}
+
+			count++;
+		}
+
+		return agent.transform.position;
 	}
 
 	bool HasLineOfSight(Vector3 start, Vector3 end)
@@ -234,6 +271,60 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return hit.transform.GetComponent<PlayerController>() != null;
 		}
 		return false;
+	}
+
+	private List<Vector3> SampleStrafingPointsForGizmos(Transform agent, Transform target)
+	{
+		List<Vector3> points = new List<Vector3>();
+
+		if (agent == null || target == null)
+			return points;
+
+		int num = 30;
+		float lineLength = 20f;
+
+		// perpendicular to agent→target direction
+		Vector3 dirToTarget = (target.position - agent.position).normalized;
+		Vector3 perpendicular = Vector3.Cross(Vector3.up, dirToTarget);
+
+		for (int i = 0; i < num; i++)
+		{
+			float t = (float)i / (num - 1);
+			float offset = t * lineLength - lineLength / 2f;
+			Vector3 point = agent.position + perpendicular * offset;
+			points.Add(point);
+		}
+
+		return points;
+	}
+
+	public void OnDrawGizmosSelected()
+	{
+		// find player only for gizmos (safe in editor; no need for Sensors)
+		PlayerController player = GameObject.Find("Body_total new").GetComponentInChildren<PlayerController>();
+		if (player == null)
+			return;
+
+		Transform agent = GameObject.Find("NPC_total new").transform;
+		Transform target = player.transform;
+
+		// sampling method specifically for Gizmos
+		List<Vector3> gizmoPoints = SampleStrafingPointsForGizmos(agent, target);
+
+		foreach (var p in gizmoPoints)
+		{
+			// draw spheres
+			Gizmos.color = Color.cyan;
+			Gizmos.DrawWireSphere(p, 0.25f);
+
+			// optional: draw line toward target
+			Gizmos.color = Color.white;
+			Gizmos.DrawLine(p, target.position);
+		}
+
+		// draw perpendicular direction for clarity
+		Gizmos.color = Color.yellow;
+		Gizmos.DrawLine(agent.position, agent.position + (Vector3.Cross(Vector3.up, (target.position - agent.position).normalized) * 5));
 	}
 
 	public void Inject(DependencyInjector injector)

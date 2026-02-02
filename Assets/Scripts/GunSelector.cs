@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using TMPro;
 
 [DisallowMultipleComponent]
 public class GunSelector : MonoBehaviour
@@ -22,6 +23,7 @@ public class GunSelector : MonoBehaviour
 	[SerializeField]
 	private Rigidbody weapon;
 	private LineRenderer laser;
+	public TMP_Text ammoIndicator;
 	private Vector3 raycastPoint;
 
 	[Space]
@@ -62,6 +64,7 @@ public class GunSelector : MonoBehaviour
 		{
 			DrawLaser(transform.position + transform.forward * dist / 1.5f, transform.position + transform.forward * dist);
 		}
+		UpdateAmmoIndicator();
 	}
 
 	void PerformRaycast()
@@ -96,6 +99,39 @@ public class GunSelector : MonoBehaviour
 		laser.endWidth = dist / 200;
 		laser.SetPosition(0, startPosition);
 		laser.SetPosition(1, endPosition);
+	}
+
+	private void UpdateAmmoIndicator()
+	{
+		if (ammoIndicator == null) return;
+
+		if (ActiveGun1.isReloading)
+		{
+			float full = ActiveGun1.gunData.shootConfig.reloadTime;
+			float remaining = ActiveGun1.reloadTimeCache;
+
+			// Safety
+			if (full <= 0f) full = 0.0001f;
+
+			// 0..1 where 0 = just started, 1 = finished
+			float progress01 = 1f - Mathf.Clamp01(remaining / full);
+
+			int barWidth = 6; // tweak to taste (8-14 usually reads well)
+			int filled = Mathf.RoundToInt(progress01 * barWidth);
+			filled = Mathf.Clamp(filled, 0, barWidth);
+
+			string bar = "[" + new string('█', filled) + new string('░', barWidth - filled) + "]";
+
+			// Optional: include percent (comment out if you want less cognitive load)
+			int pct = Mathf.RoundToInt(progress01 * 100f);
+
+			ammoIndicator.text = $"RLD {bar}";          // super minimal
+																									// ammoIndicator.text = $"RLD {bar} {pct}%"; // optional
+		}
+		else
+		{
+			ammoIndicator.text = ActiveGun1.currentShotsInMag.ToString();
+		}
 	}
 
 	private Gun CreateGun(GunType type, GameObject slot)

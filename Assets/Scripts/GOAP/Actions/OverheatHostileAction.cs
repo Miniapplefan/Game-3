@@ -65,12 +65,12 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 	public override void Start(IMonoAgent agent, AttackData data)
 	{
-		data.Timer = AttackConfig.AttackDelay;
+		data.Timer = AttackConfig.TimeBetweenAttacks;
 		limbConsiderations = new List<LimbConsideration>();
 		limbConsiderations.Add(new LimbConsideration(LimbToTarget.Head, () => ConsiderHead(agent, data)));
-		limbConsiderations.Add(new LimbConsideration(LimbToTarget.RightArm, () => ConsiderRightArm(agent, data)));
-		limbConsiderations.Add(new LimbConsideration(LimbToTarget.RightLeg, () => ConsiderLegs(agent, data)));
-		limbConsiderations.Add(new LimbConsideration(LimbToTarget.LeftLeg, () => ConsiderLegs(agent, data)));
+		// limbConsiderations.Add(new LimbConsideration(LimbToTarget.RightArm, () => ConsiderRightArm(agent, data)));
+		// limbConsiderations.Add(new LimbConsideration(LimbToTarget.RightLeg, () => ConsiderLegs(agent, data)));
+		// limbConsiderations.Add(new LimbConsideration(LimbToTarget.LeftLeg, () => ConsiderLegs(agent, data)));
 
 
 		gunConsideration = new List<GunConsideration>();
@@ -86,7 +86,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 	public override ActionRunState Perform(IMonoAgent agent, AttackData data, ActionContext context)
 	{
-		data.Timer -= context.DeltaTime;
+
 		var bodyState = agent.GetComponentInChildren<BodyState>();
 		var ag = bodyState.heatContainer.airGrid;
 
@@ -109,7 +109,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 						{
 							continue;
 						}
-						//Debug.Log(limbConsideration.limb);
+						// Debug.Log("Attacking " + limbConsideration.limb);
 						data.AIController.SetAimTarget(limbPos);
 						break;
 					}
@@ -169,12 +169,59 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 				data.bodyState.targetBodyState = data.targetState;
 			}
 		}
+		//Debug.Log(bodyState.rb.velocity.magnitude);
+
+		if (bodyState.rb.velocity.magnitude > 0.0001f)
+		{
+			bodyState.isAimed = false;
+			bodyState.TimeToAim += context.DeltaTime * 3;
+			return ActionRunState.Continue;
+		}
+
+		// Interrupt
+		if (bodyState.hitStunAmount > 0f)
+		{
+			//Debug.Log("Need to aim again");
+			bodyState.isAimed = false;
+			bodyState.TimeToAim = AttackConfig.TimeToAim;
+			return ActionRunState.Continue;
+		}
+
+		data.Timer -= context.DeltaTime;
+
+		if (!bodyState.isAimed)
+		{
+			if (!seePlayer) return data.Timer > 0 ? ActionRunState.Continue : ActionRunState.Stop;
+
+			// Start if not started
+			if (bodyState.TimeToAim <= 0f)
+				bodyState.TimeToAim = AttackConfig.TimeToAim;
+
+			// Interrupt
+			if (bodyState.hitStunAmount > 0f)
+			{
+				//Debug.Log("Need to aim again");
+				bodyState.isAimed = false;
+				bodyState.TimeToAim = AttackConfig.TimeToAim;
+				return ActionRunState.Continue;
+			}
+
+			bodyState.TimeToAim -= context.DeltaTime;
+
+			if (bodyState.TimeToAim > 0f && seePlayer)
+				return ActionRunState.Continue;
+
+			bodyState.isAimed = true;
+			bodyState.TimeToAim = 0f;
+		}
+
+		// data.Timer -= context.DeltaTime;
 
 		bool shouldAttack = seePlayer
 		&& data.bodyState.weapons.weaponRb.angularVelocity.magnitude < 0.5f
 		&& data.navMeshAgent.velocity.magnitude < 0.05f
 		&& !data.bodyState.Weapons_currentlyFiring()
-		&& distanceToPlayer <= topRankedGun.gun.gunData.shootConfig.maxRange
+		// && distanceToPlayer <= topRankedGun.gun.gunData.shootConfig.maxRange
 		&& data.Timer <= 1
 		;
 		if (shouldAttack)
@@ -291,8 +338,8 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 	public float ConsiderHead(IMonoAgent agent, AttackData data)
 	{
-		float hostileOverheated = data.targetState.head.health < 4 ? 0.6f : 0;
-
+		// float hostileOverheated = data.targetState.head.health < 4 ? 0.6f : 0;
+		float hostileOverheated = 1;
 		return hostileOverheated;
 	}
 

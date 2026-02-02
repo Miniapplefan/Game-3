@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   SensorRadius: 600
   FOVAngle: 90
-  LineOfSightSphereCastRadius: 0.2
+  LineOfSightSphereCastRadius: 0.15
   AttackableLayerMask:
     serializedVersion: 2
     m_Bits: 256
@@ -30,7 +30,8 @@ MonoBehaviour:
   MinObstacleHeight: 0.62
   ObstructionLayerMask:
     serializedVersion: 2
-    m_Bits: 512
-  AttackDelay: 4
+    m_Bits: 513
+  TimeBetweenAttacks: 1.5
+  TimeToAim: 3
   AttackCost: 4
   SiphonDelay: 1

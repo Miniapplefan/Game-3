@@ -14,6 +14,10 @@ public class MoveBackwardCommand : ICommand
     public void Execute()
     {
         //Debug.Log("move forward");
-        model.rb.AddForce(-model.headOrientation.transform.up.normalized * model.getMoveSpeed() * model.moveAcceleration * Time.deltaTime);
+        //model.rb.AddForce(-model.rb.transform.forward * model.getMoveSpeed() * model.moveAcceleration * Time.deltaTime);
+
+        Vector3 forward = Vector3.ProjectOnPlane(model.headOrientation.transform.up, Vector3.up).normalized;
+
+        model.rb.AddForce(-forward * model.getMoveSpeed() * model.moveAcceleration * Time.deltaTime);
     }
 }

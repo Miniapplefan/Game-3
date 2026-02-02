@@ -6,11 +6,14 @@ public class ShootConfigScriptableObject : ScriptableObject
 	public int powerRequired = 1;
 	public LayerMask HitMask;
 	public Vector3 Spread = new Vector3(0.1f, 0.1f, 0.1f);
+	public float rawDamage = 1f;
 	public float maxRange = 100f;
 	public bool isBurst = true;
 	public int burst_numShots = 3;
 	public float burst_delayBetweenShots = 0.2f;
 	public int bulletsPerShot = 1;
+	public int magSize = 8;
+	public float reloadTime = 3.0f;
 	public float prepTime = 0f;
 	public Transform prepIndicator;
 	public float fireRate = 0.25f;

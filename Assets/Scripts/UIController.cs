@@ -8,6 +8,7 @@ public class UIController : MonoBehaviour
     BodyController bodyController;
     public GameObject heatGauge;
     Vector3 heatGaugeScaleCache;
+    public TMP_Text auraIndicator;
     public TMP_Text tempIndicator;
     public TMP_Text tempExternalIndicator;
     public TMP_Text dollarsIndicator;
@@ -36,10 +37,20 @@ public class UIController : MonoBehaviour
     void FixedUpdate()
     {
         // displayHeatGauge();
-        displayDollarsGauage();
-        displayHealthGauge();
+        // displayDollarsGauage();
+        // displayHealthGauge();
         // displayTempGauge();
         // displayTempExternalGauge();
+
+        if (!bodyController.isAI)
+        {
+            displayAuraGauge();
+        }
+    }
+
+    void displayAuraGauge()
+    {
+        auraIndicator.text = bodyController.auraManager.AuraFloat.ToString();
     }
 
     // void displayHeatGauge()

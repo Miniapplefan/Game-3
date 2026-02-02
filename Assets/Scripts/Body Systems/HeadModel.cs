@@ -16,13 +16,23 @@ public class HeadModel : SystemModel
 
 	public override void Damage(int amount)
 	{
-		health = Mathf.Clamp(health - amount, 0, getMaxHealth());
+		base.DamageHealth(amount);
 
 		if (health <= 0)
 		{
 			RaiseDeath?.Invoke();
 		}
 	}
+
+	public override void DamageHealth(float amount)
+	{
+		currentHealth = Mathf.Clamp(currentHealth - amount, 0, currentHealth);
+		if (currentHealth <= 0)
+		{
+			RaiseDeath?.Invoke();
+		}
+	}
+
 
 	public override void Repair(int amount)
 	{
@@ -41,6 +51,6 @@ public class HeadModel : SystemModel
 
 	public int getMaxHealth()
 	{
-		return currentLevel * 10;
+		return currentLevel * 4;
 	}
 }

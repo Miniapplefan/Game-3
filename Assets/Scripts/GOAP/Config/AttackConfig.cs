@@ -17,7 +17,8 @@ public class AttackConfigSO : ScriptableObject
 	[Range(0, 5f)]
 	public float MinObstacleHeight = 1.25f;
 	public LayerMask ObstructionLayerMask;
-	public float AttackDelay = 1;
+	public float TimeBetweenAttacks = 1;
+	public float TimeToAim = 3;
 	public int AttackCost = 4;
 	public float SiphonDelay = 1;
 }

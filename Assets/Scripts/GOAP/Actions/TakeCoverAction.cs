@@ -26,28 +26,51 @@ public class TakeCoverAction : ActionBase<CommonData>, IInjectable
 		//   return ActionRunState.Continue;
 		// }
 
-		if (data.Timer > 0)
-		{
-			return ActionRunState.Continue;
-		}
+		// if (data.bodyState.isAimed)
+		// {
+		// 	data.bodyState.isAimed = false;
+		// 	data.bodyState.TimeToAim = AttackConfig.TimeToAim;
+		// }
 
 		bool seePlayer = false;
 		if (Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.AttackableLayerMask) > 0)
 		{
-			Vector3 direction1 = (Colliders[0].transform.position - agent.GetComponentInChildren<BodyState>().headCollider.transform.position).normalized;
+			if (data.bodyState.targetBodyState == null)
+			{
+				foreach (Collider c in Colliders)
+				{
+					if (c.gameObject.GetComponentInChildren<PlayerController>() != null)
+					{
+						data.bodyState.targetBodyState = c.gameObject.GetComponent<BodyState>();
+					}
+				}
+			}
+
+			Vector3 direction1 = (data.bodyState.targetBodyState.transform.position - agent.GetComponentInChildren<BodyState>().headCollider.transform.position).normalized;
 			RaycastHit hit1;
 			if (Physics.SphereCast(agent.GetComponentInChildren<BodyState>().headCollider.transform.position, AttackConfig.LineOfSightSphereCastRadius, direction1, out hit1, Mathf.Infinity, AttackConfig.AttackableLayerMask | AttackConfig.ObstructionLayerMask))
 			{
 				//Debug.Log(agent.transform.position);
-				seePlayer = hit1.transform.GetComponent<PlayerController>() != null;
+				seePlayer = hit1.transform.GetComponentInChildren<PlayerController>() != null;
 			}
 		}
 
-		if (!seePlayer)
+		if (data.bodyState.dangerLevel < 0.1f) return ActionRunState.Stop;
+
+		if (seePlayer)
 		{
-			// Debug.Log("See player");
+			return ActionRunState.Continue;
+		}
+		else
+		{
 			return ActionRunState.Stop;
 		}
+
+		// if (!seePlayer)
+		// {
+		// 	// Debug.Log("See player");
+		// 	return ActionRunState.Stop;
+		// }
 		// else
 		// {
 		// 	Debug.Log("Do not see player");
@@ -58,7 +81,6 @@ public class TakeCoverAction : ActionBase<CommonData>, IInjectable
 		// 	return ActionRunState.Stop;
 		// }
 
-		return ActionRunState.Stop;
 	}
 
 	public override void End(IMonoAgent agent, CommonData data) { }

@@ -69,7 +69,10 @@ public class LegsModel : SystemModel
 	float moveSpeed;
 
 	public int rightLegHealth;
+	public float rightLegCurrentHealth;
 	public int leftLegHealth;
+	public float leftLegCurrentHealth;
+
 
 	float getSpeedFromLeg(int legHealth)
 	{
@@ -172,7 +175,7 @@ public class LegsModel : SystemModel
 				DealTagging(taggingDam, 0.02f);
 				break;
 			case Limb.LimbID.torso:
-				DealTagging(taggingDam / 3, 0.03f);
+				DealTagging(taggingDam, 0.03f);
 				break;
 			case Limb.LimbID.head:
 				DealTagging(taggingDam / 10, 0.06f);
@@ -193,9 +196,27 @@ public class LegsModel : SystemModel
 		leftLegHealth = Mathf.Clamp(leftLegHealth - amount, 0, leftLegHealth);
 	}
 
+	public void damangeLeftLegCurrentHealth(float amount)
+	{
+		leftLegCurrentHealth = Mathf.Clamp(leftLegCurrentHealth - amount, 0, leftLegCurrentHealth);
+		if (rightLegCurrentHealth <= 0)
+		{
+			damageLeftLeg(leftLegHealth);
+		}
+	}
+
 	public void damageRightLeg(int amount)
 	{
 		rightLegHealth = Mathf.Clamp(rightLegHealth - amount, 0, rightLegHealth);
+	}
+
+	public void damangeRightLegCurrentHealth(float amount)
+	{
+		rightLegCurrentHealth = Mathf.Clamp(rightLegCurrentHealth - amount, 0, rightLegCurrentHealth);
+		if (rightLegCurrentHealth <= 0)
+		{
+			damageRightLeg(rightLegHealth);
+		}
 	}
 
 	public void healLeftLeg(int amount)

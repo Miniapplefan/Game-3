@@ -12,6 +12,8 @@ public class GunDataScriptableObject : ScriptableObject
     public GameObject ModelPrefab;
     public Vector3 SpawnPoint;
     public Vector3 SpawnRotation;
+    public bool isNPCWeapon;
+    public GameObject npcBulletPrefab;
     public ShootConfigScriptableObject shootConfig;
     public TrailConfigScriptableObject trailConfig;
 }

@@ -19,6 +19,7 @@ public interface InputController
     public bool getScrollUp();
 
     public bool getScrollDown();
+    public bool getReload();
 
     public bool getSiphon();
 

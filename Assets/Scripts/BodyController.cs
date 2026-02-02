@@ -16,9 +16,11 @@ public class BodyController : MonoBehaviour
 
 	public InputController input;
 
-	bool isAI = false;
+	public bool isAI = false;
 
-	bool isDead = false;
+	public float aiHealth;
+
+	public bool isDead = false;
 
 	// [HideInInspector]
 	//public CoolingModel cooling;
@@ -35,6 +37,7 @@ public class BodyController : MonoBehaviour
 	// public TMP_Text healthIndicator;
 
 	public HeadModel head;
+	public AuraManager auraManager;
 
 	public LegsModel legs;
 	SensorsModel sensors;
@@ -80,6 +83,7 @@ public class BodyController : MonoBehaviour
 	bool startedLeaningLeft = false;
 	bool startedLeaningRight = false;
 	public MultiAimConstraint headAimConstraint;
+	public MultiAimConstraint headCounterleanConstraint;
 	public MultiAimConstraint upperTorsoLeanConstraint;
 	public MultiAimConstraint middleTorsoLeanConstraint;
 
@@ -151,6 +155,21 @@ public class BodyController : MonoBehaviour
 	// Start is called before the first frame update
 	void Start()
 	{
+		//InputController can be either a player or AI. We check if it's a PlayerController and
+		//if it isn't we make it an AI
+		if (GetComponent<PlayerController>() != null)
+		{
+			Debug.Log("found player controller");
+			input = GetComponent<PlayerController>();
+			auraManager = GetComponent<AuraManager>();
+		}
+		else
+		{
+			input = GetComponent<AIController>();
+			agent = GetComponentInParent<NavMeshAgent>();
+			aiHealth = 4f;
+			isAI = true;
+		}
 		//so_initialBodyStats = (BodyInfo)Resources.Load<ScriptableObject>("PlayerStartBodyInfo");
 		systemControllers = InitSystems();
 		heatContainer = GetComponent<HeatContainer>();
@@ -160,20 +179,6 @@ public class BodyController : MonoBehaviour
 		rb = GetComponent<Rigidbody>();
 		bodyColliders = GetComponentsInChildren<Collider>();
 		tempJoint = new JointDrive();
-
-		//InputController can be either a player or AI. We check if it's a PlayerController and
-		//if it isn't we make it an AI
-		if (GetComponent<PlayerController>() != null)
-		{
-			Debug.Log("found player controller");
-			input = GetComponent<PlayerController>();
-		}
-		else
-		{
-			input = GetComponent<AIController>();
-			agent = GetComponentInParent<NavMeshAgent>();
-			isAI = true;
-		}
 
 		// coolingGaugeScaleCache = coolingGauge.transform.localScale;
 		taggingGaugeScaleCache = taggingGauge.transform.localScale;
@@ -195,6 +200,11 @@ public class BodyController : MonoBehaviour
 				// 	break;
 				case BodyInfo.systemID.Legs:
 					legs = new LegsModel(so_initialBodyStats.rawSystemStartLevels[i], rb, physicalHead.transform);
+					if (isAI)
+					{
+						legs.rightLegCurrentHealth = aiHealth / 2;
+						legs.leftLegCurrentHealth = aiHealth / 2;
+					}
 					models.Add(legs);
 					Debug.Log("Legs added");
 					break;
@@ -205,13 +215,15 @@ public class BodyController : MonoBehaviour
 					break;
 				case BodyInfo.systemID.Weapons:
 					weapons = new WeaponsModel(so_initialBodyStats.rawSystemStartLevels[i], guns, gunsL, weaponRigidbody);
+					if (isAI) weapons.currentHealth = aiHealth / 2;
 					models.Add(weapons);
 					Debug.Log("Weapons added");
 					break;
 				case BodyInfo.systemID.Head:
 					head = new HeadModel(so_initialBodyStats.rawSystemStartLevels[i]);
+					if (isAI) head.currentHealth = aiHealth;
 					models.Add(head);
-					Debug.Log("Head added");
+					Debug.Log("Head added with " + head.currentHealth + " health");
 					break;
 				case BodyInfo.systemID.Siphon:
 					siphon = new SiphonModel(so_initialBodyStats.rawSystemStartLevels[i], siphonHead, siphonArm);
@@ -269,10 +281,11 @@ public class BodyController : MonoBehaviour
 
 	public void DamageSystem(DamageInfo i)
 	{
-		head.Damage(1);
 		if (i.limb.specificLimb == Limb.LimbID.none)
 		{
-			GetSystem(i.limb.linkedSystem).Damage(1);
+			head.DamageHealth(i.amount * 0.25f);
+			//GetSystem(i.limb.linkedSystem).Damage(1);
+			Mathf.Clamp01(bodyState.hitStunAmount += 0.2f);
 			checkForRepair(i);
 		}
 		else
@@ -280,15 +293,27 @@ public class BodyController : MonoBehaviour
 			switch (i.limb.specificLimb)
 			{
 				case LimbID.leftLeg:
-					legs.damageLeftLeg(1);
+					legs.damangeLeftLegCurrentHealth(i.amount);
+					head.DamageHealth(i.amount * 0.25f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
 					checkForRepair(i);
 					break;
 				case LimbID.rightLeg:
-					legs.damageRightLeg(1);
+					legs.damangeRightLegCurrentHealth(i.amount);
+					head.DamageHealth(i.amount * 0.25f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
 					checkForRepair(i);
 					break;
+				case LimbID.torso:
+					head.DamageHealth(i.amount);
+					// Debug.Log(LimbID.torso + " " + i.amount + " " + head.currentHealth);
+					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
+					break;
 				case LimbID.head:
+					head.DamageHealth(i.amount * 2);
+					// Debug.Log(LimbID.head + " " + i.amount * 2 + " " + head.currentHealth);
 					//head.Damage((int)i.amount);
+					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
 					break;
 			}
 		}
@@ -766,7 +791,7 @@ public class BodyController : MonoBehaviour
 			torso = headObjectTransformCache.position + forward * 20f;
 
 			// Raycast for weapon aim
-			Ray ray = new Ray(aimCam.transform.position, forward);
+			Ray ray = new Ray(physicalHead.transform.position, forward);
 			RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
 
 
@@ -1123,29 +1148,47 @@ public class BodyController : MonoBehaviour
 		}
 	}
 
+	private void DoReload()
+	{
+		if (!isAimingLeft && !isAimingRight)
+		{
+			gunsL.ActiveGun1.StartReload();
+			guns.ActiveGun1.StartReload();
+		}
+
+		if (isAimingLeft)
+		{
+			gunsL.ActiveGun1.StartReload();
+		}
+		if (isAimingRight)
+		{
+			guns.ActiveGun1.StartReload();
+		}
+	}
+
 	private void setJointStrength()
 	{
-		float overheated = 1f;
+		// float overheated = 1f;
 
 		tempJoint = upperTorsoJoint.slerpDrive;
-		tempJoint.positionSpring = (legs.taggingModifier / 100f * 100000 * overheated) + 1000;
+		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 100000) + 2000, 1000, 100000);
 		upperTorsoJoint.slerpDrive = tempJoint;
 
 		tempJoint = middleTorsoJoint.slerpDrive;
-		tempJoint.positionSpring = (legs.taggingModifier / 100f * 1000000 * overheated) + 1000;
+		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 100000) + 2000, 1000, 100000);
 		middleTorsoJoint.slerpDrive = tempJoint;
 
 		tempJoint = upperRightArmJoint.slerpDrive;
-		tempJoint.positionSpring = (weapons.disruptionModifier / 100f * 800000 * overheated) + 1000;
+		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 100000) + 2000, 1000, 100000);
 		upperRightArmJoint.slerpDrive = tempJoint;
 
 		//TODO Temporary tagging gauge visual
-		taggingGauge.transform.localScale = taggingGaugeScaleCache * Mathf.Clamp((legs.taggingModifier + 0.01f) / 100f, 0, 1f);
+		//taggingGauge.transform.localScale = taggingGaugeScaleCache * Mathf.Clamp((legs.taggingModifier + 0.01f) / 100f, 0, 1f);
 	}
 
 	private void SetRigPosture()
 	{
-		float posture = legs.taggingModifier / 100;
+		float posture = 1 - bodyState.hitStunAmount;
 
 		upperTorsoMac.data.sourceObjects.SetWeight(0, posture);
 		upperTorsoMac.data.sourceObjects.SetWeight(1, 1 - posture);
@@ -1173,6 +1216,12 @@ public class BodyController : MonoBehaviour
 
 		taggingTarget.rotation = Quaternion.Euler(270 + (30 * (1 - posture)), 0, 180);
 	}
+
+	public static float ExpDamp(float current, float target, float lambda)
+	{
+		return Mathf.Lerp(current, target, 1f - Mathf.Exp(-lambda * Time.deltaTime));
+	}
+	float leanLambda = 8f; // higher = snappier
 
 	private void LeanLeft()
 	{
@@ -1219,10 +1268,15 @@ public class BodyController : MonoBehaviour
 		var a1 = a[1];
 		var a2 = a[2];
 		var a3 = a[3];
-		a0.weight = a0.weight < left ? a0.weight + leanSpeed : left;
-		a1.weight = a1.weight < right ? a1.weight + leanSpeed : right;
-		a2.weight = a2.weight < front ? a2.weight + leanSpeed : front;
-		a3.weight = a3.weight < back ? a3.weight + leanSpeed : back;
+		// a0.weight = a0.weight < left ? a0.weight + leanSpeed : left;
+		// a1.weight = a1.weight < right ? a1.weight + leanSpeed : right;
+		// a2.weight = a2.weight < front ? a2.weight + leanSpeed : front;
+		// a3.weight = a3.weight < back ? a3.weight + leanSpeed : back;
+
+		a0.weight = ExpDamp(a0.weight, left, leanLambda);
+		a1.weight = ExpDamp(a1.weight, right, leanLambda);
+		a2.weight = ExpDamp(a2.weight, front, leanLambda);
+		a3.weight = ExpDamp(a3.weight, back, leanLambda);
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
@@ -1234,10 +1288,15 @@ public class BodyController : MonoBehaviour
 		a1 = a[1];
 		a2 = a[2];
 		a3 = a[3];
-		a0.weight = a0.weight < left ? a0.weight + leanSpeed : left;
-		a1.weight = a1.weight < right ? a1.weight + leanSpeed : right;
-		a2.weight = a2.weight < front ? a2.weight + leanSpeed : front;
-		a3.weight = a3.weight < back ? a3.weight + leanSpeed : back;
+		// a0.weight = a0.weight < left ? a0.weight + leanSpeed : left;
+		// a1.weight = a1.weight < right ? a1.weight + leanSpeed : right;
+		// a2.weight = a2.weight < front ? a2.weight + leanSpeed : front;
+		// a3.weight = a3.weight < back ? a3.weight + leanSpeed : back;
+
+		a0.weight = ExpDamp(a0.weight, left, leanLambda);
+		a1.weight = ExpDamp(a1.weight, right, leanLambda);
+		a2.weight = ExpDamp(a2.weight, front, leanLambda);
+		a3.weight = ExpDamp(a3.weight, back, leanLambda);
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
@@ -1289,10 +1348,11 @@ public class BodyController : MonoBehaviour
 		var a1 = a[1];
 		var a2 = a[2];
 		var a3 = a[3];
-		a0.weight = a0.weight < left ? a0.weight + leanSpeed : left;
-		a1.weight = a1.weight < right ? a1.weight + leanSpeed : right;
-		a2.weight = a2.weight < front ? a2.weight + leanSpeed : front;
-		a3.weight = a3.weight < back ? a3.weight + leanSpeed : back;
+
+		a0.weight = ExpDamp(a0.weight, left, leanLambda);
+		a1.weight = ExpDamp(a1.weight, right, leanLambda);
+		a2.weight = ExpDamp(a2.weight, front, leanLambda);
+		a3.weight = ExpDamp(a3.weight, back, leanLambda);
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
@@ -1304,10 +1364,11 @@ public class BodyController : MonoBehaviour
 		a1 = a[1];
 		a2 = a[2];
 		a3 = a[3];
-		a0.weight = a0.weight < left ? a0.weight + leanSpeed : left;
-		a1.weight = a1.weight < right ? a1.weight + leanSpeed : right;
-		a2.weight = a2.weight < front ? a2.weight + leanSpeed : front;
-		a3.weight = a3.weight < back ? a3.weight + leanSpeed : back;
+
+		a0.weight = ExpDamp(a0.weight, left, leanLambda);
+		a1.weight = ExpDamp(a1.weight, right, leanLambda);
+		a2.weight = ExpDamp(a2.weight, front, leanLambda);
+		a3.weight = ExpDamp(a3.weight, back, leanLambda);
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
@@ -1325,10 +1386,14 @@ public class BodyController : MonoBehaviour
 		var a1 = a[1];
 		var a2 = a[2];
 		var a3 = a[3];
-		a0.weight = a0.weight > 0 ? a0.weight - leanRecoverySpeed : 0;
-		a1.weight = a1.weight > 0 ? a1.weight - leanRecoverySpeed : 0;
-		a2.weight = a2.weight > 0 ? a2.weight - leanRecoverySpeed : 0;
-		a3.weight = a3.weight > 0 ? a3.weight - leanRecoverySpeed : 0;
+		a0.weight = ExpDamp(a0.weight, 0, leanLambda);
+		a1.weight = ExpDamp(a1.weight, 0, leanLambda);
+		a2.weight = ExpDamp(a2.weight, 0, leanLambda);
+		a3.weight = ExpDamp(a3.weight, 0, leanLambda);
+		// a0.weight = a0.weight > 0 ? a0.weight - leanRecoverySpeed : 0;
+		// a1.weight = a1.weight > 0 ? a1.weight - leanRecoverySpeed : 0;
+		// a2.weight = a2.weight > 0 ? a2.weight - leanRecoverySpeed : 0;
+		// a3.weight = a3.weight > 0 ? a3.weight - leanRecoverySpeed : 0;
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
@@ -1340,15 +1405,24 @@ public class BodyController : MonoBehaviour
 		a1 = a[1];
 		a2 = a[2];
 		a3 = a[3];
-		a0.weight = a0.weight > 0 ? a0.weight - leanRecoverySpeed : 0;
-		a1.weight = a1.weight > 0 ? a1.weight - leanRecoverySpeed : 0;
-		a2.weight = a2.weight > 0 ? a2.weight - leanRecoverySpeed : 0;
-		a3.weight = a3.weight > 0 ? a3.weight - leanRecoverySpeed : 0;
+		a0.weight = ExpDamp(a0.weight, 0, leanLambda);
+		a1.weight = ExpDamp(a1.weight, 0, leanLambda);
+		a2.weight = ExpDamp(a2.weight, 0, leanLambda);
+		a3.weight = ExpDamp(a3.weight, 0, leanLambda);
+		// a0.weight = a0.weight > 0 ? a0.weight - leanRecoverySpeed : 0;
+		// a1.weight = a1.weight > 0 ? a1.weight - leanRecoverySpeed : 0;
+		// a2.weight = a2.weight > 0 ? a2.weight - leanRecoverySpeed : 0;
+		// a3.weight = a3.weight > 0 ? a3.weight - leanRecoverySpeed : 0;
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
 		a[3] = a3;
 		middleTorsoLeanConstraint.data.sourceObjects = a;
+	}
+
+	public float getAuraDamageMultipler()
+	{
+		return auraManager.AuraFloat;
 	}
 
 	//public void StartCooling()
@@ -1373,8 +1447,8 @@ public class BodyController : MonoBehaviour
 	{
 		if (!isDead)
 		{
-			GetAimPoint();
 			ExecutePhysicsBasedInputs();
+			GetAimPoint();
 			doSiphoning();
 			doLimbRepairs();
 			DoRotation();
@@ -1386,8 +1460,12 @@ public class BodyController : MonoBehaviour
 		// doCooling();
 		// HandleKnockback();
 		ClampRigidbodyYPos();
-		//setJointStrength();
-		//SetRigPosture();
+		if (isAI)
+		{
+			setJointStrength();
+			// SetRigPosture();
+		}
+
 
 		setWeaponGauges();
 		// dollarsIndicator.text = (Mathf.Round(siphon.dollars * 100f) / 100f).ToString();
@@ -1447,6 +1525,8 @@ public class BodyController : MonoBehaviour
 		if (input.getScrollUp()) HandleScrollUp();
 		if (input.getScrollDown()) HandleScrollDown();
 		if (input.getAimMiddle()) HandleMiddleClick();
+
+		if (input.getReload()) DoReload();
 
 		if ((!input.getAimLeft() && !input.getAimRight()) || (input.getAimLeft() && input.getAimRight()))
 		{

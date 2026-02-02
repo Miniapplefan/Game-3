@@ -17,6 +17,15 @@ public class BodyState : MonoBehaviour
 	public float bodyHeat;
 	public bool bodyIsOverheated;
 
+	public float dangerLevel;
+	private float losCheckInterval = 0.2f;
+	private float losCheckIntervalCache = 0.2f;
+	public bool hasLOS;
+	public bool isBeingAimedAt;
+	public float TimeToAim;
+	public bool isAimed = false;
+	public float hitStunAmount;
+
 	public Collider headCollider;
 
 	public Collider rightArm;
@@ -34,6 +43,9 @@ public class BodyState : MonoBehaviour
 
 	public LayerMask ObstructionLayerMask;
 
+	public LayerMask AttackableLayerMask;
+
+
 	public void Init(List<SystemModel> systems, HeatContainer heat)
 	{
 		heatContainer = heat;
@@ -48,6 +60,16 @@ public class BodyState : MonoBehaviour
 
 	void Update()
 	{
+		if (rb.velocity.magnitude > 0.0001f) isAimed = false;
+		if (losCheckIntervalCache > 0)
+		{
+			losCheckIntervalCache -= Time.deltaTime;
+		}
+		else
+		{
+			hasLOS = Target_HaveLOS();
+			losCheckIntervalCache = losCheckInterval;
+		}
 		// bodyHeat = heatContainer.currentTemperature;
 		// bodyIsOverheated = cooling.isOverheated;
 	}
@@ -188,6 +210,49 @@ public class BodyState : MonoBehaviour
 		}
 		return haveLOS;
 	}
+
+	public bool Target_HaveLOS()
+	{
+		bool haveLOS = false;
+		if (targetBodyState == null)
+		{
+			return haveLOS;
+		}
+		Vector3 direction1 = (targetBodyState.transform.position - headCollider.transform.position).normalized;
+		RaycastHit hit1;
+
+		if (Physics.SphereCast(headCollider.transform.position, 0.25f, direction1, out hit1, Mathf.Infinity, AttackableLayerMask | ObstructionLayerMask))
+		{
+			//Debug.Log(agent.transform.position);
+			haveLOS = hit1.transform.GetComponent<PlayerController>() != null;
+		}
+		return haveLOS;
+	}
+
+	private void OnTriggerEnter(Collider other)
+	{
+		if (other.gameObject.layer == 13 && Target_HaveLOS())
+		{
+			isBeingAimedAt = true;
+		}
+	}
+
+	// private void OnTriggerStay(Collider other)
+	// {
+	// 	if (other.gameObject.layer == 13)
+	// 	{
+	// 		isBeingAimedAt = true;
+	// 	}
+	// }
+
+	private void OnTriggerExit(Collider other)
+	{
+		if (other.gameObject.layer == 13)
+		{
+			isBeingAimedAt = false;
+		}
+	}
+
 	#region AI data
 	public Gun desiredGunToUse;
 	#endregion
