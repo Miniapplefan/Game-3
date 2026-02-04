@@ -41,4 +41,12 @@ public class SensorsModel : SystemModel
         yRotation = rotation.y;
         lookCommand.Execute();
     }
+
+    public void ResetHeadPitch()
+    {
+        if (lookCommand is RotateHeadCommand cmd)
+        {
+            cmd.ResetPitch();
+        }
+    }
 }

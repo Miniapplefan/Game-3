@@ -909,7 +909,7 @@ public class BodyController : MonoBehaviour
 		}
 		else
 		{
-			ResetWeaponAimPoint();
+			ResetWeaponAimPoint(true);
 		}
 
 
@@ -929,7 +929,7 @@ public class BodyController : MonoBehaviour
 		// torsoAimPoint.position = torso;
 	}
 
-	void ResetWeaponAimPoint()
+	void ResetWeaponAimPoint(bool resetPitch = false)
 	{
 		// Debug.Log("resetting aim");
 
@@ -958,6 +958,10 @@ public class BodyController : MonoBehaviour
 		torsoAimPoint.position = torso;
 		headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 		headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+		if (resetPitch && sensors != null)
+		{
+			sensors.ResetHeadPitch();
+		}
 
 
 		// cameraMoveScript.enabled = false;
@@ -1506,7 +1510,7 @@ public class BodyController : MonoBehaviour
 			if (isAimingRight) ToggleAimingRight();
 			if (isAimingLeft) ToggleAimingLeft();
 
-			ResetWeaponAimPoint();
+			ResetWeaponAimPoint(true);
 
 			startedAimingRight = false;
 			startedAimingLeft = false;

@@ -21,31 +21,40 @@ public class RotateHeadCommand : ICommand
     }
 
     private float desiredX;
-    private float xRotation;
+    private float xRotationRight;
+    private float xRotationLeft;
+
+    public void ResetPitch()
+    {
+        xRotationRight = 0f;
+        xRotationLeft = 0f;
+    }
     public void Execute()
     {
-        Vector3 rot = sensors.head.transform.localRotation.eulerAngles;
-        desiredX = rot.y + sensors.yRotation;
+        if (sensors.bodyController.isAimingLeft)
+        {
+            Vector3 rot = sensors.headL.transform.localRotation.eulerAngles;
+            desiredX = rot.y + sensors.yRotation;
 
-        xRotation -= sensors.xRotation;
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+            xRotationLeft -= sensors.xRotation;
+            xRotationLeft = Mathf.Clamp(xRotationLeft, -90f, 90f);
 
-        //currentXrotation = Mathf.SmoothDamp(currentXrotation, xRotation, ref xRotationRef, sensors.rotationSmoothDamp);
+            //currentXrotation = Mathf.SmoothDamp(currentXrotation, xRotationLeft, ref xRotationRef, sensors.rotationSmoothDamp);
+            //currentYrotation = Mathf.SmoothDamp(currentYrotation, desiredX, ref yRotationRef, sensors.rotationSmoothDamp);
+
+            sensors.headL.transform.localRotation = Quaternion.Euler(xRotationLeft, desiredX, desiredX);
+            return;
+        }
+
+        Vector3 headRot = sensors.head.transform.localRotation.eulerAngles;
+        desiredX = headRot.y + sensors.yRotation;
+
+        xRotationRight -= sensors.xRotation;
+        xRotationRight = Mathf.Clamp(xRotationRight, -90f, 90f);
+
+        //currentXrotation = Mathf.SmoothDamp(currentXrotation, xRotationRight, ref xRotationRef, sensors.rotationSmoothDamp);
         //currentYrotation = Mathf.SmoothDamp(currentYrotation, desiredX, ref yRotationRef, sensors.rotationSmoothDamp);
 
-        if (sensors.bodyController.isAimingRight)
-        {
-            sensors.head.transform.localRotation = Quaternion.Euler(xRotation, desiredX, desiredX);
-        }
-        else if (sensors.bodyController.isAimingLeft)
-        {
-            rot = sensors.headL.transform.localRotation.eulerAngles;
-            desiredX = rot.y + sensors.yRotation;
-            sensors.headL.transform.localRotation = Quaternion.Euler(xRotation, desiredX, desiredX);
-        }
-        else
-        {
-            sensors.head.transform.localRotation = Quaternion.Euler(xRotation, desiredX, desiredX);
-        }
+        sensors.head.transform.localRotation = Quaternion.Euler(xRotationRight, desiredX, desiredX);
     }
 }
