@@ -11,7 +11,7 @@ public class Bullet : MonoBehaviour
     public Material hitTelegraphMaterial;
     public Material noHitTelegraphMaterial;
 
-    [SerializeField] LayerMask playerMask;
+    [SerializeField] LayerMask hitMask;
     bool shouldTelegraph = false;
     bool isTelegraph = false;
 
@@ -51,7 +51,7 @@ public class Bullet : MonoBehaviour
     {
         if (isTelegraph && shouldTelegraph)
         {
-            if (Physics.SphereCast(transform.position, 0.1f, transform.forward, out RaycastHit hit, 0.1f, playerMask, QueryTriggerInteraction.Ignore))
+            if (Physics.SphereCast(transform.position, 0.1f, transform.forward, out RaycastHit hit, 0.1f, hitMask, QueryTriggerInteraction.Ignore))
             {
                 // Damage
                 if (hit.collider.GetComponentInParent<PlayerController>() != null)

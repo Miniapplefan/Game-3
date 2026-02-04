@@ -24,6 +24,12 @@ public class BodyController : MonoBehaviour
 
 	public bool isGodMode = false;
 
+	[Header("Movement Aim Rotate")]
+	public float moveAimYawRotateSpeed = 360f;
+	public float moveAimYawCompleteAngle = 0.5f;
+	private bool hasPendingMoveAimYaw = false;
+	private Quaternion pendingMoveAimYaw;
+
 	// [HideInInspector]
 	//public CoolingModel cooling;
 
@@ -1459,6 +1465,7 @@ public class BodyController : MonoBehaviour
 			doSiphoning();
 			doLimbRepairs();
 			DoRotation();
+			UpdatePendingMoveAimYaw();
 		}
 		legs.DoMoveDeacceleration();
 		legs.RecoverFromTagging(1);
@@ -1507,6 +1514,7 @@ public class BodyController : MonoBehaviour
 		else if (isAimingRight || isAimingLeft)
 		{
 			// Debug.Log("resetting aim on movement");
+			RotateTorsoToActiveAimYaw();
 			if (isAimingRight) ToggleAimingRight();
 			if (isAimingLeft) ToggleAimingLeft();
 
@@ -1551,5 +1559,56 @@ public class BodyController : MonoBehaviour
 
 
 		//if (input.getScroll()) CycleWeaponPowerAllocation();
+	}
+
+	private void RotateTorsoToActiveAimYaw()
+	{
+		Transform aimPoint = null;
+		if (isAimingRight)
+		{
+			aimPoint = weaponAimPoint;
+		}
+		else if (isAimingLeft)
+		{
+			aimPoint = weaponAimPointL;
+		}
+
+		if (aimPoint == null)
+		{
+			return;
+		}
+
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
+		if (physicalHead != null)
+		{
+			origin = physicalHead.transform.position;
+		}
+
+		Vector3 dir = aimPoint.position - origin;
+		dir.y = 0f;
+		if (dir.sqrMagnitude < 0.0001f)
+		{
+			return;
+		}
+
+		Quaternion target = Quaternion.LookRotation(dir.normalized, Vector3.up);
+		pendingMoveAimYaw = target;
+		hasPendingMoveAimYaw = true;
+	}
+
+	private void UpdatePendingMoveAimYaw()
+	{
+		if (!hasPendingMoveAimYaw)
+		{
+			return;
+		}
+
+		float maxDegrees = moveAimYawRotateSpeed * Time.deltaTime;
+		transform.rotation = Quaternion.RotateTowards(transform.rotation, pendingMoveAimYaw, maxDegrees);
+
+		if (Quaternion.Angle(transform.rotation, pendingMoveAimYaw) <= moveAimYawCompleteAngle)
+		{
+			hasPendingMoveAimYaw = false;
+		}
 	}
 }

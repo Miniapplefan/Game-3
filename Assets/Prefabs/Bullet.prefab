@@ -266,9 +266,9 @@ MonoBehaviour:
   trail: {fileID: 7108630533283499936}
   hitTelegraphMaterial: {fileID: 2100000, guid: 738f118aa214360489366338953cfd32, type: 2}
   noHitTelegraphMaterial: {fileID: 2100000, guid: c4dab12b6ad08384ba8a3ce2f7eba5f7, type: 2}
-  playerMask:
+  hitMask:
     serializedVersion: 2
-    m_Bits: 64
+    m_Bits: 768
   lifetime: 10
 --- !u!136 &7999339846884550878
 CapsuleCollider:

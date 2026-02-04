@@ -427,6 +427,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Npc_total new (3)
       objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
       value: 
@@ -1256,6 +1260,10 @@ PrefabInstance:
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_Name
       value: Npc_total new (2)
+      objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -2278,6 +2286,10 @@ PrefabInstance:
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_Name
       value: Npc_total new (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -13592,6 +13604,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Npc_total new (4)
       objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
       value: 
@@ -14326,6 +14342,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: moveAimYawRotateSpeed
+      value: 270
+      objectReference: {fileID: 0}
     - target: {fileID: 5410714147512533004, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_Name
       value: Body_total new
@@ -14355,6 +14375,10 @@ PrefabInstance:
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_Name
       value: Npc_total new
+      objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
