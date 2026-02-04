@@ -5,6 +5,7 @@ using System.Linq;
 
 public class BodyState : MonoBehaviour
 {
+	BodyController bodyController;
 	public HeatContainer heatContainer;
 	public HeadModel head;
 	public CoolingModel cooling;
@@ -16,7 +17,9 @@ public class BodyState : MonoBehaviour
 
 	public float bodyHeat;
 	public bool bodyIsOverheated;
+	public bool isDead;
 
+	public AttackConfigSO AttackConfig;
 	public float dangerLevel;
 	private float losCheckInterval = 0.2f;
 	private float losCheckIntervalCache = 0.2f;
@@ -46,8 +49,9 @@ public class BodyState : MonoBehaviour
 	public LayerMask AttackableLayerMask;
 
 
-	public void Init(List<SystemModel> systems, HeatContainer heat)
+	public void Init(List<SystemModel> systems, HeatContainer heat, BodyController bc)
 	{
+		bodyController = bc;
 		heatContainer = heat;
 
 		cooling = systems.OfType<CoolingModel>().FirstOrDefault();
@@ -56,11 +60,18 @@ public class BodyState : MonoBehaviour
 		sensors = systems.OfType<SensorsModel>().FirstOrDefault();
 		weapons = systems.OfType<WeaponsModel>().FirstOrDefault();
 		siphon = systems.OfType<SiphonModel>().FirstOrDefault();
+
+		if (bc.isAI)
+		{
+			AttackConfig = GetComponentInParent<GoapSetBinder>().GoapRunner.GetComponent<DependencyInjector>().AttackConfig;
+		}
 	}
 
 	void Update()
 	{
-		if (rb.velocity.magnitude > 0.0001f) isAimed = false;
+
+		if (bodyController.isAI) UpdateAIState();
+
 		if (losCheckIntervalCache > 0)
 		{
 			losCheckIntervalCache -= Time.deltaTime;
@@ -72,6 +83,15 @@ public class BodyState : MonoBehaviour
 		}
 		// bodyHeat = heatContainer.currentTemperature;
 		// bodyIsOverheated = cooling.isOverheated;
+	}
+
+	void UpdateAIState()
+	{
+		if (rb.velocity.magnitude > 0.0001f)
+		{
+			TimeToAim = Mathf.Clamp(TimeToAim += Time.deltaTime * 3, 0, AttackConfig.TimeToAim);
+			isAimed = false;
+		}
 	}
 
 	public int Cooling_getSystemHealth()

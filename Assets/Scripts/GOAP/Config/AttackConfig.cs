@@ -7,6 +7,8 @@ public class AttackConfigSO : ScriptableObject
 	public float FOVAngle = 90;
 	public float LineOfSightSphereCastRadius = 0.01f;
 	public LayerMask AttackableLayerMask;
+	public LayerMask AllyLayerMask;
+
 	public LayerMask EnvironmentalCoolingLayerMask;
 	public Vector3 EyeLevel = new Vector3(0, 2.33f, 0);
 

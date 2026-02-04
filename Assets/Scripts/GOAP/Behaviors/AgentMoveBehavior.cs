@@ -65,6 +65,7 @@ public class AgentMoveBehavior : MonoBehaviour
 
 	private void Update()
 	{
+		if (bodyState.isDead) { NavMeshAgent.speed = 0; return; }
 		//NavMeshAgent.acceleration = bodyController.legs.getMoveSpeed() * (bodyController.legs.moveAcceleration / 5) * Time.deltaTime;
 		//NavMeshAgent.speed = 3.5f * bodyController.legs.getMoveSpeed();
 

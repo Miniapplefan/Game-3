@@ -22,6 +22,8 @@ public class BodyController : MonoBehaviour
 
 	public bool isDead = false;
 
+	public bool isGodMode = false;
+
 	// [HideInInspector]
 	//public CoolingModel cooling;
 
@@ -175,7 +177,7 @@ public class BodyController : MonoBehaviour
 		heatContainer = GetComponent<HeatContainer>();
 		//heatContainer.InitCoolingModel(cooling);
 		SubscribeSystemEvents();
-		bodyState.Init(systemControllers, heatContainer);
+		bodyState.Init(systemControllers, heatContainer, this);
 		rb = GetComponent<Rigidbody>();
 		bodyColliders = GetComponentsInChildren<Collider>();
 		tempJoint = new JointDrive();
@@ -454,6 +456,7 @@ public class BodyController : MonoBehaviour
 	public void Die()
 	{
 		isDead = true;
+		bodyState.isDead = true;
 
 		ActiveRagdollController arc = GetComponentInChildren<ActiveRagdollController>();
 		arc.enabled = false;

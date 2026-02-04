@@ -174,7 +174,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		if (bodyState.rb.velocity.magnitude > 0.0001f)
 		{
 			bodyState.isAimed = false;
-			bodyState.TimeToAim += context.DeltaTime * 3;
+			// bodyState.TimeToAim = Mathf.Clamp(bodyState.TimeToAim += context.DeltaTime * 3, 0, AttackConfig.TimeToAim);
 			return ActionRunState.Continue;
 		}
 

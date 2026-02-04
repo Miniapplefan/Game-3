@@ -14,7 +14,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	public float circleRadius = 5f;
 	public int numberOfPoints = 36;
+	public float minAllySeparationAngle = 20f;
+	public float allySeparationWeight = 6f;
+	public float distancePenaltyWeight = 3f;
+	public float allySearchRadiusMultiplier = 1.25f;
+	public float navMeshSampleRadius = 1f;
+	public float agentFallbackRadius = 6f;
+	public int agentFallbackPoints = 16;
+	public float agentFallbackPlayerWeight = 1f;
 	private Collider[] Colliders = new Collider[1];
+	private Collider[] AllyColliders = new Collider[32];
+	private List<Vector3> AllyPositions = new List<Vector3>(32);
+	private List<Transform> AllyRoots = new List<Transform>(32);
 
 	private List<Vector3> DebugPoints = new List<Vector3>();
 
@@ -66,25 +77,9 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			else if (seeTarget && !(distanceToPlayer <= inRangeDistance / 1.5f))
 			{
 				//Debug.Log("Can already see player and NOT in range " + inRangeDistance);
-				int count = 0;
-
-				//We do not see the player from our position
-				while (count < 5)
+				if (TryGetBestPointOnCircle(Colliders[0].transform.position, inRangeDistance / 2f, agent, true, distanceToPlayer, out Vector3 bestPoint))
 				{
-					Vector3 randomPointOnCircle = GetRandomPointOnCircle(Colliders[0].transform.position, inRangeDistance / 2, agent);
-					float distance = Vector3.Distance(agent.transform.position, randomPointOnCircle);
-
-					//&& HasLineOfSight(point, Colliders[0].transform.position
-
-
-					if (distance < distanceToPlayer && HasLineOfSight(randomPointOnCircle, Colliders[0].transform.position))
-					{
-						return new PositionTarget(randomPointOnCircle);
-					}
-					else
-					{
-						count++;
-					}
+					return new PositionTarget(bestPoint);
 				}
 			}
 
@@ -96,10 +91,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				float lineLength = 20f; // Length of the strafing line
 				int numberOfPoints = 30; // Number of points to evaluate
 				Vector3 direction = Vector3.Cross(Vector3.up, (Colliders[0].transform.position - agent.transform.position).normalized); // Perpendicular to the player direction
+				bool reverse = UnityEngine.Random.value < 0.5f;
 
-				for (int i = numberOfPoints - 1; i >= 0; i--) // Reverse the order
+				for (int i = 0; i < numberOfPoints; i++)
 				{
-					float t = (float)i / (numberOfPoints - 1); // Normalize to range [0, 1]
+					int index = reverse ? (numberOfPoints - 1 - i) : i;
+					float t = (float)index / (numberOfPoints - 1); // Normalize to range [0, 1]
 					Vector3 point = agent.transform.position + new Vector3(0, 2f, 0) + direction * (t * lineLength - lineLength / 2);
 					points.Add(point);
 				}
@@ -131,6 +128,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				}
 				//Debug.Log("no point found");
 				// return new PositionTarget(agent.transform.position);
+				if (TryGetBestPointOnCircle(Colliders[0].transform.position, distanceToPlayer, agent, false, float.PositiveInfinity, out Vector3 bestFallback))
+				{
+					return new PositionTarget(bestFallback);
+				}
 				return new PositionTarget(GetRandomPointOnCircle(Colliders[0].transform.position, distanceToPlayer, agent));
 			}
 
@@ -211,7 +212,180 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		//   }
 		// }
 		//Debug.Log("Advancing ");
+		if (TryGetBestPointOnCircle(Colliders[0].transform.position, UnityEngine.Random.Range(1f, 5f), agent, false, float.PositiveInfinity, out Vector3 bestAdvance))
+		{
+			return new PositionTarget(bestAdvance);
+		}
 		return new PositionTarget(GetRandomPointOnCircle(Colliders[0].transform.position, UnityEngine.Random.Range(1f, 5f), agent));
+	}
+
+	private bool TryGetBestPointOnCircle(Vector3 center, float radius, IMonoAgent agent, bool requireLineOfSight, float maxDistanceFromAgent, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		if (numberOfPoints <= 0)
+			return false;
+
+		float searchRadius = Mathf.Max(radius * allySearchRadiusMultiplier, 1f);
+		RefreshAllyPositions(center, agent.transform, searchRadius);
+
+		float angleStep = 360f / numberOfPoints;
+		float angleOffset = GetAgentAngleOffset(agent);
+		bool reverse = UnityEngine.Random.value < 0.5f;
+		float bestScore = float.NegativeInfinity;
+		bool found = false;
+
+		for (int i = 0; i < numberOfPoints; i++)
+		{
+			int index = reverse ? (numberOfPoints - 1 - i) : i;
+			float angle = angleOffset + index * angleStep;
+			Vector3 raw = center + new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad)) * radius;
+
+			if (!NavMesh.SamplePosition(raw, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+				continue;
+
+			Vector3 candidate = hit.position;
+			float distanceToAgent = Vector3.Distance(agent.transform.position, candidate);
+			if (distanceToAgent > maxDistanceFromAgent)
+				continue;
+
+			if (requireLineOfSight && !HasLineOfSight(candidate, center))
+				continue;
+
+			float score = -distanceToAgent * distancePenaltyWeight;
+			score -= GetAllyAnglePenalty(candidate, center);
+
+			if (score > bestScore)
+			{
+				bestScore = score;
+				bestPoint = candidate;
+				found = true;
+			}
+		}
+
+		if (found)
+			return true;
+
+		return TryGetBestPointAroundAgent(agent, center, UnityEngine.Random.Range(0.2f, 0.5f), out bestPoint);
+	}
+
+	private bool TryGetBestPointAroundAgent(IMonoAgent agent, Vector3 playerPosition, float maxDistanceFromAgent, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		if (agentFallbackPoints <= 0 || agentFallbackRadius <= 0f)
+			return false;
+
+		float angleStep = 360f / agentFallbackPoints;
+		float angleOffset = GetAgentAngleOffset(agent);
+		bool reverse = UnityEngine.Random.value < 0.5f;
+		float bestScore = float.NegativeInfinity;
+		bool found = false;
+
+		for (int i = 0; i < agentFallbackPoints; i++)
+		{
+			int index = reverse ? (agentFallbackPoints - 1 - i) : i;
+			float angle = angleOffset + index * angleStep;
+			Vector3 raw = agent.transform.position + new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad)) * agentFallbackRadius;
+
+			if (!NavMesh.SamplePosition(raw, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+				continue;
+
+			Vector3 candidate = hit.position;
+			float distanceToAgent = Vector3.Distance(agent.transform.position, candidate);
+			if (distanceToAgent > maxDistanceFromAgent)
+				continue;
+
+			float distanceToPlayer = Vector3.Distance(candidate, playerPosition);
+			float score = -distanceToPlayer * agentFallbackPlayerWeight - distanceToAgent * distancePenaltyWeight;
+			score -= GetAllyAnglePenalty(candidate, playerPosition);
+
+			if (score > bestScore)
+			{
+				bestScore = score;
+				bestPoint = candidate;
+				found = true;
+			}
+		}
+
+		return found;
+	}
+
+	private void RefreshAllyPositions(Vector3 center, Transform self, float searchRadius)
+	{
+		AllyPositions.Clear();
+		AllyRoots.Clear();
+
+		int count = Physics.OverlapSphereNonAlloc(center, searchRadius, AllyColliders, AttackConfig.AllyLayerMask);
+		for (int i = 0; i < count; i++)
+		{
+			var col = AllyColliders[i];
+			var colBodyState = col.GetComponent<BodyState>();
+
+			if (col == null)
+				continue;
+
+			if (!(colBodyState.TimeToAim > 1f) || colBodyState.isDead)
+			{
+				continue;
+			}
+
+			Transform root = col.transform.root;
+			if (root == self.root)
+				continue;
+
+			bool alreadyAdded = false;
+			for (int j = 0; j < AllyRoots.Count; j++)
+			{
+				if (AllyRoots[j] == root)
+				{
+					alreadyAdded = true;
+					break;
+				}
+			}
+
+			if (alreadyAdded)
+				continue;
+
+			AllyRoots.Add(root);
+			AllyPositions.Add(root.position);
+		}
+	}
+
+	private float GetAllyAnglePenalty(Vector3 candidate, Vector3 center)
+	{
+		if (AllyPositions.Count == 0 || minAllySeparationAngle <= 0f || allySeparationWeight <= 0f)
+			return 0f;
+
+		Vector2 candidateDir = new Vector2(candidate.x - center.x, candidate.z - center.z);
+		if (candidateDir.sqrMagnitude < 0.0001f)
+			return 0f;
+
+		candidateDir.Normalize();
+		float penalty = 0f;
+
+		for (int i = 0; i < AllyPositions.Count; i++)
+		{
+			Vector2 allyDir = new Vector2(AllyPositions[i].x - center.x, AllyPositions[i].z - center.z);
+			if (allyDir.sqrMagnitude < 0.0001f)
+				continue;
+
+			allyDir.Normalize();
+			float dot = Mathf.Clamp(Vector2.Dot(candidateDir, allyDir), -1f, 1f);
+			float angle = Mathf.Acos(dot) * Mathf.Rad2Deg;
+
+			if (angle < minAllySeparationAngle)
+			{
+				float t = 1f - (angle / minAllySeparationAngle);
+				penalty += t * t * allySeparationWeight;
+			}
+		}
+
+		return penalty;
+	}
+
+	private float GetAgentAngleOffset(IMonoAgent agent)
+	{
+		int id = Mathf.Abs(agent.transform.GetInstanceID());
+		return (id % 1000) * 0.01f;
 	}
 
 	private Vector3 GetRandomPointOnCircle(Vector3 center, float radius, IMonoAgent agent)

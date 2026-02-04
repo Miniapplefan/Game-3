@@ -18,6 +18,9 @@ MonoBehaviour:
   AttackableLayerMask:
     serializedVersion: 2
     m_Bits: 256
+  AllyLayerMask:
+    serializedVersion: 2
+    m_Bits: 16384
   EnvironmentalCoolingLayerMask:
     serializedVersion: 2
     m_Bits: 2048

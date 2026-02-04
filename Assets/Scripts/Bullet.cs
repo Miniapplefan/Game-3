@@ -56,7 +56,8 @@ public class Bullet : MonoBehaviour
                 // Damage
                 if (hit.collider.GetComponentInParent<PlayerController>() != null)
                 {
-                    hit.collider.GetComponentInParent<BodyController>().Die();
+                    Debug.Log(hit.collider.gameObject.name);
+                    if (!hit.collider.GetComponentInParent<BodyController>().isGodMode) hit.collider.GetComponentInParent<BodyController>().Die();
                 }
                 Destroy(gameObject);
             }

@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class GoapSetBinder : MonoBehaviour
 {
-  [SerializeField] private GoapRunnerBehaviour GoapRunner;
+  [SerializeField] public GoapRunnerBehaviour GoapRunner;
 
   private void Awake()
   {
