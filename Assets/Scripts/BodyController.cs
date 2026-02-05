@@ -25,10 +25,13 @@ public class BodyController : MonoBehaviour
 	public bool isGodMode = false;
 
 	[Header("Movement Aim Rotate")]
-	public float moveAimYawRotateSpeed = 360f;
+	public float moveAimYawDuration = 0.15f;
+	public AnimationCurve moveAimYawCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 	public float moveAimYawCompleteAngle = 0.5f;
 	private bool hasPendingMoveAimYaw = false;
 	private Quaternion pendingMoveAimYaw;
+	private Quaternion pendingMoveAimYawStart;
+	private float pendingMoveAimYawElapsed = 0f;
 
 	// [HideInInspector]
 	//public CoolingModel cooling;
@@ -1227,7 +1230,7 @@ public class BodyController : MonoBehaviour
 		a[1] = a1;
 		lowerTorsoMac.data.sourceObjects = a;
 
-		taggingTarget.rotation = Quaternion.Euler(270 + (30 * (1 - posture)), 0, 180);
+		taggingTarget.rotation = Quaternion.Euler(320 + (30 * (1 - posture)), 0, 180);
 	}
 
 	public static float ExpDamp(float current, float target, float lambda)
@@ -1592,7 +1595,9 @@ public class BodyController : MonoBehaviour
 		}
 
 		Quaternion target = Quaternion.LookRotation(dir.normalized, Vector3.up);
+		pendingMoveAimYawStart = transform.rotation;
 		pendingMoveAimYaw = target;
+		pendingMoveAimYawElapsed = 0f;
 		hasPendingMoveAimYaw = true;
 	}
 
@@ -1603,10 +1608,19 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
-		float maxDegrees = moveAimYawRotateSpeed * Time.deltaTime;
-		transform.rotation = Quaternion.RotateTowards(transform.rotation, pendingMoveAimYaw, maxDegrees);
+		if (moveAimYawDuration <= 0f)
+		{
+			transform.rotation = pendingMoveAimYaw;
+			hasPendingMoveAimYaw = false;
+			return;
+		}
 
-		if (Quaternion.Angle(transform.rotation, pendingMoveAimYaw) <= moveAimYawCompleteAngle)
+		pendingMoveAimYawElapsed += Time.deltaTime;
+		float t = Mathf.Clamp01(pendingMoveAimYawElapsed / moveAimYawDuration);
+		float curvedT = moveAimYawCurve != null ? moveAimYawCurve.Evaluate(t) : t;
+		transform.rotation = Quaternion.Slerp(pendingMoveAimYawStart, pendingMoveAimYaw, curvedT);
+
+		if (t >= 1f || Quaternion.Angle(transform.rotation, pendingMoveAimYaw) <= moveAimYawCompleteAngle)
 		{
 			hasPendingMoveAimYaw = false;
 		}
