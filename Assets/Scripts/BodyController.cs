@@ -97,6 +97,13 @@ public class BodyController : MonoBehaviour
 	bool startedAimingRight = false;
 	public bool isAimingLeft = false;
 	bool startedAimingLeft = false;
+	[Header("Aim Swap Blend")]
+	public float aimSwapDuration = 0.1f;
+	public AnimationCurve aimSwapCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+	private bool isAimSwapInProgress = false;
+	private float aimSwapElapsed = 0f;
+	private Vector3 aimSwapStartWeights;
+	private Vector3 aimSwapTargetWeights;
 	public Transform weaponAimPoint;
 	public Transform weaponAimPointL;
 	float leanSpeed = 0.04f;
@@ -630,17 +637,7 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
 
-			var a = headAimConstraint.data.sourceObjects;
-			var a0 = a[0];
-			var a1 = a[1];
-			var a2 = a[2];
-			a0.weight = 0;
-			a1.weight = 1;
-			a2.weight = 0;
-			a[0] = a0;
-			a[1] = a1;
-			a[2] = a2;
-			headAimConstraint.data.sourceObjects = a;
+			StartAimSwapBlend(0f, 1f, 0f);
 		}
 		else
 		{
@@ -648,17 +645,7 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
-			var a = headAimConstraint.data.sourceObjects;
-			var a0 = a[0];
-			var a1 = a[1];
-			var a2 = a[2];
-			a0.weight = 1;
-			a1.weight = 0;
-			a2.weight = 0;
-			a[0] = a0;
-			a[1] = a1;
-			a[2] = a2;
-			headAimConstraint.data.sourceObjects = a;
+			StartAimSwapBlend(1f, 0f, 0f);
 		}
 	}
 
@@ -678,17 +665,7 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 1);
 
-			var a = headAimConstraint.data.sourceObjects;
-			var a0 = a[0];
-			var a1 = a[1];
-			var a2 = a[2];
-			a0.weight = 0;
-			a1.weight = 0;
-			a2.weight = 1;
-			a[0] = a0;
-			a[1] = a1;
-			a[2] = a2;
-			headAimConstraint.data.sourceObjects = a;
+			StartAimSwapBlend(0f, 0f, 1f);
 		}
 		else
 		{
@@ -696,17 +673,7 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
-			var a = headAimConstraint.data.sourceObjects;
-			var a0 = a[0];
-			var a1 = a[1];
-			var a2 = a[2];
-			a0.weight = 1;
-			a1.weight = 0;
-			a2.weight = 0;
-			a[0] = a0;
-			a[1] = a1;
-			a[2] = a2;
-			headAimConstraint.data.sourceObjects = a;
+			StartAimSwapBlend(1f, 0f, 0f);
 		}
 	}
 
@@ -748,23 +715,18 @@ public class BodyController : MonoBehaviour
 			// Step 5: place the torso aim point forward from the head
 			Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
 
+			if (freezeHeadDuringMoveAimYaw)
+			{
+				torsoAimPoint.position = torso;
+				return;
+			}
+
 			// Only reset weaponAimPoint if MOVING while not aiming
 			if (rb.velocity.magnitude > 2.5f)
 			{
 				torsoAimPoint.position = torso;
-				if (!freezeHeadDuringMoveAimYaw)
-				{
-					weaponAimPoint.position = torso;
-					weaponAimPointL.position = torso;
-				}
-				return;
-			}
-
-			if (freezeHeadDuringMoveAimYaw)
-			{
 				weaponAimPoint.position = torso;
 				weaponAimPointL.position = torso;
-				torsoAimPoint.position = torso;
 				return;
 			}
 
@@ -1499,6 +1461,7 @@ public class BodyController : MonoBehaviour
 			doLimbRepairs();
 			DoRotation();
 			UpdatePendingMoveAimYaw();
+			UpdateAimSwapBlend();
 		}
 		legs.DoMoveDeacceleration();
 		legs.RecoverFromTagging(1);
@@ -1547,9 +1510,8 @@ public class BodyController : MonoBehaviour
 		else if (isAimingRight || isAimingLeft)
 		{
 			// Debug.Log("resetting aim on movement");
-			if (!hasPendingMoveAimYaw)
+			if (BeginMoveAimYaw())
 			{
-				RotateTorsoToActiveAimYaw();
 				pendingMoveAimToggleOff = true;
 			}
 
@@ -1591,11 +1553,11 @@ public class BodyController : MonoBehaviour
 		//if (input.getScroll()) CycleWeaponPowerAllocation();
 	}
 
-	private void RotateTorsoToActiveAimYaw()
+	private bool BeginMoveAimYaw()
 	{
 		if (hasPendingMoveAimYaw)
 		{
-			return;
+			return false;
 		}
 		Transform aimPoint = null;
 		if (isAimingRight)
@@ -1609,7 +1571,7 @@ public class BodyController : MonoBehaviour
 
 		if (aimPoint == null)
 		{
-			return;
+			return false;
 		}
 
 		Quaternion target;
@@ -1629,7 +1591,7 @@ public class BodyController : MonoBehaviour
 			dir.y = 0f;
 			if (dir.sqrMagnitude < 0.0001f)
 			{
-				return;
+				return false;
 			}
 
 			target = Quaternion.LookRotation(dir.normalized, Vector3.up);
@@ -1654,6 +1616,7 @@ public class BodyController : MonoBehaviour
 		{
 			frozenHeadLRotation = headObjectL.transform.rotation;
 		}
+		return true;
 	}
 
 	private void UpdatePendingMoveAimYaw()
@@ -1678,18 +1641,7 @@ public class BodyController : MonoBehaviour
 		if (moveAimYawDuration <= 0f)
 		{
 			transform.rotation = pendingMoveAimYaw;
-			hasPendingMoveAimYaw = false;
-			freezeHeadDuringMoveAimYaw = false;
-			hasFrozenCameraRotation = false;
-			if (pendingMoveAimToggleOff)
-			{
-				if (moveAimYawSourceWasRight) ToggleAimingRight();
-				if (moveAimYawSourceIsLeft) ToggleAimingLeft();
-				startedAimingRight = false;
-				startedAimingLeft = false;
-				pendingMoveAimToggleOff = false;
-			}
-			ResetWeaponAimPoint(true, true);
+			CompleteMoveAimYaw();
 			return;
 		}
 
@@ -1700,18 +1652,83 @@ public class BodyController : MonoBehaviour
 
 		if (t >= 1f || Quaternion.Angle(transform.rotation, pendingMoveAimYaw) <= moveAimYawCompleteAngle)
 		{
-			hasPendingMoveAimYaw = false;
-			freezeHeadDuringMoveAimYaw = false;
-			hasFrozenCameraRotation = false;
-			if (pendingMoveAimToggleOff)
-			{
-				if (moveAimYawSourceWasRight) ToggleAimingRight();
-				if (moveAimYawSourceIsLeft) ToggleAimingLeft();
-				startedAimingRight = false;
-				startedAimingLeft = false;
-				pendingMoveAimToggleOff = false;
-			}
-			ResetWeaponAimPoint(true, true);
+			CompleteMoveAimYaw();
 		}
+	}
+
+	private void CompleteMoveAimYaw()
+	{
+		hasPendingMoveAimYaw = false;
+		freezeHeadDuringMoveAimYaw = false;
+		hasFrozenCameraRotation = false;
+		if (pendingMoveAimToggleOff)
+		{
+			if (moveAimYawSourceWasRight) ToggleAimingRight();
+			if (moveAimYawSourceIsLeft) ToggleAimingLeft();
+			startedAimingRight = false;
+			startedAimingLeft = false;
+			pendingMoveAimToggleOff = false;
+		}
+		ResetWeaponAimPoint(true, true);
+	}
+
+	private void StartAimSwapBlend(float targetW0, float targetW1, float targetW2)
+	{
+		if (headAimConstraint == null)
+		{
+			return;
+		}
+
+		var a = headAimConstraint.data.sourceObjects;
+		aimSwapStartWeights = new Vector3(a[0].weight, a[1].weight, a[2].weight);
+		aimSwapTargetWeights = new Vector3(targetW0, targetW1, targetW2);
+		aimSwapElapsed = 0f;
+		isAimSwapInProgress = true;
+
+		if (aimSwapDuration <= 0f)
+		{
+			ApplyAimSwapWeights(targetW0, targetW1, targetW2);
+			isAimSwapInProgress = false;
+		}
+	}
+
+	private void UpdateAimSwapBlend()
+	{
+		if (!isAimSwapInProgress || headAimConstraint == null)
+		{
+			return;
+		}
+
+		if (aimSwapDuration <= 0f)
+		{
+			isAimSwapInProgress = false;
+			return;
+		}
+
+		aimSwapElapsed += Time.deltaTime;
+		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
+		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
+		Vector3 w = Vector3.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
+		ApplyAimSwapWeights(w.x, w.y, w.z);
+
+		if (t >= 1f)
+		{
+			isAimSwapInProgress = false;
+		}
+	}
+
+	private void ApplyAimSwapWeights(float w0, float w1, float w2)
+	{
+		var a = headAimConstraint.data.sourceObjects;
+		var a0 = a[0];
+		var a1 = a[1];
+		var a2 = a[2];
+		a0.weight = w0;
+		a1.weight = w1;
+		a2.weight = w2;
+		a[0] = a0;
+		a[1] = a1;
+		a[2] = a2;
+		headAimConstraint.data.sourceObjects = a;
 	}
 }
