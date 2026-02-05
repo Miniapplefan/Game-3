@@ -32,6 +32,19 @@ public class BodyController : MonoBehaviour
 	private Quaternion pendingMoveAimYaw;
 	private Quaternion pendingMoveAimYawStart;
 	private float pendingMoveAimYawElapsed = 0f;
+	private bool freezeHeadDuringMoveAimYaw = false;
+	private bool moveAimYawSourceIsLeft = false;
+	private bool moveAimYawSourceWasRight = false;
+	private bool pendingMoveAimToggleOff = false;
+	private Quaternion frozenHeadRotation;
+	private Quaternion frozenHeadLRotation;
+	private bool hasFrozenCameraRotation = false;
+	private Quaternion frozenCameraRotation;
+
+	public bool IsMoveAimYawInProgress => freezeHeadDuringMoveAimYaw;
+	public bool MoveAimYawSourceIsLeft => moveAimYawSourceIsLeft;
+	public bool HasFrozenCameraRotation => hasFrozenCameraRotation;
+	public Quaternion FrozenCameraRotation => frozenCameraRotation;
 
 	// [HideInInspector]
 	//public CoolingModel cooling;
@@ -738,6 +751,17 @@ public class BodyController : MonoBehaviour
 			// Only reset weaponAimPoint if MOVING while not aiming
 			if (rb.velocity.magnitude > 2.5f)
 			{
+				torsoAimPoint.position = torso;
+				if (!freezeHeadDuringMoveAimYaw)
+				{
+					weaponAimPoint.position = torso;
+					weaponAimPointL.position = torso;
+				}
+				return;
+			}
+
+			if (freezeHeadDuringMoveAimYaw)
+			{
 				weaponAimPoint.position = torso;
 				weaponAimPointL.position = torso;
 				torsoAimPoint.position = torso;
@@ -789,7 +813,7 @@ public class BodyController : MonoBehaviour
 
 				combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
 
-				if (!startedAimingRight && !startedAimingLeft)
+				if (!startedAimingRight && !startedAimingLeft && !freezeHeadDuringMoveAimYaw)
 				{
 					Debug.Log("setting head to cache");
 					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
@@ -918,7 +942,10 @@ public class BodyController : MonoBehaviour
 		}
 		else
 		{
-			ResetWeaponAimPoint(true);
+			if (!freezeHeadDuringMoveAimYaw)
+			{
+				ResetWeaponAimPoint();
+			}
 		}
 
 
@@ -938,7 +965,7 @@ public class BodyController : MonoBehaviour
 		// torsoAimPoint.position = torso;
 	}
 
-	void ResetWeaponAimPoint(bool resetPitch = false)
+	void ResetWeaponAimPoint(bool resetPitch = false, bool resetHead = true)
 	{
 		// Debug.Log("resetting aim");
 
@@ -965,8 +992,11 @@ public class BodyController : MonoBehaviour
 		weaponAimPoint.position = torso;
 		weaponAimPointL.position = torso;
 		torsoAimPoint.position = torso;
-		headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
-		headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+		if (resetHead)
+		{
+			headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+			headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+		}
 		if (resetPitch && sensors != null)
 		{
 			sensors.ResetHeadPitch();
@@ -1517,14 +1547,11 @@ public class BodyController : MonoBehaviour
 		else if (isAimingRight || isAimingLeft)
 		{
 			// Debug.Log("resetting aim on movement");
-			RotateTorsoToActiveAimYaw();
-			if (isAimingRight) ToggleAimingRight();
-			if (isAimingLeft) ToggleAimingLeft();
-
-			ResetWeaponAimPoint(true);
-
-			startedAimingRight = false;
-			startedAimingLeft = false;
+			if (!hasPendingMoveAimYaw)
+			{
+				RotateTorsoToActiveAimYaw();
+				pendingMoveAimToggleOff = true;
+			}
 
 			// 
 			// aimCam.transform.rotation = headObjectTransformCache.transform.rotation;
@@ -1566,6 +1593,10 @@ public class BodyController : MonoBehaviour
 
 	private void RotateTorsoToActiveAimYaw()
 	{
+		if (hasPendingMoveAimYaw)
+		{
+			return;
+		}
 		Transform aimPoint = null;
 		if (isAimingRight)
 		{
@@ -1581,24 +1612,48 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
-		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
-		if (physicalHead != null)
+		Quaternion target;
+		if (aimCam != null)
 		{
-			origin = physicalHead.transform.position;
+			target = Quaternion.Euler(0f, aimCam.transform.eulerAngles.y, 0f);
 		}
-
-		Vector3 dir = aimPoint.position - origin;
-		dir.y = 0f;
-		if (dir.sqrMagnitude < 0.0001f)
+		else
 		{
-			return;
-		}
+			Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
+			if (physicalHead != null)
+			{
+				origin = physicalHead.transform.position;
+			}
 
-		Quaternion target = Quaternion.LookRotation(dir.normalized, Vector3.up);
+			Vector3 dir = aimPoint.position - origin;
+			dir.y = 0f;
+			if (dir.sqrMagnitude < 0.0001f)
+			{
+				return;
+			}
+
+			target = Quaternion.LookRotation(dir.normalized, Vector3.up);
+		}
 		pendingMoveAimYawStart = transform.rotation;
 		pendingMoveAimYaw = target;
 		pendingMoveAimYawElapsed = 0f;
 		hasPendingMoveAimYaw = true;
+		freezeHeadDuringMoveAimYaw = true;
+		moveAimYawSourceIsLeft = isAimingLeft;
+		moveAimYawSourceWasRight = isAimingRight;
+		if (aimCam != null)
+		{
+			frozenCameraRotation = aimCam.transform.rotation;
+			hasFrozenCameraRotation = true;
+		}
+		if (headObject != null)
+		{
+			frozenHeadRotation = headObject.transform.rotation;
+		}
+		if (headObjectL != null)
+		{
+			frozenHeadLRotation = headObjectL.transform.rotation;
+		}
 	}
 
 	private void UpdatePendingMoveAimYaw()
@@ -1608,10 +1663,33 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
+		if (freezeHeadDuringMoveAimYaw)
+		{
+			if (headObject != null)
+			{
+				headObject.transform.rotation = frozenHeadRotation;
+			}
+			if (headObjectL != null)
+			{
+				headObjectL.transform.rotation = frozenHeadLRotation;
+			}
+		}
+
 		if (moveAimYawDuration <= 0f)
 		{
 			transform.rotation = pendingMoveAimYaw;
 			hasPendingMoveAimYaw = false;
+			freezeHeadDuringMoveAimYaw = false;
+			hasFrozenCameraRotation = false;
+			if (pendingMoveAimToggleOff)
+			{
+				if (moveAimYawSourceWasRight) ToggleAimingRight();
+				if (moveAimYawSourceIsLeft) ToggleAimingLeft();
+				startedAimingRight = false;
+				startedAimingLeft = false;
+				pendingMoveAimToggleOff = false;
+			}
+			ResetWeaponAimPoint(true, true);
 			return;
 		}
 
@@ -1623,6 +1701,17 @@ public class BodyController : MonoBehaviour
 		if (t >= 1f || Quaternion.Angle(transform.rotation, pendingMoveAimYaw) <= moveAimYawCompleteAngle)
 		{
 			hasPendingMoveAimYaw = false;
+			freezeHeadDuringMoveAimYaw = false;
+			hasFrozenCameraRotation = false;
+			if (pendingMoveAimToggleOff)
+			{
+				if (moveAimYawSourceWasRight) ToggleAimingRight();
+				if (moveAimYawSourceIsLeft) ToggleAimingLeft();
+				startedAimingRight = false;
+				startedAimingLeft = false;
+				pendingMoveAimToggleOff = false;
+			}
+			ResetWeaponAimPoint(true, true);
 		}
 	}
 }
