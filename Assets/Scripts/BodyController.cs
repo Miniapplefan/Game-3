@@ -104,6 +104,13 @@ public class BodyController : MonoBehaviour
 	private float aimSwapElapsed = 0f;
 	private Vector3 aimSwapStartWeights;
 	private Vector3 aimSwapTargetWeights;
+	[Header("Aim Yaw Clamp")]
+	public float aimYawLimit = 90f;
+	public float aimYawFollowSpeedMin = 60f;
+	public float aimYawFollowSpeedMax = 360f;
+	public float aimYawInputForMaxSpeed = 0.5f;
+	public AnimationCurve aimYawFollowCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+	private Vector2 lastHeadRotation;
 	public Transform weaponAimPoint;
 	public Transform weaponAimPointL;
 	float leanSpeed = 0.04f;
@@ -603,10 +610,13 @@ public class BodyController : MonoBehaviour
 
 	private void DoRotation()
 	{
+		Vector2 headRot = input.getHeadRotation();
+		lastHeadRotation = headRot;
 		if (isAimingRight || isAimingLeft)
 		{
+			ApplyAimYawClamp(ref headRot);
 			// In aim mode, only rotate head
-			sensors.setHeadRotation(input.getHeadRotation());
+			sensors.setHeadRotation(headRot);
 		}
 		else
 		{
@@ -615,8 +625,8 @@ public class BodyController : MonoBehaviour
 			// 	cameraMoveScript.enabled = true;
 			// }
 			// Default: rotate both body and head
-			sensors.setHeadRotation(new Vector2(input.getHeadRotation().x, 0));
-			transform.Rotate(0, input.getHeadRotation().y, 0);
+			sensors.setHeadRotation(new Vector2(headRot.x, 0));
+			transform.Rotate(0, headRot.y, 0);
 		}
 	}
 
@@ -1501,7 +1511,8 @@ public class BodyController : MonoBehaviour
 			if (input.getRight()) MoveRight();
 		}
 
-		if (rb.velocity.magnitude < 2.5f)
+		float maxFireSpeed = legs.baseWalkSpeed * legs.getMoveSpeed() * 0.5f;
+		if (rb.velocity.magnitude < maxFireSpeed)
 		{
 			if (input.getFire1()) FireWeapon1();
 			if (input.getFire2()) FireWeapon2();
@@ -1551,6 +1562,61 @@ public class BodyController : MonoBehaviour
 
 
 		//if (input.getScroll()) CycleWeaponPowerAllocation();
+	}
+
+	private void ApplyAimYawClamp(ref Vector2 headRot)
+	{
+		if (aimCam == null)
+		{
+			return;
+		}
+
+		if (hasPendingMoveAimYaw)
+		{
+			return;
+		}
+
+		if (aimYawLimit <= 0f)
+		{
+			return;
+		}
+
+		float torsoYaw = transform.eulerAngles.y;
+		float aimYaw = aimCam.transform.eulerAngles.y;
+		float delta = Mathf.DeltaAngle(torsoYaw, aimYaw);
+		float desiredDelta = delta + headRot.y;
+		if (Mathf.Abs(desiredDelta) <= aimYawLimit)
+		{
+			return;
+		}
+
+		float clampedDelta = Mathf.Sign(desiredDelta) * aimYawLimit;
+		float overflow = desiredDelta - clampedDelta;
+		float followSpeed = GetAimYawFollowSpeed();
+		float maxStep = followSpeed * Time.deltaTime;
+		float torsoStep = Mathf.Clamp(overflow, -maxStep, maxStep);
+		transform.Rotate(0f, torsoStep, 0f, Space.World);
+
+		float newDelta = delta - torsoStep;
+		float finalDesiredDelta = newDelta + headRot.y;
+		if (Mathf.Abs(finalDesiredDelta) > aimYawLimit)
+		{
+			float finalClamped = Mathf.Sign(finalDesiredDelta) * aimYawLimit;
+			headRot.y = finalClamped - newDelta;
+		}
+	}
+
+	private float GetAimYawFollowSpeed()
+	{
+		float followSpeed = aimYawFollowSpeedMax;
+		if (aimYawInputForMaxSpeed > 0f)
+		{
+			float inputYaw = Mathf.Abs(lastHeadRotation.y);
+			float t = Mathf.Clamp01(inputYaw / aimYawInputForMaxSpeed);
+			float curvedT = aimYawFollowCurve != null ? aimYawFollowCurve.Evaluate(t) : t;
+			followSpeed = Mathf.Lerp(aimYawFollowSpeedMin, aimYawFollowSpeedMax, curvedT);
+		}
+		return followSpeed;
 	}
 
 	private bool BeginMoveAimYaw()

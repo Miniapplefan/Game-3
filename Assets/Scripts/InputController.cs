@@ -26,6 +26,7 @@ public interface InputController
     public bool getAimRight();
     public bool getAimLeft();
     public bool getAimMiddle();
+    public bool getShift();
 
 
 

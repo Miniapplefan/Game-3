@@ -140,6 +140,11 @@ public class AIController : MonoBehaviour, InputController
         return pressingSiphon;
     }
 
+    public bool getShift()
+    {
+        return false;
+    }
+
     // Update is called once per frame
     void Update()
     {

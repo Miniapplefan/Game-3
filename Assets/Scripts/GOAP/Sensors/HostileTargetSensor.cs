@@ -15,8 +15,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float circleRadius = 5f;
 	public int numberOfPoints = 36;
 	public float minAllySeparationAngle = 20f;
-	public float allySeparationWeight = 6f;
-	public float distancePenaltyWeight = 3f;
+	public float allySeparationWeight = 12f;
+	public float distancePenaltyWeight = 0.5f;
 	public float allySearchRadiusMultiplier = 1.25f;
 	public float navMeshSampleRadius = 1f;
 	public float agentFallbackRadius = 6f;
@@ -323,7 +323,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			if (col == null)
 				continue;
 
-			if (!(colBodyState.TimeToAim > 1f) || colBodyState.isDead)
+			if (!(colBodyState.TimeToAim < colBodyState.AttackConfig.TimeToAim) || colBodyState.isDead)
 			{
 				continue;
 			}

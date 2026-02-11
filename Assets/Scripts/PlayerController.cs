@@ -14,6 +14,7 @@ public class PlayerController : MonoBehaviour, InputController
     public KeyCode aimLeftKey;
     public KeyCode reloadKey;
     public KeyCode restartKey;
+    public KeyCode shiftKey;
 
     private bool pressingForward;
     private bool pressingBackward;
@@ -25,6 +26,7 @@ public class PlayerController : MonoBehaviour, InputController
     private bool pressingSiphon;
     private bool pressingRestart;
     private bool pressingReload;
+    private bool pressingShift;
 
     public float sensitivity;
     private float mouseXrotation;
@@ -168,6 +170,11 @@ public class PlayerController : MonoBehaviour, InputController
         return pressingReload;
     }
 
+    public bool getShift()
+    {
+        return pressingShift;
+    }
+
     public void doRestart()
     {
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
@@ -193,5 +200,6 @@ public class PlayerController : MonoBehaviour, InputController
 
         pressingSiphon = Input.GetKey(siphonKey);
         pressingRestart = Input.GetKey(restartKey);
+        pressingShift = Input.GetKey(shiftKey);
     }
 }
