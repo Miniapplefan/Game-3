@@ -1503,6 +1503,9 @@ public class BodyController : MonoBehaviour
 
 	private void ExecutePhysicsBasedInputs()
 	{
+		bool isSlowWalking = !isAI && input != null && input.getShift();
+		legs.speedMultiplier = isAI ? 1f : (isSlowWalking ? 0.3f : 1f);
+
 		if (legs.isCurrentVelocityLessThanMax())
 		{
 			if (input.getForward()) MoveForward();
@@ -1511,29 +1514,30 @@ public class BodyController : MonoBehaviour
 			if (input.getRight()) MoveRight();
 		}
 
-		float maxFireSpeed = legs.baseWalkSpeed * legs.getMoveSpeed() * 0.5f;
+		float maxSpeed = legs.baseWalkSpeed * legs.getMoveSpeed();
+		float maxFireSpeed = maxSpeed * 0.5f;
 		if (rb.velocity.magnitude < maxFireSpeed)
 		{
 			if (input.getFire1()) FireWeapon1();
 			if (input.getFire2()) FireWeapon2();
 			if (input.getFire3()) FireWeapon3();
 		}
-		else if (isAimingRight || isAimingLeft)
+		else if (rb.velocity.magnitude > maxSpeed * 0.6f)
 		{
-			// Debug.Log("resetting aim on movement");
-			if (BeginMoveAimYaw())
+			if (isAimingRight || isAimingLeft)
 			{
-				pendingMoveAimToggleOff = true;
+				// Debug.Log("resetting aim on movement");
+				if (BeginMoveAimYaw())
+				{
+					pendingMoveAimToggleOff = true;
+				}
 			}
-
-			// 
-			// aimCam.transform.rotation = headObjectTransformCache.transform.rotation;
-		}
-		else
-		{
-			ResetWeaponAimPoint();
-			startedAimingRight = false;
-			startedAimingLeft = false;
+			else
+			{
+				ResetWeaponAimPoint();
+				startedAimingRight = false;
+				startedAimingLeft = false;
+			}
 
 			// cameraMoveScript.enabled = false;
 			// aimCam.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);

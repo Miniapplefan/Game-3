@@ -18,7 +18,7 @@ public class MoveForwardCommand : ICommand
 
 		Vector3 forward = Vector3.ProjectOnPlane(model.headOrientation.transform.up, Vector3.up).normalized;
 
-		model.rb.AddForce(forward * model.getMoveSpeed() * model.moveAcceleration * Time.deltaTime);
+		model.rb.AddForce(forward * model.getMoveSpeed() * model.speedMultiplier * model.moveAcceleration * Time.deltaTime);
 	}
 
 }

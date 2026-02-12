@@ -12,6 +12,7 @@ public class LegsModel : SystemModel
 	private float moveDeaccelerationX;
 	private float moveDeaccelerationZ;
 	public float baseWalkSpeed = 4f;
+	public float speedMultiplier = 1f;
 
 	public float taggingModifier = 100f;
 
@@ -232,7 +233,7 @@ public class LegsModel : SystemModel
 	public bool isCurrentVelocityLessThanMax()
 	{
 		Vector2 horizontalMovement = new Vector2(rb.velocity.x, rb.velocity.z);
-		return horizontalMovement.magnitude < baseWalkSpeed * getMoveSpeed();
+		return horizontalMovement.magnitude < baseWalkSpeed * getMoveSpeed() * speedMultiplier;
 	}
 
 	public void DoMoveDeacceleration()

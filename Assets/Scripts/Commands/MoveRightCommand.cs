@@ -18,6 +18,6 @@ public class MoveRightCommand : ICommand
 
         Vector3 right = Vector3.ProjectOnPlane(model.headOrientation.transform.right, Vector3.up).normalized;
 
-        model.rb.AddForce(-right * model.getMoveSpeed() * model.moveAcceleration * Time.deltaTime);
+        model.rb.AddForce(-right * model.getMoveSpeed() * model.speedMultiplier * model.moveAcceleration * Time.deltaTime);
     }
 }
