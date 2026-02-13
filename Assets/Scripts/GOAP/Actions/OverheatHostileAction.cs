@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using CrashKonijn.Goap.Behaviours;
 using CrashKonijn.Goap.Classes;
@@ -38,6 +37,9 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 	}
 
 	public List<LimbConsideration> limbConsiderations;
+	private int gunSortMode = 0;
+	private AttackData gunSortData;
+	private IMonoAgent gunSortAgent;
 
 
 	public struct GunConsideration
@@ -99,8 +101,8 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 			if (data.targetState != null)
 			{
-				List<LimbConsideration> targetableLimbs = sortLimbsToTarget(agent, data);
-				foreach (var limbConsideration in targetableLimbs)
+				sortLimbsToTarget();
+				foreach (var limbConsideration in limbConsiderations)
 				{
 					Vector3 limbPos = LimbToPosition(limbConsideration.limb, data);
 					if (!IsLimbObstructed(limbPos, agent))
@@ -326,14 +328,9 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		return false;
 	}
 
-	private List<LimbConsideration> sortLimbsToTarget(IMonoAgent agent, AttackData data)
+	private void sortLimbsToTarget()
 	{
-		// Sort the limb considerations by their utility in descending order
-		List<LimbConsideration> sortedLimbConsiderations = limbConsiderations
-				.OrderByDescending(lc => lc.Consideration())
-				.ToList();
-
-		return sortedLimbConsiderations;
+		limbConsiderations.Sort(CompareLimbs);
 	}
 
 	public float ConsiderHead(IMonoAgent agent, AttackData data)
@@ -365,16 +362,11 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 	{
 		if ((data.targetState.Legs_getTaggingHealth() / 100 > 0.6 && (!IsLimbObstructed(LimbToPosition(LimbToTarget.RightLeg, data), agent) || (!IsLimbObstructed(LimbToPosition(LimbToTarget.LeftLeg, data), agent)))))
 		{
-			List<GunConsideration> sortedGunConsiderations = gunConsideration
-				.OrderByDescending(lc => lc.gun.gunData.shootConfig.impactForce * gunRankRangeConsideration(data, agent, lc.gun))
-				.ToList();
-
-			// foreach (var gc in sortedGunConsiderations)
-			// {
-			// 	Debug.Log(gc.gun.name + " " + gc.gun.gunData.shootConfig.impactForce * gunRankRangeConsideration(data, agent, gc.gun));
-			// }
-
-			return sortedGunConsiderations;
+			gunSortMode = 0;
+			gunSortData = data;
+			gunSortAgent = agent;
+			gunConsideration.Sort(CompareGuns);
+			return gunConsideration;
 		}
 		// else if (data.targetState.HeatContainer_getCurrentHeat() / data.targetState.cooling.GetMaxHeat() > 0.7f)
 		// {
@@ -391,18 +383,36 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		// }
 		else
 		{
-			List<GunConsideration> sortedGunConsiderations = gunConsideration
-				.OrderByDescending(lc => lc.gun.gunData.shootConfig.heatPerShot * gunRankRangeConsideration(data, agent, lc.gun))
-				.ToList();
-
-			// foreach (var gc in sortedGunConsiderations)
-			// {
-			// 	Debug.Log(gc.gun.name + " " + gc.gun.gunData.shootConfig.impactForce * gunRankRangeConsideration(data, agent, gc.gun));
-			// }
-
-			return sortedGunConsiderations;
+			gunSortMode = 2;
+			gunSortData = data;
+			gunSortAgent = agent;
+			gunConsideration.Sort(CompareGuns);
+			return gunConsideration;
 		}
 
+	}
+
+	private int CompareLimbs(LimbConsideration a, LimbConsideration b)
+	{
+		return b.Consideration().CompareTo(a.Consideration());
+	}
+
+	private int CompareGuns(GunConsideration a, GunConsideration b)
+	{
+		float aScore;
+		float bScore;
+		switch (gunSortMode)
+		{
+			case 0:
+				aScore = a.gun.gunData.shootConfig.impactForce * gunRankRangeConsideration(gunSortData, gunSortAgent, a.gun);
+				bScore = b.gun.gunData.shootConfig.impactForce * gunRankRangeConsideration(gunSortData, gunSortAgent, b.gun);
+				break;
+			default:
+				aScore = a.gun.gunData.shootConfig.heatPerShot * gunRankRangeConsideration(gunSortData, gunSortAgent, a.gun);
+				bScore = b.gun.gunData.shootConfig.heatPerShot * gunRankRangeConsideration(gunSortData, gunSortAgent, b.gun);
+				break;
+		}
+		return bScore.CompareTo(aScore);
 	}
 
 	private float gunRankRangeConsideration(AttackData data, IMonoAgent agent, Gun gun)

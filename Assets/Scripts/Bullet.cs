@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -27,9 +28,12 @@ public class Bullet : MonoBehaviour
     CapsuleCollider telegraphCollider;
 
     [SerializeField] private float lifetime = 10f; // Seconds before the bullet is destroyed
+    private float lifeTimer;
+    private Action<Bullet> releaseAction;
+    private bool released;
+    private bool trailEnabled = true;
 
-    // Start is called before the first frame update
-    void Start()
+    void Awake()
     {
         telegraphCollider = GetComponent<CapsuleCollider>();
         if (telegraphMaxDistance <= 0f)
@@ -44,13 +48,34 @@ public class Bullet : MonoBehaviour
         bulletTipMesh.material = noHitTelegraphMaterial;
         bulletBodyMesh.material = noHitTelegraphMaterial;
         if (trail != null) trail.material = noHitTelegraphMaterial;
+    }
 
-        Destroy(gameObject, lifetime);
+    void OnEnable()
+    {
+        ResetState();
+        lifeTimer = lifetime;
+        released = false;
+    }
+
+    void OnDisable()
+    {
+        playerOverlaps.Clear();
+        playerCandidate = null;
+        hasPlayerCandidate = false;
+        shouldTelegraph = false;
+        isTelegraph = false;
     }
 
     // Update is called once per frame
     void Update()
     {
+        lifeTimer -= Time.deltaTime;
+        if (lifeTimer <= 0f)
+        {
+            Release();
+            return;
+        }
+
         Vector3 startPosition = transform.position;
         Vector3 step = transform.forward * speed * Time.deltaTime;
         Vector3 endPosition = startPosition + step;
@@ -78,7 +103,7 @@ public class Bullet : MonoBehaviour
         if (Physics.SphereCast(startPosition, collisionRadius, delta.normalized, out RaycastHit hit, distance, hitMask, QueryTriggerInteraction.Ignore))
         {
             ProcessHit(hit);
-            Destroy(gameObject);
+            Release();
             return true;
         }
 
@@ -103,6 +128,29 @@ public class Bullet : MonoBehaviour
         if (marchingCubes != null)
         {
             marchingCubes.TakeDamage(hit.point, marchingCubesDamage);
+        }
+    }
+
+    public void SetPoolRelease(Action<Bullet> release)
+    {
+        releaseAction = release;
+    }
+
+    private void Release()
+    {
+        if (released)
+        {
+            return;
+        }
+
+        released = true;
+        if (releaseAction != null)
+        {
+            releaseAction(this);
+        }
+        else
+        {
+            Destroy(gameObject);
         }
     }
 
@@ -193,6 +241,39 @@ public class Bullet : MonoBehaviour
         {
             hasPlayerCandidate = false;
             playerCandidate = null;
+        }
+    }
+
+    private void ResetState()
+    {
+        shouldTelegraph = false;
+        isTelegraph = false;
+        hasPlayerCandidate = false;
+        playerCandidate = null;
+        playerOverlaps.Clear();
+
+        if (bulletTipMesh != null) bulletTipMesh.material = noHitTelegraphMaterial;
+        if (bulletBodyMesh != null) bulletBodyMesh.material = noHitTelegraphMaterial;
+        if (trail != null)
+        {
+            trail.material = noHitTelegraphMaterial;
+            trail.enabled = trailEnabled;
+            trail.emitting = trailEnabled;
+            trail.Clear();
+        }
+    }
+
+    public void SetTrailEnabled(bool enabled)
+    {
+        trailEnabled = enabled;
+        if (trail != null)
+        {
+            trail.enabled = enabled;
+            trail.emitting = enabled;
+            if (!enabled)
+            {
+                trail.Clear();
+            }
         }
     }
 }

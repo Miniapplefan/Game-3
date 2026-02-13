@@ -16,9 +16,9 @@ public class LegsModel : SystemModel
 
 	public float taggingModifier = 100f;
 
-	public float taggingRecoveryRate = 0.8f;
+	public float taggingRecoveryRate = 0.1f;
 
-	public float taggingRecoveryRateCache = 0.8f;
+	public float taggingRecoveryRateCache = 0.1f;
 
 	public float taggingRecoveryRateRecoveryRate = 0.0002f;
 

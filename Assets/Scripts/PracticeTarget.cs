@@ -65,17 +65,18 @@ public class PracticeTarget : MonoBehaviour
 
     void FireShot()
     {
-        // Instantiate bullet
-        var b = Instantiate(bullet, transform.position, Quaternion.identity);
-
         // Direction from enemy to player
         Vector3 toPlayer = (player.gameObject.transform.position - transform.position).normalized;
 
         // Generate a random direction within the hollow cone
         Vector3 fireDirection = GetRandomDirectionInHollowCone(toPlayer, innerConeAngle, outerConeAngle);
 
-        // Orient the bullet
-        b.transform.rotation = Quaternion.LookRotation(fireDirection);
+        // Spawn bullet (pooled)
+        Bullet pooledBullet = BulletPool.Spawn(bullet, transform.position, Quaternion.LookRotation(fireDirection), true);
+        if (pooledBullet == null)
+        {
+            var b = Instantiate(bullet, transform.position, Quaternion.LookRotation(fireDirection));
+        }
 
         // Reset timer for next shot
         timeUntilNextShot = Random.Range(minTimeUntilShot, maxTimeUntilShot);

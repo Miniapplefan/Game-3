@@ -61,7 +61,11 @@ public class BulletTester : MonoBehaviour
         }
 
         nextFireTime = timeNow + (1f / bulletsPerSecond);
-        Instantiate(bulletPrefab, spawnPoint.position, spawnPoint.rotation);
+        Bullet pooledBullet = BulletPool.Spawn(bulletPrefab, spawnPoint.position, spawnPoint.rotation, true);
+        if (pooledBullet == null)
+        {
+            Instantiate(bulletPrefab, spawnPoint.position, spawnPoint.rotation);
+        }
     }
 
     void OnDrawGizmosSelected()

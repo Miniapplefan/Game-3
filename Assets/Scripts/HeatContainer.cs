@@ -311,16 +311,43 @@ public class HeatContainer : MonoBehaviour
 
 	void TransferHeatToAir()
 	{
-		List<Vector3Int> cubes = airGrid.GetCollidingAirCubes(heatCollider);
+		if (heatCollider == null)
+		{
+			return;
+		}
+
+		if (!TryResolveAirGrid(out AirGrid grid))
+		{
+			return;
+		}
+
+		List<Vector3Int> cubes = grid.GetCollidingAirCubes(heatCollider);
+		if (cubes == null || cubes.Count == 0)
+		{
+			return;
+		}
 		float totalTemp = 0;
 
 		foreach (var item in cubes)
 		{
-			airGrid.ApplyNewtonsLawOfCooling(this, cubes.Count, item.x, item.y, item.z);
-			totalTemp += airGrid.GetTemperature(item.x, item.y, item.z);
+			grid.ApplyNewtonsLawOfCooling(this, cubes.Count, item.x, item.y, item.z);
+			totalTemp += grid.GetTemperature(item.x, item.y, item.z);
 		}
 
 		ambientTemperature = totalTemp / cubes.Count;
+	}
+
+	bool TryResolveAirGrid(out AirGrid grid)
+	{
+		if (airGrid != null)
+		{
+			grid = airGrid;
+			return true;
+		}
+
+		grid = FindObjectOfType<AirGrid>();
+		airGrid = grid;
+		return grid != null;
 	}
 
 	private void ApplyNewtonsLawOfCooling(HeatContainer otherContainer)

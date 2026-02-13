@@ -16,6 +16,7 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 	private Collider[] EnvironmentalCoolingColliders = new Collider[10];
 	private Vector3 currentPosition;
 	private NavMeshAgent navMeshAgent;
+	private readonly List<Vector3> strafePoints = new List<Vector3>(16);
 
 	public override void Created()
 	{
@@ -140,7 +141,7 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 					// 	count++;
 					// }
 					//********
-					List<Vector3> points = new List<Vector3>();
+					strafePoints.Clear();
 					float lineLength = 20f; // Length of the strafing line
 					int numberOfPoints = 10; // Number of points to evaluate
 					Vector3 direction = Vector3.Cross(Vector3.up, (Colliders[0].transform.position - agent.transform.position).normalized); // Perpendicular to the player direction
@@ -149,13 +150,13 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 					{
 						float t = (float)i / (numberOfPoints - 1); // Normalize to range [0, 1]
 						Vector3 point = agent.transform.position + direction * (t * lineLength - lineLength / 2);
-						points.Add(point);
+						strafePoints.Add(point);
 					}
 
 					Vector3 closestPoint = Vector3.zero;
 					float closestDistance = float.MaxValue;
 
-					foreach (Vector3 point in points)
+					foreach (Vector3 point in strafePoints)
 					{
 						//Debug.Log("checking points");
 						float distanceToPlayer = Vector3.Distance(agent.transform.position, Colliders[0].transform.position);

@@ -113,6 +113,8 @@ public class BodyController : MonoBehaviour
 	private Vector2 lastHeadRotation;
 	public Transform weaponAimPoint;
 	public Transform weaponAimPointL;
+	public Transform weaponStandbyPointR;
+	public Transform weaponStandbyPointL;
 	float leanSpeed = 0.04f;
 	float leanRecoverySpeed = 0.05f;
 
@@ -307,7 +309,7 @@ public class BodyController : MonoBehaviour
 	{
 		legs.HandleTagging(i.limb, i.impactForce);
 		weapons.HandleDisruption(i.limb);
-		// ApplyKnockback(i.impactVector, i.limb);
+		ApplyKnockback(i.impactVector, i.limb);
 		// if (cooling.isOverheated)
 		// {
 		DamageSystem(i);
@@ -1057,43 +1059,43 @@ public class BodyController : MonoBehaviour
 	// }
 
 	private Vector3 KnockbackHeightCheck = new Vector3(0, 1f, 0);
-	// private void ApplyKnockback(Vector3 force, Limb l)
-	// {
-	// 	isKnockbacked = true;
-	// 	if (isAI)
-	// 	{
-	// 		agentDestination = agent.destination;
-	// 	}
-	// 	// if (agent != null)
-	// 	// {
-	// 	// 	agent.enabled = false;
-	// 	// }
+	private void ApplyKnockback(Vector3 force, Limb l)
+	{
+		isKnockbacked = true;
+		if (isAI)
+		{
+			agentDestination = agent.destination;
+		}
+		// if (agent != null)
+		// {
+		// 	agent.enabled = false;
+		// }
 
-	// 	bool backTooCloseToWall = false;
-	// 	RaycastHit hit;
-	// 	if (Physics.Raycast(transform.position + KnockbackHeightCheck, -transform.forward, out hit, 2.0f, aimMask))
-	// 	{
-	// 		backTooCloseToWall = true;
-	// 	}
+		bool backTooCloseToWall = false;
+		RaycastHit hit;
+		if (Physics.Raycast(transform.position + KnockbackHeightCheck, -transform.forward, out hit, 2.0f, aimMask))
+		{
+			backTooCloseToWall = true;
+		}
 
-	// 	if (!backTooCloseToWall)
-	// 	{
-	// 		if (cooling.isOverheated)
-	// 		{
-	// 			rb.AddForce((force * 2));
+		if (!backTooCloseToWall)
+		{
+			// if (cooling.isOverheated)
+			// {
+			// 	rb.AddForce((force * 2));
 
-	// 		}
-	// 		else
-	// 		{
-	// 			rb.AddForce((force / 3) * (1 - legs.getTagging()) * GetKnockbackFromLimb(l));
-	// 		}
-	// 	}
-	// 	else
-	// 	{
-	// 		rb.AddForce((force / 8) * (1 - legs.getTagging()) * GetKnockbackFromLimb(l));
-	// 	}
-	// 	knockbackTimer = minKnockbackDuration;
-	// }
+			// }
+			// else
+			// {
+			rb.AddForce((force / 6) * (1 - legs.getTagging()) * GetKnockbackFromLimb(l));
+			//}
+		}
+		else
+		{
+			rb.AddForce((force / 8) * (1 - legs.getTagging()) * GetKnockbackFromLimb(l));
+		}
+		knockbackTimer = minKnockbackDuration;
+	}
 
 	public float GetKnockbackFromLimb(Limb l)
 	{

@@ -27,7 +27,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private List<Vector3> AllyPositions = new List<Vector3>(32);
 	private List<Transform> AllyRoots = new List<Transform>(32);
 
-	private List<Vector3> DebugPoints = new List<Vector3>();
+	private List<Vector3> DebugPoints = new List<Vector3>(32);
 
 	public override void Created()
 	{
@@ -87,7 +87,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			{
 				//Debug.Log("Do not see player and in range " + inRangeDistance);
 
-				List<Vector3> points = new List<Vector3>();
+				DebugPoints.Clear();
 				float lineLength = 20f; // Length of the strafing line
 				int numberOfPoints = 30; // Number of points to evaluate
 				Vector3 direction = Vector3.Cross(Vector3.up, (Colliders[0].transform.position - agent.transform.position).normalized); // Perpendicular to the player direction
@@ -98,14 +98,13 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 					int index = reverse ? (numberOfPoints - 1 - i) : i;
 					float t = (float)index / (numberOfPoints - 1); // Normalize to range [0, 1]
 					Vector3 point = agent.transform.position + new Vector3(0, 2f, 0) + direction * (t * lineLength - lineLength / 2);
-					points.Add(point);
+					DebugPoints.Add(point);
 				}
-				DebugPoints = points;
 
 				Vector3 closestPoint = Vector3.zero;
 				float closestDistance = float.MaxValue;
 
-				foreach (Vector3 point in points)
+				foreach (Vector3 point in DebugPoints)
 				{
 					//Debug.Log("checking points");
 					float distanceToAI = Vector3.Distance(point, agent.transform.position);
