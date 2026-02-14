@@ -56,13 +56,5 @@ public class RotateHeadCommand : ICommand
         //currentYrotation = Mathf.SmoothDamp(currentYrotation, desiredX, ref yRotationRef, sensors.rotationSmoothDamp);
 
         sensors.head.transform.localRotation = Quaternion.Euler(xRotationRight, desiredX, desiredX);
-        if (sensors.headL != null
-            && sensors.bodyController != null
-            && !sensors.bodyController.isAimingLeft
-            && !sensors.bodyController.HasStartedAimingLeft)
-        {
-            xRotationLeft = xRotationRight;
-            sensors.headL.transform.localRotation = sensors.head.transform.localRotation;
-        }
     }
 }
