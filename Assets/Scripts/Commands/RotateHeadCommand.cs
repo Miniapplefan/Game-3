@@ -56,5 +56,14 @@ public class RotateHeadCommand : ICommand
         //currentYrotation = Mathf.SmoothDamp(currentYrotation, desiredX, ref yRotationRef, sensors.rotationSmoothDamp);
 
         sensors.head.transform.localRotation = Quaternion.Euler(xRotationRight, desiredX, desiredX);
+
+        // Keep the left aim reference in sync with current pitch for player-controlled aiming.
+        // AI uses a single-arm flow and should remain unchanged.
+        if (!sensors.bodyController.isAI && sensors.headL != null)
+        {
+            xRotationLeft = xRotationRight;
+            Vector3 leftRot = sensors.headL.transform.localRotation.eulerAngles;
+            sensors.headL.transform.localRotation = Quaternion.Euler(xRotationLeft, leftRot.y, leftRot.z);
+        }
     }
 }
