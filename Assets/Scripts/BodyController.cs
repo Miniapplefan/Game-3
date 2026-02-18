@@ -1467,13 +1467,24 @@ public class BodyController : MonoBehaviour
 	{
 		if (!isDead)
 		{
-			ExecutePhysicsBasedInputs();
-			GetAimPoint();
+			if (isAI)
+			{
+				ExecutePhysicsBasedInputsAI();
+				GetAimPointAI();
+				DoRotationAI();
+				UpdatePendingMoveAimYawAI();
+				UpdateAimSwapBlendAI();
+			}
+			else
+			{
+				ExecutePhysicsBasedInputs();
+				GetAimPoint();
+				DoRotation();
+				UpdatePendingMoveAimYaw();
+				UpdateAimSwapBlend();
+			}
 			doSiphoning();
 			doLimbRepairs();
-			DoRotation();
-			UpdatePendingMoveAimYaw();
-			UpdateAimSwapBlend();
 		}
 		legs.DoMoveDeacceleration();
 		legs.RecoverFromTagging(1);
@@ -1790,6 +1801,597 @@ public class BodyController : MonoBehaviour
 	}
 
 	private void ApplyAimSwapWeights(float w0, float w1, float w2)
+	{
+		var a = headAimConstraint.data.sourceObjects;
+		var a0 = a[0];
+		var a1 = a[1];
+		var a2 = a[2];
+		a0.weight = w0;
+		a1.weight = w1;
+		a2.weight = w2;
+		a[0] = a0;
+		a[1] = a1;
+		a[2] = a2;
+		headAimConstraint.data.sourceObjects = a;
+	}
+
+	// AI duplicated aim path methods (intentionally identical for now)
+	private void ExecutePhysicsBasedInputsAI()
+	{
+		bool isSlowWalking = !isAI && input != null && input.getShift();
+		legs.speedMultiplier = isAI ? 1f : (isSlowWalking ? 0.3f : 1f);
+
+		if (legs.isCurrentVelocityLessThanMax())
+		{
+			if (input.getForward()) MoveForward();
+			if (input.getBackward()) MoveBackward();
+			if (input.getLeft()) MoveLeft();
+			if (input.getRight()) MoveRight();
+		}
+
+		float maxSpeed = legs.baseWalkSpeed * legs.getMoveSpeed();
+		float maxFireSpeed = maxSpeed * 0.5f;
+		if (rb.velocity.magnitude < maxFireSpeed)
+		{
+			if (input.getFire1()) FireWeapon1();
+			if (input.getFire2()) FireWeapon2();
+			if (input.getFire3()) FireWeapon3();
+		}
+		else if (rb.velocity.magnitude > maxSpeed * 0.6f)
+		{
+			if (isAimingRight || isAimingLeft)
+			{
+				if (BeginMoveAimYawAI())
+				{
+					pendingMoveAimToggleOff = true;
+				}
+			}
+			else
+			{
+				ResetWeaponAimPointAI();
+				startedAimingRight = false;
+				startedAimingLeft = false;
+			}
+		}
+
+		if (input.getScrollUp()) HandleScrollUpAI();
+		if (input.getScrollDown()) HandleScrollDownAI();
+		if (input.getAimMiddle()) HandleMiddleClickAI();
+
+		if (input.getReload()) DoReload();
+
+		if ((!input.getAimLeft() && !input.getAimRight()) || (input.getAimLeft() && input.getAimRight()))
+		{
+			StopLeaning();
+		}
+		else if (input.getAimLeft())
+		{
+			LeanLeft();
+		}
+		else if (input.getAimRight())
+		{
+			LeanRight();
+		}
+	}
+
+	private void DoRotationAI()
+	{
+		Vector2 headRot = input.getHeadRotation();
+		lastHeadRotation = headRot;
+		if (isAimingRight || isAimingLeft)
+		{
+			ApplyAimYawClampAI(ref headRot);
+			sensors.setHeadRotation(headRot);
+		}
+		else
+		{
+			sensors.setHeadRotation(new Vector2(headRot.x, 0));
+			transform.Rotate(0, headRot.y, 0);
+		}
+	}
+
+	private void HandleScrollUpAI()
+	{
+		if (isAimingRight)
+		{
+			ToggleAimingRightAI();
+			return;
+		}
+
+		if (!isAimingLeft && !isAimingRight)
+		{
+			ToggleAimingLeftAI();
+			return;
+		}
+	}
+
+	private void HandleScrollDownAI()
+	{
+		if (isAimingLeft)
+		{
+			ToggleAimingLeftAI();
+			return;
+		}
+
+		if (!isAimingLeft && !isAimingRight)
+		{
+			ToggleAimingRightAI();
+			return;
+		}
+	}
+
+	private void HandleMiddleClickAI()
+	{
+		if (isAimingLeft)
+		{
+			ToggleAimingLeftAI();
+			return;
+		}
+
+		if (isAimingRight)
+		{
+			ToggleAimingRightAI();
+			return;
+		}
+	}
+
+	private void ToggleAimingRightAI()
+	{
+		isAimingLeft = false;
+
+		isAimingRight = !isAimingRight;
+		if (isAimingRight)
+		{
+			if (!startedAimingRight)
+			{
+				startedAimingRight = true;
+			}
+
+			StartAimSwapBlendAI(0f, 1f, 0f);
+		}
+		else
+		{
+			StartAimSwapBlendAI(1f, 0f, 0f);
+		}
+	}
+
+	private void ToggleAimingLeftAI()
+	{
+		isAimingRight = false;
+
+		isAimingLeft = !isAimingLeft;
+		if (isAimingLeft)
+		{
+			if (!startedAimingLeft)
+			{
+				startedAimingLeft = true;
+			}
+
+			StartAimSwapBlendAI(0f, 0f, 1f);
+		}
+		else
+		{
+			StartAimSwapBlendAI(1f, 0f, 0f);
+		}
+	}
+
+	private void GetAimPointAI()
+	{
+		if (Time.time - lastRaycastTime >= raycastInterval)
+		{
+			Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+			float pitch = aimCam.transform.localEulerAngles.x;
+			if (pitch > 180f) pitch -= 360f;
+
+			Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
+			Vector3 pitchedForward = combinedRot * Vector3.forward;
+			Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
+
+			if (freezeHeadDuringMoveAimYaw)
+			{
+				torsoAimPoint.position = torso;
+				return;
+			}
+
+			if (rb.velocity.magnitude > 2.5f)
+			{
+				torsoAimPoint.position = torso;
+				weaponAimPoint.position = torso;
+				weaponAimPointL.position = torso;
+				return;
+			}
+
+			if (!isAimingRight || !isAimingLeft)
+			{
+				torsoAimPoint.position = torso;
+				if (!startedAimingRight && !startedAimingLeft)
+				{
+					weaponAimPoint.position = torso;
+					weaponAimPointL.position = torso;
+					return;
+				}
+
+				if (startedAimingRight && !isAimingRight)
+				{
+					weaponAimPoint.position = headObjectAimOffset.position;
+				}
+				if (startedAimingLeft && !isAimingLeft)
+				{
+					weaponAimPointL.position = headObjectAimOffsetL.position;
+				}
+			}
+
+			if (isAimingRight || isAimingLeft)
+			{
+				combinedRot = Quaternion.Euler(aimCam.transform.eulerAngles.x,
+																			 aimCam.transform.eulerAngles.y,
+																			 0f);
+			}
+			else
+			{
+				torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+
+				pitch = aimCam.transform.localEulerAngles.x;
+				if (pitch > 180f) pitch -= 360f;
+
+				combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
+
+				if (!startedAimingRight && !startedAimingLeft && !freezeHeadDuringMoveAimYaw)
+				{
+					Debug.Log("setting head to cache");
+					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+				}
+			}
+
+			Vector3 forward = combinedRot * Vector3.forward;
+			torso = headObjectTransformCache.position + forward * 20f;
+
+			Ray ray = new Ray(physicalHead.transform.position, forward);
+			RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
+
+			if (hits.Length <= 0)
+			{
+				weaponAimPoint.position = torso;
+				torsoAimPoint.position = torso;
+			}
+			else
+			{
+				RaycastHit? bodyHit = null;
+				List<RaycastHit> enviroHits = new List<RaycastHit>();
+
+				foreach (var hit in hits)
+				{
+					bool isOwnCollider = false;
+
+					if (hit.collider.gameObject.layer == 9)
+					{
+						enviroHits.Add(hit);
+						continue;
+					}
+
+					foreach (var collider in bodyColliders)
+					{
+						if (hit.collider == collider)
+						{
+							isOwnCollider = true;
+							break;
+						}
+					}
+
+					if (!isOwnCollider && hit.collider.gameObject.layer == 6)
+					{
+						bodyHit = hit;
+						break;
+					}
+				}
+
+				if (bodyHit.HasValue)
+				{
+					if (enviroHits.Count > 0)
+					{
+						enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
+
+						if (Vector3.Distance(rb.transform.position, bodyHit.Value.point) < Vector3.Distance(rb.transform.position, enviroHits[0].point))
+						{
+							Vector3 targetPoint = bodyHit.Value.point;
+
+							if (isAimingRight)
+							{
+								weaponAimPoint.position = targetPoint;
+							}
+							else if (isAimingLeft)
+							{
+								weaponAimPointL.position = targetPoint;
+							}
+						}
+						else
+						{
+							Vector3 targetPoint = enviroHits[0].point;
+							if (isAimingRight)
+							{
+								weaponAimPoint.position = targetPoint;
+							}
+							else if (isAimingLeft)
+							{
+								weaponAimPointL.position = targetPoint;
+							}
+						}
+					}
+				}
+				else if (enviroHits.Count > 0)
+				{
+					enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
+					Vector3 targetPoint = enviroHits[0].point;
+					if (isAimingRight)
+					{
+						weaponAimPoint.position = targetPoint;
+					}
+					else if (isAimingLeft)
+					{
+						weaponAimPointL.position = targetPoint;
+					}
+				}
+				else
+				{
+					weaponAimPoint.position = torso;
+					weaponAimPointL.position = torso;
+				}
+			}
+			torsoAimPoint.position = torso;
+		}
+		else
+		{
+			if (!freezeHeadDuringMoveAimYaw)
+			{
+				ResetWeaponAimPointAI();
+			}
+		}
+	}
+
+	private void ResetWeaponAimPointAI(bool resetPitch = false, bool resetHead = true)
+	{
+		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+		float pitch = aimCam.transform.localEulerAngles.x;
+		if (pitch > 180f) pitch -= 360f;
+
+		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
+		Vector3 pitchedForward = combinedRot * Vector3.forward;
+		Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
+
+		weaponAimPoint.position = torso;
+		weaponAimPointL.position = torso;
+		torsoAimPoint.position = torso;
+		if (resetHead)
+		{
+			headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+			headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+		}
+		if (resetPitch && sensors != null)
+		{
+			sensors.ResetHeadPitch();
+		}
+	}
+
+	private void ApplyAimYawClampAI(ref Vector2 headRot)
+	{
+		if (aimCam == null)
+		{
+			return;
+		}
+
+		if (hasPendingMoveAimYaw)
+		{
+			return;
+		}
+
+		if (aimYawLimit <= 0f)
+		{
+			return;
+		}
+
+		float torsoYaw = transform.eulerAngles.y;
+		float aimYaw = aimCam.transform.eulerAngles.y;
+		float delta = Mathf.DeltaAngle(torsoYaw, aimYaw);
+		float desiredDelta = delta + headRot.y;
+		if (Mathf.Abs(desiredDelta) <= aimYawLimit)
+		{
+			return;
+		}
+
+		float clampedDelta = Mathf.Sign(desiredDelta) * aimYawLimit;
+		float overflow = desiredDelta - clampedDelta;
+		float followSpeed = GetAimYawFollowSpeedAI();
+		float maxStep = followSpeed * Time.deltaTime;
+		float torsoStep = Mathf.Clamp(overflow, -maxStep, maxStep);
+		transform.Rotate(0f, torsoStep, 0f, Space.World);
+
+		float newDelta = delta - torsoStep;
+		float finalDesiredDelta = newDelta + headRot.y;
+		if (Mathf.Abs(finalDesiredDelta) > aimYawLimit)
+		{
+			float finalClamped = Mathf.Sign(finalDesiredDelta) * aimYawLimit;
+			headRot.y = finalClamped - newDelta;
+		}
+	}
+
+	private float GetAimYawFollowSpeedAI()
+	{
+		float followSpeed = aimYawFollowSpeedMax;
+		if (aimYawInputForMaxSpeed > 0f)
+		{
+			float inputYaw = Mathf.Abs(lastHeadRotation.y);
+			float t = Mathf.Clamp01(inputYaw / aimYawInputForMaxSpeed);
+			float curvedT = aimYawFollowCurve != null ? aimYawFollowCurve.Evaluate(t) : t;
+			followSpeed = Mathf.Lerp(aimYawFollowSpeedMin, aimYawFollowSpeedMax, curvedT);
+		}
+		return followSpeed;
+	}
+
+	private bool BeginMoveAimYawAI()
+	{
+		if (hasPendingMoveAimYaw)
+		{
+			return false;
+		}
+		Transform aimPoint = null;
+		if (isAimingRight)
+		{
+			aimPoint = weaponAimPoint;
+		}
+		else if (isAimingLeft)
+		{
+			aimPoint = weaponAimPointL;
+		}
+
+		if (aimPoint == null)
+		{
+			return false;
+		}
+
+		Quaternion target;
+		if (aimCam != null)
+		{
+			target = Quaternion.Euler(0f, aimCam.transform.eulerAngles.y, 0f);
+		}
+		else
+		{
+			Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
+			if (physicalHead != null)
+			{
+				origin = physicalHead.transform.position;
+			}
+
+			Vector3 dir = aimPoint.position - origin;
+			dir.y = 0f;
+			if (dir.sqrMagnitude < 0.0001f)
+			{
+				return false;
+			}
+
+			target = Quaternion.LookRotation(dir.normalized, Vector3.up);
+		}
+		pendingMoveAimYawStart = transform.rotation;
+		pendingMoveAimYaw = target;
+		pendingMoveAimYawElapsed = 0f;
+		hasPendingMoveAimYaw = true;
+		freezeHeadDuringMoveAimYaw = true;
+		moveAimYawSourceIsLeft = isAimingLeft;
+		moveAimYawSourceWasRight = isAimingRight;
+		if (aimCam != null)
+		{
+			frozenCameraRotation = aimCam.transform.rotation;
+			hasFrozenCameraRotation = true;
+		}
+		if (headObject != null)
+		{
+			frozenHeadRotation = headObject.transform.rotation;
+		}
+		if (headObjectL != null)
+		{
+			frozenHeadLRotation = headObjectL.transform.rotation;
+		}
+		return true;
+	}
+
+	private void UpdatePendingMoveAimYawAI()
+	{
+		if (!hasPendingMoveAimYaw)
+		{
+			return;
+		}
+
+		if (freezeHeadDuringMoveAimYaw)
+		{
+			if (headObject != null)
+			{
+				headObject.transform.rotation = frozenHeadRotation;
+			}
+			if (headObjectL != null)
+			{
+				headObjectL.transform.rotation = frozenHeadLRotation;
+			}
+		}
+
+		if (moveAimYawDuration <= 0f)
+		{
+			transform.rotation = pendingMoveAimYaw;
+			CompleteMoveAimYawAI();
+			return;
+		}
+
+		pendingMoveAimYawElapsed += Time.deltaTime;
+		float t = Mathf.Clamp01(pendingMoveAimYawElapsed / moveAimYawDuration);
+		float curvedT = moveAimYawCurve != null ? moveAimYawCurve.Evaluate(t) : t;
+		transform.rotation = Quaternion.Slerp(pendingMoveAimYawStart, pendingMoveAimYaw, curvedT);
+
+		if (t >= 1f || Quaternion.Angle(transform.rotation, pendingMoveAimYaw) <= moveAimYawCompleteAngle)
+		{
+			CompleteMoveAimYawAI();
+		}
+	}
+
+	private void CompleteMoveAimYawAI()
+	{
+		hasPendingMoveAimYaw = false;
+		freezeHeadDuringMoveAimYaw = false;
+		hasFrozenCameraRotation = false;
+		if (pendingMoveAimToggleOff)
+		{
+			if (moveAimYawSourceWasRight) ToggleAimingRightAI();
+			if (moveAimYawSourceIsLeft) ToggleAimingLeftAI();
+			startedAimingRight = false;
+			startedAimingLeft = false;
+			pendingMoveAimToggleOff = false;
+		}
+		ResetWeaponAimPointAI(true, true);
+	}
+
+	private void StartAimSwapBlendAI(float targetW0, float targetW1, float targetW2)
+	{
+		if (headAimConstraint == null)
+		{
+			return;
+		}
+
+		var a = headAimConstraint.data.sourceObjects;
+		aimSwapStartWeights = new Vector3(a[0].weight, a[1].weight, a[2].weight);
+		aimSwapTargetWeights = new Vector3(targetW0, targetW1, targetW2);
+		aimSwapElapsed = 0f;
+		isAimSwapInProgress = true;
+
+		if (aimSwapDuration <= 0f)
+		{
+			ApplyAimSwapWeightsAI(targetW0, targetW1, targetW2);
+			isAimSwapInProgress = false;
+		}
+	}
+
+	private void UpdateAimSwapBlendAI()
+	{
+		if (!isAimSwapInProgress || headAimConstraint == null)
+		{
+			return;
+		}
+
+		if (aimSwapDuration <= 0f)
+		{
+			isAimSwapInProgress = false;
+			return;
+		}
+
+		aimSwapElapsed += Time.deltaTime;
+		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
+		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
+		Vector3 w = Vector3.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
+		ApplyAimSwapWeightsAI(w.x, w.y, w.z);
+
+		if (t >= 1f)
+		{
+			isAimSwapInProgress = false;
+		}
+	}
+
+	private void ApplyAimSwapWeightsAI(float w0, float w1, float w2)
 	{
 		var a = headAimConstraint.data.sourceObjects;
 		var a0 = a[0];
