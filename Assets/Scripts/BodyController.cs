@@ -45,6 +45,7 @@ public class BodyController : MonoBehaviour
 	public bool MoveAimYawSourceIsLeft => moveAimYawSourceIsLeft;
 	public bool HasFrozenCameraRotation => hasFrozenCameraRotation;
 	public Quaternion FrozenCameraRotation => frozenCameraRotation;
+	public bool HasStartedAimingLeft => startedAimingLeft;
 
 	// [HideInInspector]
 	//public CoolingModel cooling;

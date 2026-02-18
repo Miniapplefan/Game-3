@@ -57,9 +57,12 @@ public class RotateHeadCommand : ICommand
 
         sensors.head.transform.localRotation = Quaternion.Euler(xRotationRight, desiredX, desiredX);
 
-        // Keep the left aim reference in sync with current pitch for player-controlled aiming.
-        // AI uses a single-arm flow and should remain unchanged.
-        if (!sensors.bodyController.isAI && sensors.headL != null)
+        // Keep left pitch synced only before left arm has ever been independently aimed.
+        // After left arm has been used once, preserve its last pitch while right/neutral states update.
+        if (!sensors.bodyController.isAI
+            && !sensors.bodyController.isAimingRight
+            && !sensors.bodyController.HasStartedAimingLeft
+            && sensors.headL != null)
         {
             xRotationLeft = xRotationRight;
             Vector3 leftRot = sensors.headL.transform.localRotation.eulerAngles;
