@@ -877,22 +877,26 @@ public class BodyController : MonoBehaviour
 				{
 					standbyDelayTimer -= Time.deltaTime;
 				}
-				if (isAimingRight || isAimingLeft)
+				// While aiming, keep updating aim/raycast below so mouse look stays responsive during movement.
+				// if (isAimingRight || isAimingLeft)
+				// {
+				// 	// While actively aiming and entering a movement reset, keep current aim
+				// 	// to avoid the head snapping toward standby points.
+				// 	return;
+				// }
+
+				if (!isAimingRight && !isAimingLeft)
 				{
-					// While actively aiming and entering a movement reset, keep current aim
-					// to avoid the head snapping toward standby points.
+					if (!deferStandbyRight)
+					{
+						SetWeaponAimPointR(weaponStandbyPointR != null ? weaponStandbyPointR.position : torso);
+					}
+					if (!deferStandbyLeft)
+					{
+						SetWeaponAimPointL(weaponStandbyPointL != null ? weaponStandbyPointL.position : torso);
+					}
 					return;
 				}
-
-				if (!deferStandbyRight)
-				{
-					SetWeaponAimPointR(weaponStandbyPointR != null ? weaponStandbyPointR.position : torso);
-				}
-				if (!deferStandbyLeft)
-				{
-					SetWeaponAimPointL(weaponStandbyPointL != null ? weaponStandbyPointL.position : torso);
-				}
-				return;
 			}
 
 			// If we’re not aiming but standing still → don’t overwrite weaponAimPoint.
@@ -1750,14 +1754,14 @@ public class BodyController : MonoBehaviour
 		{
 			if (isAimingRight || isAimingLeft)
 			{
-				// Debug.Log("resetting aim on movement");
-				if (BeginMoveAimYaw())
-				{
-					pendingMoveAimToggleOff = true;
-					standbyDelayTimer = standbyReapplyDelay;
-					deferStandbyRight = moveAimYawSourceWasRight;
-					deferStandbyLeft = moveAimYawSourceIsLeft;
-				}
+				// Keep active arm aim while moving: disable movement-triggered aim reset/toggle-off.
+				// if (BeginMoveAimYaw())
+				// {
+				// 	pendingMoveAimToggleOff = true;
+				// 	standbyDelayTimer = standbyReapplyDelay;
+				// 	deferStandbyRight = moveAimYawSourceWasRight;
+				// 	deferStandbyLeft = moveAimYawSourceIsLeft;
+				// }
 			}
 			else
 			{
