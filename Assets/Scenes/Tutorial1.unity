@@ -14856,6 +14856,10 @@ PrefabInstance:
       propertyPath: shiftKey
       value: 304
       objectReference: {fileID: 0}
+    - target: {fileID: 3108864567864582954, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: scrollSensitivity
+      value: 0.01
+      objectReference: {fileID: 0}
     - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: isGodMode
       value: 0

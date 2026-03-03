@@ -28,11 +28,16 @@ public class BodyController : MonoBehaviour
 	public float moveAimYawDuration = 0.15f;
 	public AnimationCurve moveAimYawCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 	public float moveAimYawCompleteAngle = 0.5f;
+	public float torsoYawFollowsMouseMoveThreshold = 0.1f;
+	public float torsoYawFollowsMouseStopThreshold = 0.05f;
+	public float torsoYawFollowSmoothing = 12f;
 	private bool hasPendingMoveAimYaw = false;
 	private Quaternion pendingMoveAimYaw;
 	private Quaternion pendingMoveAimYawStart;
 	private float pendingMoveAimYawElapsed = 0f;
 	private bool freezeHeadDuringMoveAimYaw = false;
+	private bool movingAimYawActive = false;
+	private float smoothedMovingAimYaw = 0f;
 	private bool moveAimYawSourceIsLeft = false;
 	private bool moveAimYawSourceWasRight = false;
 	private bool pendingMoveAimToggleOff = false;
@@ -103,6 +108,10 @@ public class BodyController : MonoBehaviour
 	private bool forceAimToTorsoLeft = false;
 	private bool useStoredAimRight = false;
 	private bool useStoredAimLeft = false;
+	private bool hasStoredRelativeAimRight = false;
+	private bool hasStoredRelativeAimLeft = false;
+	private Vector3 storedRelativeAimRightLocal;
+	private Vector3 storedRelativeAimLeftLocal;
 	[Header("Aim Start Hold")]
 	public float aimStartHoldDuration = 0.05f;
 	private float aimStartHoldTimerRight = 0f;
@@ -640,12 +649,42 @@ public class BodyController : MonoBehaviour
 		lastHeadRotation = headRot;
 		if (isAimingRight || isAimingLeft)
 		{
-			ApplyAimYawClamp(ref headRot);
-			// In aim mode, only rotate head
-			sensors.setHeadRotation(headRot);
+			float speedSqr = rb != null ? rb.velocity.sqrMagnitude : 0f;
+			float moveStartThresholdSqr = torsoYawFollowsMouseMoveThreshold * torsoYawFollowsMouseMoveThreshold;
+			float moveStopThresholdSqr = torsoYawFollowsMouseStopThreshold * torsoYawFollowsMouseStopThreshold;
+			if (movingAimYawActive)
+			{
+				if (speedSqr < moveStopThresholdSqr)
+				{
+					movingAimYawActive = false;
+				}
+			}
+			else if (speedSqr > moveStartThresholdSqr)
+			{
+				movingAimYawActive = true;
+			}
+
+			if (movingAimYawActive)
+			{
+				// While moving + aiming, feed mouse yaw into torso yaw for smooth look.
+				float smoothing = Mathf.Max(0f, torsoYawFollowSmoothing);
+				float t = smoothing <= 0f ? 1f : 1f - Mathf.Exp(-smoothing * Time.deltaTime);
+				smoothedMovingAimYaw = Mathf.Lerp(smoothedMovingAimYaw, headRot.y, t);
+				transform.Rotate(0f, smoothedMovingAimYaw, 0f);
+				sensors.setHeadRotation(new Vector2(headRot.x, 0f));
+			}
+			else
+			{
+				smoothedMovingAimYaw = 0f;
+				ApplyAimYawClamp(ref headRot);
+				// Standing still while aiming keeps existing head-only yaw behavior.
+				sensors.setHeadRotation(headRot);
+			}
 		}
 		else
 		{
+			movingAimYawActive = false;
+			smoothedMovingAimYaw = 0f;
 			// if (input.getHeadRotation().magnitude > 0)
 			// {
 			// 	cameraMoveScript.enabled = true;
@@ -658,8 +697,13 @@ public class BodyController : MonoBehaviour
 
 	void ToggleAimingRight()
 	{
+		bool wasAimingRight = isAimingRight;
 		bool wasAimingLeft = isAimingLeft;
 		bool wasStartedAimingRight = startedAimingRight;
+		if (wasAimingLeft)
+		{
+			CaptureRelativeAimLeft();
+		}
 		isAimingLeft = false;
 
 		isAimingRight = !isAimingRight;
@@ -695,6 +739,10 @@ public class BodyController : MonoBehaviour
 		}
 		else
 		{
+			if (wasAimingRight)
+			{
+				CaptureRelativeAimRight();
+			}
 			if (!wasAimingLeft)
 			{
 				useStoredAimRight = false;
@@ -710,8 +758,13 @@ public class BodyController : MonoBehaviour
 
 	void ToggleAimingLeft()
 	{
+		bool wasAimingLeft = isAimingLeft;
 		bool wasAimingRight = isAimingRight;
 		bool wasStartedAimingLeft = startedAimingLeft;
+		if (wasAimingRight)
+		{
+			CaptureRelativeAimRight();
+		}
 		isAimingRight = false;
 
 		isAimingLeft = !isAimingLeft;
@@ -752,6 +805,10 @@ public class BodyController : MonoBehaviour
 		}
 		else
 		{
+			if (wasAimingLeft)
+			{
+				CaptureRelativeAimLeft();
+			}
 			if (!wasAimingRight)
 			{
 				useStoredAimLeft = false;
@@ -915,6 +972,10 @@ public class BodyController : MonoBehaviour
 						// headObjectAimOffset.position.Set(headObjectAimOffset.position.x, headObjectAimOffset.position.y, Vector3.Distance(weaponAimPoint.position, headObject.transform.position));
 						SetWeaponAimPointR(headObjectAimOffset.position);
 					}
+					else
+					{
+						ApplyRelativeAimRight();
+					}
 				}
 
 				if (!isAimingLeft)
@@ -927,6 +988,10 @@ public class BodyController : MonoBehaviour
 					{
 						// headObjectAimOffsetL.position.Set(headObjectAimOffsetL.position.x, headObjectAimOffsetL.position.y, Vector3.Distance(weaponAimPointL.position, headObject.transform.position));
 						SetWeaponAimPointL(headObjectAimOffsetL.position);
+					}
+					else
+					{
+						ApplyRelativeAimLeft();
 					}
 				}
 			}
@@ -1196,6 +1261,69 @@ public class BodyController : MonoBehaviour
 		// // headObject.transform.rotation = headObjectTransformCache.transform.rotation;
 		// aimCam.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 		// cameraMoveScript.enabled = true;
+	}
+
+	private Vector3 GetAimLockOrigin()
+	{
+		return headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
+	}
+
+	private void CaptureRelativeAimRight()
+	{
+		if (weaponAimPoint == null)
+		{
+			return;
+		}
+
+		Vector3 origin = GetAimLockOrigin();
+		Quaternion invTorsoYaw = Quaternion.Inverse(Quaternion.Euler(0f, transform.eulerAngles.y, 0f));
+		storedRelativeAimRightLocal = invTorsoYaw * (weaponAimPoint.position - origin);
+		if (storedRelativeAimRightLocal.sqrMagnitude < 0.0001f)
+		{
+			storedRelativeAimRightLocal = Vector3.forward * 20f;
+		}
+		hasStoredRelativeAimRight = true;
+	}
+
+	private void CaptureRelativeAimLeft()
+	{
+		if (weaponAimPointL == null)
+		{
+			return;
+		}
+
+		Vector3 origin = GetAimLockOrigin();
+		Quaternion invTorsoYaw = Quaternion.Inverse(Quaternion.Euler(0f, transform.eulerAngles.y, 0f));
+		storedRelativeAimLeftLocal = invTorsoYaw * (weaponAimPointL.position - origin);
+		if (storedRelativeAimLeftLocal.sqrMagnitude < 0.0001f)
+		{
+			storedRelativeAimLeftLocal = Vector3.forward * 20f;
+		}
+		hasStoredRelativeAimLeft = true;
+	}
+
+	private void ApplyRelativeAimRight()
+	{
+		if (!hasStoredRelativeAimRight)
+		{
+			CaptureRelativeAimRight();
+		}
+
+		Vector3 origin = GetAimLockOrigin();
+		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+		SetWeaponAimPointR(origin + (torsoYaw * storedRelativeAimRightLocal));
+	}
+
+	private void ApplyRelativeAimLeft()
+	{
+		if (!hasStoredRelativeAimLeft)
+		{
+			CaptureRelativeAimLeft();
+		}
+
+		Vector3 origin = GetAimLockOrigin();
+		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+		SetWeaponAimPointL(origin + (torsoYaw * storedRelativeAimLeftLocal));
 	}
 
 	#endregion
@@ -1768,6 +1896,8 @@ public class BodyController : MonoBehaviour
 				ResetWeaponAimPoint();
 				startedAimingRight = false;
 				startedAimingLeft = false;
+				hasStoredRelativeAimRight = false;
+				hasStoredRelativeAimLeft = false;
 			}
 
 			// cameraMoveScript.enabled = false;
@@ -2033,6 +2163,8 @@ public class BodyController : MonoBehaviour
 			if (moveAimYawSourceIsLeft) ToggleAimingLeft();
 			startedAimingRight = false;
 			startedAimingLeft = false;
+			hasStoredRelativeAimRight = false;
+			hasStoredRelativeAimLeft = false;
 			useStoredAimRight = false;
 			useStoredAimLeft = false;
 			holdAimStartRightUntilInput = false;
@@ -2163,6 +2295,8 @@ public class BodyController : MonoBehaviour
 				ResetWeaponAimPointAI();
 				startedAimingRight = false;
 				startedAimingLeft = false;
+				hasStoredRelativeAimRight = false;
+				hasStoredRelativeAimLeft = false;
 			}
 		}
 
@@ -2653,6 +2787,8 @@ public class BodyController : MonoBehaviour
 			if (moveAimYawSourceIsLeft) ToggleAimingLeftAI();
 			startedAimingRight = false;
 			startedAimingLeft = false;
+			hasStoredRelativeAimRight = false;
+			hasStoredRelativeAimLeft = false;
 			pendingMoveAimToggleOff = false;
 		}
 		ResetWeaponAimPointAI(true, true);
