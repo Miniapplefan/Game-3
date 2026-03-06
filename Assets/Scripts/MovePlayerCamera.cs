@@ -72,7 +72,9 @@ public class MovePlayerCamera : MonoBehaviour
             isDetachedForMoveAim = false;
         }
 
-        if (bodyController.isAimingLeft)
+        bool useLeftAnchor = bodyController.isAimingLeft
+            || (bodyController.KeepCameraAimWithoutArm && bodyController.KeepCameraAimUsesLeft);
+        if (useLeftAnchor)
         {
             transform.position = playerL.transform.position;
             transform.rotation = playerL.transform.rotation;

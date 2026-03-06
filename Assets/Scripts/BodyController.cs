@@ -52,6 +52,8 @@ public class BodyController : MonoBehaviour
 	public Quaternion FrozenCameraRotation => frozenCameraRotation;
 	public bool HasStartedAimingRight => startedAimingRight;
 	public bool HasStartedAimingLeft => startedAimingLeft;
+	public bool KeepCameraAimWithoutArm => keepCameraAimWithoutArm;
+	public bool KeepCameraAimUsesLeft => keepCameraAimUsesLeft;
 
 	// [HideInInspector]
 	//public CoolingModel cooling;
@@ -104,6 +106,8 @@ public class BodyController : MonoBehaviour
 	bool startedAimingRight = false;
 	public bool isAimingLeft = false;
 	bool startedAimingLeft = false;
+	private bool keepCameraAimWithoutArm = false;
+	private bool keepCameraAimUsesLeft = false;
 	private bool forceAimToTorsoRight = false;
 	private bool forceAimToTorsoLeft = false;
 	private bool useStoredAimRight = false;
@@ -139,6 +143,9 @@ public class BodyController : MonoBehaviour
 	private float standbyDelayTimer = 0f;
 	private bool deferStandbyRight = false;
 	private bool deferStandbyLeft = false;
+	[Header("Aim Scroll")]
+	public float aimScrollToggleCooldown = 0.12f;
+	private float nextAimScrollToggleTime = 0f;
 	private bool freezeAimPointRight = false;
 	private bool freezeAimPointLeft = false;
 	private Vector3 frozenAimPointRight;
@@ -647,7 +654,8 @@ public class BodyController : MonoBehaviour
 	{
 		Vector2 headRot = input.getHeadRotation();
 		lastHeadRotation = headRot;
-		if (isAimingRight || isAimingLeft)
+		bool isArmAiming = isAimingRight || isAimingLeft;
+		if (isArmAiming || keepCameraAimWithoutArm)
 		{
 			float speedSqr = rb != null ? rb.velocity.sqrMagnitude : 0f;
 			float moveStartThresholdSqr = torsoYawFollowsMouseMoveThreshold * torsoYawFollowsMouseMoveThreshold;
@@ -697,6 +705,7 @@ public class BodyController : MonoBehaviour
 
 	void ToggleAimingRight()
 	{
+		bool wasKeepingCameraAimWithoutArm = keepCameraAimWithoutArm;
 		bool wasAimingRight = isAimingRight;
 		bool wasAimingLeft = isAimingLeft;
 		bool wasStartedAimingRight = startedAimingRight;
@@ -709,11 +718,15 @@ public class BodyController : MonoBehaviour
 		isAimingRight = !isAimingRight;
 		if (isAimingRight)
 		{
+			keepCameraAimWithoutArm = false;
+			keepCameraAimUsesLeft = false;
+			bool resumeFromStandbyCameraAim = wasKeepingCameraAimWithoutArm && !wasAimingLeft;
+			bool resumeFromStoredRightAim = hasStoredRelativeAimRight;
 			if (!startedAimingRight)
 			{
 				startedAimingRight = true;
 			}
-			if (!wasStartedAimingRight)
+			if (!wasStartedAimingRight && !resumeFromStandbyCameraAim && !resumeFromStoredRightAim)
 			{
 				forceAimToTorsoRight = true;
 				if (torsoAimPoint != null)
@@ -724,6 +737,19 @@ public class BodyController : MonoBehaviour
 					SetWeaponAimPointR(aimStartHoldPointRight);
 				}
 				useStoredAimRight = false;
+			}
+			else if (resumeFromStandbyCameraAim)
+			{
+				forceAimToTorsoRight = false;
+				holdAimStartRightUntilInput = false;
+				aimStartHoldTimerRight = 0f;
+			}
+			else if (resumeFromStoredRightAim)
+			{
+				forceAimToTorsoRight = false;
+				holdAimStartRightUntilInput = false;
+				aimStartHoldTimerRight = 0f;
+				ApplyRelativeAimRight();
 			}
 			else if (wasAimingLeft)
 			{
@@ -743,11 +769,16 @@ public class BodyController : MonoBehaviour
 			{
 				CaptureRelativeAimRight();
 			}
+			keepCameraAimWithoutArm = true;
+			keepCameraAimUsesLeft = false;
+			SetTorsoAimPointToCurrentView();
+			startedAimingRight = false;
 			if (!wasAimingLeft)
 			{
 				useStoredAimRight = false;
 			}
 			aimStartHoldTimerRight = 0f;
+			holdAimStartRightUntilInput = false;
 			// headAimConstraint.data.sourceObjects.SetWeight(0, 1);
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
@@ -758,6 +789,7 @@ public class BodyController : MonoBehaviour
 
 	void ToggleAimingLeft()
 	{
+		bool wasKeepingCameraAimWithoutArm = keepCameraAimWithoutArm;
 		bool wasAimingLeft = isAimingLeft;
 		bool wasAimingRight = isAimingRight;
 		bool wasStartedAimingLeft = startedAimingLeft;
@@ -770,11 +802,15 @@ public class BodyController : MonoBehaviour
 		isAimingLeft = !isAimingLeft;
 		if (isAimingLeft)
 		{
+			keepCameraAimWithoutArm = false;
+			keepCameraAimUsesLeft = true;
+			bool resumeFromStandbyCameraAim = wasKeepingCameraAimWithoutArm && !wasAimingRight;
+			bool resumeFromStoredLeftAim = hasStoredRelativeAimLeft;
 			if (!startedAimingLeft)
 			{
 				startedAimingLeft = true;
 			}
-			if (!wasStartedAimingLeft)
+			if (!wasStartedAimingLeft && !resumeFromStandbyCameraAim && !resumeFromStoredLeftAim)
 			{
 				forceAimToTorsoLeft = true;
 				if (headObjectL != null && headObjectTransformCache != null)
@@ -791,6 +827,19 @@ public class BodyController : MonoBehaviour
 					SetWeaponAimPointL(aimStartHoldPointLeft);
 				}
 				useStoredAimLeft = false;
+			}
+			else if (resumeFromStandbyCameraAim)
+			{
+				forceAimToTorsoLeft = false;
+				holdAimStartLeftUntilInput = false;
+				aimStartHoldTimerLeft = 0f;
+			}
+			else if (resumeFromStoredLeftAim)
+			{
+				forceAimToTorsoLeft = false;
+				holdAimStartLeftUntilInput = false;
+				aimStartHoldTimerLeft = 0f;
+				ApplyRelativeAimLeft();
 			}
 			else if (wasAimingRight)
 			{
@@ -809,11 +858,16 @@ public class BodyController : MonoBehaviour
 			{
 				CaptureRelativeAimLeft();
 			}
+			keepCameraAimWithoutArm = true;
+			keepCameraAimUsesLeft = true;
+			SetTorsoAimPointToCurrentView();
+			startedAimingLeft = false;
 			if (!wasAimingRight)
 			{
 				useStoredAimLeft = false;
 			}
 			aimStartHoldTimerLeft = 0f;
+			holdAimStartLeftUntilInput = false;
 			// headAimConstraint.data.sourceObjects.SetWeight(0, 1);
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
@@ -942,7 +996,8 @@ public class BodyController : MonoBehaviour
 				// 	return;
 				// }
 
-				if (!isAimingRight && !isAimingLeft)
+				// Keep lowered-arm camera-aim mode from being treated as non-aiming reset state.
+				if (!isAimingRight && !isAimingLeft && !keepCameraAimWithoutArm)
 				{
 					if (!deferStandbyRight)
 					{
@@ -997,7 +1052,7 @@ public class BodyController : MonoBehaviour
 			}
 
 
-			if (isAimingRight || isAimingLeft)
+			if (isAimingRight || isAimingLeft || keepCameraAimWithoutArm)
 			{
 				// --- Aim mode: full yaw + pitch from camera ---
 				combinedRot = Quaternion.Euler(aimCam.transform.eulerAngles.x,
@@ -1070,8 +1125,7 @@ public class BodyController : MonoBehaviour
 				}
 				else
 				{
-					SetWeaponAimPointR(torso);
-					SetWeaponAimPointL(torso);
+					// No active arm aim: keep current standby/lowered arm points.
 				}
 				torsoAimPoint.position = torso;
 			}
@@ -1182,10 +1236,8 @@ public class BodyController : MonoBehaviour
 					}
 					else
 					{
-						SetWeaponAimPointR(torso);
-						SetWeaponAimPointL(torso);
+						// No active arm aim: keep current standby/lowered arm points.
 					}
-
 				}
 			}
 			torsoAimPoint.position = torso;
@@ -1268,6 +1320,16 @@ public class BodyController : MonoBehaviour
 		return headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
 	}
 
+	private void SetTorsoAimPointToCurrentView()
+	{
+		if (torsoAimPoint == null || headObjectTransformCache == null || aimCam == null)
+		{
+			return;
+		}
+
+		torsoAimPoint.position = headObjectTransformCache.position + (aimCam.transform.forward * 20f);
+	}
+
 	private void CaptureRelativeAimRight()
 	{
 		if (weaponAimPoint == null)
@@ -1328,34 +1390,129 @@ public class BodyController : MonoBehaviour
 
 	#endregion
 
-	void HandleScrollUp()
+	private void ProcessAimScrollInput(bool scrollUp, bool scrollDown, bool isAIControls)
 	{
-		if (isAimingRight)
+		if (Time.time < nextAimScrollToggleTime)
 		{
-			ToggleAimingRight();
 			return;
 		}
 
-		if (!isAimingLeft && !isAimingRight)
+		if (scrollUp)
 		{
-			ToggleAimingLeft();
-			return;
+			if (isAIControls) HandleScrollUpAI();
+			else HandleScrollUp();
+			nextAimScrollToggleTime = Time.time + Mathf.Max(0f, aimScrollToggleCooldown);
+		}
+		else if (scrollDown)
+		{
+			if (isAIControls) HandleScrollDownAI();
+			else HandleScrollDown();
+			nextAimScrollToggleTime = Time.time + Mathf.Max(0f, aimScrollToggleCooldown);
 		}
 	}
 
-	void HandleScrollDown()
+	private void SwitchToLoweredSide(bool useLeftSide)
 	{
+		if (isAimingRight)
+		{
+			CaptureRelativeAimRight();
+			isAimingRight = false;
+			aimStartHoldTimerRight = 0f;
+			holdAimStartRightUntilInput = false;
+		}
+		if (isAimingLeft)
+		{
+			CaptureRelativeAimLeft();
+			isAimingLeft = false;
+			aimStartHoldTimerLeft = 0f;
+			holdAimStartLeftUntilInput = false;
+		}
+
+		keepCameraAimWithoutArm = true;
+		keepCameraAimUsesLeft = useLeftSide;
+		SetTorsoAimPointToCurrentView();
+		StartAimSwapBlend(1f, 0f, 0f);
+	}
+
+	private void SwitchToLoweredSideAI(bool useLeftSide)
+	{
+		if (isAimingRight)
+		{
+			CaptureRelativeAimRight();
+			isAimingRight = false;
+		}
+		if (isAimingLeft)
+		{
+			CaptureRelativeAimLeft();
+			isAimingLeft = false;
+		}
+
+		keepCameraAimWithoutArm = true;
+		keepCameraAimUsesLeft = useLeftSide;
+		SetTorsoAimPointToCurrentView();
+		StartAimSwapBlendAI(1f, 0f, 0f);
+	}
+
+	private bool IsLoweredSideSelected(bool useLeftSide)
+	{
+		return keepCameraAimWithoutArm
+			&& !isAimingRight
+			&& !isAimingLeft
+			&& keepCameraAimUsesLeft == useLeftSide;
+	}
+
+	void HandleScrollUp()
+	{
+		// Left already active: toggle left between aim and standby.
 		if (isAimingLeft)
 		{
 			ToggleAimingLeft();
 			return;
 		}
 
-		if (!isAimingLeft && !isAimingRight)
+		// Switching to a remembered standby left arm should keep it lowered.
+		if (!startedAimingLeft && hasStoredRelativeAimLeft)
+		{
+			// Second scroll on already-selected lowered left arm should raise/aim it.
+			if (IsLoweredSideSelected(true))
+			{
+				ToggleAimingLeft();
+				return;
+			}
+
+			SwitchToLoweredSide(true);
+			return;
+		}
+
+		// Otherwise activate/keep left as aimed.
+		ToggleAimingLeft();
+	}
+
+	void HandleScrollDown()
+	{
+		// Right already active: toggle right between aim and standby.
+		if (isAimingRight)
 		{
 			ToggleAimingRight();
 			return;
 		}
+
+		// Switching to a remembered standby right arm should keep it lowered.
+		if (!startedAimingRight && hasStoredRelativeAimRight)
+		{
+			// Second scroll on already-selected lowered right arm should raise/aim it.
+			if (IsLoweredSideSelected(false))
+			{
+				ToggleAimingRight();
+				return;
+			}
+
+			SwitchToLoweredSide(false);
+			return;
+		}
+
+		// Otherwise activate/keep right as aimed.
+		ToggleAimingRight();
 	}
 
 	void HandleMiddleClick()
@@ -1880,7 +2037,8 @@ public class BodyController : MonoBehaviour
 		}
 		else if (rb.velocity.magnitude > maxSpeed * 0.6f)
 		{
-			if (isAimingRight || isAimingLeft)
+			// keepCameraAimWithoutArm means "camera still in aim mode while arms are lowered".
+			if (isAimingRight || isAimingLeft || keepCameraAimWithoutArm)
 			{
 				// Keep active arm aim while moving: disable movement-triggered aim reset/toggle-off.
 				// if (BeginMoveAimYaw())
@@ -1893,9 +2051,12 @@ public class BodyController : MonoBehaviour
 			}
 			else
 			{
+				// Preserve reset functionality for fully non-aiming states.
 				ResetWeaponAimPoint();
 				startedAimingRight = false;
 				startedAimingLeft = false;
+				keepCameraAimWithoutArm = false;
+				keepCameraAimUsesLeft = false;
 				hasStoredRelativeAimRight = false;
 				hasStoredRelativeAimLeft = false;
 			}
@@ -1905,8 +2066,9 @@ public class BodyController : MonoBehaviour
 			//headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 		}
 
-		if (input.getScrollUp()) HandleScrollUp();
-		if (input.getScrollDown()) HandleScrollDown();
+		bool scrollUp = input.getScrollUp();
+		bool scrollDown = !scrollUp && input.getScrollDown();
+		ProcessAimScrollInput(scrollUp, scrollDown, false);
 		if (input.getAimMiddle()) HandleMiddleClick();
 
 		if (input.getReload()) DoReload();
@@ -2163,6 +2325,8 @@ public class BodyController : MonoBehaviour
 			if (moveAimYawSourceIsLeft) ToggleAimingLeft();
 			startedAimingRight = false;
 			startedAimingLeft = false;
+			keepCameraAimWithoutArm = false;
+			keepCameraAimUsesLeft = false;
 			hasStoredRelativeAimRight = false;
 			hasStoredRelativeAimLeft = false;
 			useStoredAimRight = false;
@@ -2295,13 +2459,16 @@ public class BodyController : MonoBehaviour
 				ResetWeaponAimPointAI();
 				startedAimingRight = false;
 				startedAimingLeft = false;
+				keepCameraAimWithoutArm = false;
+				keepCameraAimUsesLeft = false;
 				hasStoredRelativeAimRight = false;
 				hasStoredRelativeAimLeft = false;
 			}
 		}
 
-		if (input.getScrollUp()) HandleScrollUpAI();
-		if (input.getScrollDown()) HandleScrollDownAI();
+		bool scrollUp = input.getScrollUp();
+		bool scrollDown = !scrollUp && input.getScrollDown();
+		ProcessAimScrollInput(scrollUp, scrollDown, true);
 		if (input.getAimMiddle()) HandleMiddleClickAI();
 
 		if (input.getReload()) DoReload();
@@ -2338,32 +2505,48 @@ public class BodyController : MonoBehaviour
 
 	private void HandleScrollUpAI()
 	{
-		if (isAimingRight)
-		{
-			ToggleAimingRightAI();
-			return;
-		}
-
-		if (!isAimingLeft && !isAimingRight)
-		{
-			ToggleAimingLeftAI();
-			return;
-		}
-	}
-
-	private void HandleScrollDownAI()
-	{
 		if (isAimingLeft)
 		{
 			ToggleAimingLeftAI();
 			return;
 		}
 
-		if (!isAimingLeft && !isAimingRight)
+		if (!startedAimingLeft && hasStoredRelativeAimLeft)
+		{
+			if (IsLoweredSideSelected(true))
+			{
+				ToggleAimingLeftAI();
+				return;
+			}
+
+			SwitchToLoweredSideAI(true);
+			return;
+		}
+
+		ToggleAimingLeftAI();
+	}
+
+	private void HandleScrollDownAI()
+	{
+		if (isAimingRight)
 		{
 			ToggleAimingRightAI();
 			return;
 		}
+
+		if (!startedAimingRight && hasStoredRelativeAimRight)
+		{
+			if (IsLoweredSideSelected(false))
+			{
+				ToggleAimingRightAI();
+				return;
+			}
+
+			SwitchToLoweredSideAI(false);
+			return;
+		}
+
+		ToggleAimingRightAI();
 	}
 
 	private void HandleMiddleClickAI()
@@ -2787,6 +2970,8 @@ public class BodyController : MonoBehaviour
 			if (moveAimYawSourceIsLeft) ToggleAimingLeftAI();
 			startedAimingRight = false;
 			startedAimingLeft = false;
+			keepCameraAimWithoutArm = false;
+			keepCameraAimUsesLeft = false;
 			hasStoredRelativeAimRight = false;
 			hasStoredRelativeAimLeft = false;
 			pendingMoveAimToggleOff = false;
