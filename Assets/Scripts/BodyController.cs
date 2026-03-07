@@ -783,7 +783,7 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
-			StartAimSwapBlend(1f, 0f, 0f);
+			SetAimStandbyImmediate();
 		}
 	}
 
@@ -872,7 +872,7 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
-			StartAimSwapBlend(1f, 0f, 0f);
+			SetAimStandbyImmediate();
 		}
 	}
 
@@ -1413,6 +1413,9 @@ public class BodyController : MonoBehaviour
 
 	private void SwitchToLoweredSide(bool useLeftSide)
 	{
+		bool wasAimingRight = isAimingRight;
+		bool wasAimingLeft = isAimingLeft;
+
 		if (isAimingRight)
 		{
 			CaptureRelativeAimRight();
@@ -1431,11 +1434,21 @@ public class BodyController : MonoBehaviour
 		keepCameraAimWithoutArm = true;
 		keepCameraAimUsesLeft = useLeftSide;
 		SetTorsoAimPointToCurrentView();
-		StartAimSwapBlend(1f, 0f, 0f);
+		if (wasAimingRight || wasAimingLeft)
+		{
+			StartAimSwapBlend(1f, 0f, 0f);
+		}
+		else
+		{
+			SetAimStandbyImmediate();
+		}
 	}
 
 	private void SwitchToLoweredSideAI(bool useLeftSide)
 	{
+		bool wasAimingRight = isAimingRight;
+		bool wasAimingLeft = isAimingLeft;
+
 		if (isAimingRight)
 		{
 			CaptureRelativeAimRight();
@@ -1450,7 +1463,14 @@ public class BodyController : MonoBehaviour
 		keepCameraAimWithoutArm = true;
 		keepCameraAimUsesLeft = useLeftSide;
 		SetTorsoAimPointToCurrentView();
-		StartAimSwapBlendAI(1f, 0f, 0f);
+		if (wasAimingRight || wasAimingLeft)
+		{
+			StartAimSwapBlendAI(1f, 0f, 0f);
+		}
+		else
+		{
+			SetAimStandbyImmediate();
+		}
 	}
 
 	private bool IsLoweredSideSelected(bool useLeftSide)
@@ -2372,6 +2392,22 @@ public class BodyController : MonoBehaviour
 		}
 	}
 
+	private void SetAimStandbyImmediate()
+	{
+		if (headAimConstraint != null)
+		{
+			isAimSwapInProgress = false;
+			aimSwapElapsed = 0f;
+			ApplyAimSwapWeights(1f, 0f, 0f);
+		}
+
+		if (releaseFrozenAimPointsOnSwapComplete || freezeAimPointRight || freezeAimPointLeft)
+		{
+			releaseFrozenAimPointsOnSwapComplete = false;
+			ReleaseFrozenAimPoints();
+		}
+	}
+
 	private void UpdateAimSwapBlend()
 	{
 		if (!isAimSwapInProgress || headAimConstraint == null)
@@ -2580,7 +2616,7 @@ public class BodyController : MonoBehaviour
 		}
 		else
 		{
-			StartAimSwapBlendAI(1f, 0f, 0f);
+			SetAimStandbyImmediate();
 		}
 	}
 
@@ -2600,7 +2636,7 @@ public class BodyController : MonoBehaviour
 		}
 		else
 		{
-			StartAimSwapBlendAI(1f, 0f, 0f);
+			SetAimStandbyImmediate();
 		}
 	}
 
