@@ -54,6 +54,7 @@ public class BodyController : MonoBehaviour
 	public bool HasStartedAimingLeft => startedAimingLeft;
 	public bool KeepCameraAimWithoutArm => keepCameraAimWithoutArm;
 	public bool KeepCameraAimUsesLeft => keepCameraAimUsesLeft;
+	private const float SlowMoveSpeedMultiplier = 0.3f;
 
 	// [HideInInspector]
 	//public CoolingModel cooling;
@@ -1481,6 +1482,28 @@ public class BodyController : MonoBehaviour
 			&& keepCameraAimUsesLeft == useLeftSide;
 	}
 
+	private bool IsActiveArmLeft()
+	{
+		if (isAimingLeft && !isAimingRight)
+		{
+			return true;
+		}
+
+		if (isAimingRight && !isAimingLeft)
+		{
+			return false;
+		}
+
+		// Fallback for standby or transient mixed states: use selected side.
+		return keepCameraAimUsesLeft;
+	}
+
+	private bool IsActiveArmAiming()
+	{
+		bool activeArmIsLeft = IsActiveArmLeft();
+		return activeArmIsLeft ? isAimingLeft : isAimingRight;
+	}
+
 	void HandleScrollUp()
 	{
 		// Left already active: toggle left between aim and standby.
@@ -2036,8 +2059,10 @@ public class BodyController : MonoBehaviour
 
 	private void ExecutePhysicsBasedInputs()
 	{
-		bool isSlowWalking = !isAI && input != null && input.getShift();
-		legs.speedMultiplier = isAI ? 1f : (isSlowWalking ? 0.3f : 1f);
+		bool isShiftSlowWalking = !isAI && input != null && input.getShift();
+		bool isActiveArmAiming = !isAI && IsActiveArmAiming();
+		bool isSlowWalking = isShiftSlowWalking || isActiveArmAiming;
+		legs.speedMultiplier = isAI ? 1f : (isSlowWalking ? SlowMoveSpeedMultiplier : 1f);
 
 		if (legs.isCurrentVelocityLessThanMax())
 		{

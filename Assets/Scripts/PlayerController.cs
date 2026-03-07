@@ -33,6 +33,15 @@ public class PlayerController : MonoBehaviour, InputController
     private float mouseYrotation;
 
     public float scrollSensitivity = 0.05f;
+    public float scrollDebounceTime = 0.06f;
+    public float scrollDirectionChangeBlockTime = 0.05f;
+    [Range(0f, 1f)]
+    public float scrollReleaseThresholdRatio = 0.35f;
+    private int pendingScrollDirection = 0;
+    private bool scrollTriggerArmed = true;
+    private float nextScrollEventTime = 0f;
+    private float blockOppositeDirectionUntil = 0f;
+    private int lastScrollDirection = 0;
 
     public bool pressingFire1;
     public bool pressingFire2;
@@ -114,43 +123,70 @@ public class PlayerController : MonoBehaviour, InputController
 
     public bool getScroll()
     {
-        // Check if mouse wheel is scrolled
-        float scrollWheelInput = Input.GetAxis("Mouse ScrollWheel");
-
-        // If scrollWheelInput is not within the sensitivity threshold, return
-        if (Mathf.Abs(scrollWheelInput) < scrollSensitivity)
-        {
-            return false;
-        }
-
-        // Set didScroll to true
-        return true;
+        return pendingScrollDirection != 0;
     }
 
     public bool getScrollUp()
     {
-        // Check if mouse wheel is scrolled
-        float scrollWheelInput = Input.GetAxis("Mouse ScrollWheel");
-
-        if (scrollWheelInput > scrollSensitivity)
-        {
-            return true;
-        }
-
-        return false;
+        return ConsumeScrollDirection(1);
     }
 
     public bool getScrollDown()
     {
-        // Check if mouse wheel is scrolled
-        float scrollWheelInput = Input.GetAxis("Mouse ScrollWheel");
+        return ConsumeScrollDirection(-1);
+    }
 
-        if (scrollWheelInput < -scrollSensitivity)
+    private bool ConsumeScrollDirection(int direction)
+    {
+        if (pendingScrollDirection != direction)
         {
-            return true;
+            return false;
         }
 
-        return false;
+        pendingScrollDirection = 0;
+        return true;
+    }
+
+    private void UpdateScrollInput()
+    {
+        float scrollWheelInput = Input.GetAxis("Mouse ScrollWheel");
+        float threshold = Mathf.Max(0.0001f, scrollSensitivity);
+        float releaseThreshold = threshold * Mathf.Clamp01(scrollReleaseThresholdRatio);
+
+        if (Mathf.Abs(scrollWheelInput) <= releaseThreshold)
+        {
+            scrollTriggerArmed = true;
+            return;
+        }
+
+        if (!scrollTriggerArmed || Mathf.Abs(scrollWheelInput) < threshold)
+        {
+            return;
+        }
+
+        int direction = scrollWheelInput > 0f ? 1 : -1;
+        float now = Time.unscaledTime;
+        bool inDebounceWindow = now < nextScrollEventTime;
+        bool isOppositeBounce = lastScrollDirection != 0
+            && direction != lastScrollDirection
+            && now < blockOppositeDirectionUntil;
+
+        // Require a release back toward neutral before accepting another scroll event.
+        scrollTriggerArmed = false;
+
+        if (inDebounceWindow || isOppositeBounce)
+        {
+            return;
+        }
+
+        if (pendingScrollDirection == 0)
+        {
+            pendingScrollDirection = direction;
+        }
+
+        lastScrollDirection = direction;
+        nextScrollEventTime = now + Mathf.Max(0f, scrollDebounceTime);
+        blockOppositeDirectionUntil = now + Mathf.Max(0f, scrollDirectionChangeBlockTime);
     }
 
     public bool getSiphon()
@@ -201,5 +237,6 @@ public class PlayerController : MonoBehaviour, InputController
         pressingSiphon = Input.GetKey(siphonKey);
         pressingRestart = Input.GetKey(restartKey);
         pressingShift = Input.GetKey(shiftKey);
+        UpdateScrollInput();
     }
 }
