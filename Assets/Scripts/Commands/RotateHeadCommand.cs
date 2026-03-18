@@ -31,7 +31,9 @@ public class RotateHeadCommand : ICommand
     }
     public void Execute()
     {
-        if (sensors.bodyController.isAimingLeft)
+        bool useLeftHead = sensors.bodyController.isAimingLeft
+            || (sensors.bodyController.KeepCameraAimWithoutArm && sensors.bodyController.KeepCameraAimUsesLeft);
+        if (useLeftHead)
         {
             Vector3 rot = sensors.headL.transform.localRotation.eulerAngles;
             desiredX = rot.y + sensors.yRotation;
