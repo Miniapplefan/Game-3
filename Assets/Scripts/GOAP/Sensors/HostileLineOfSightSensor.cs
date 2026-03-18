@@ -1,16 +1,26 @@
 using CrashKonijn.Goap.Classes;
 using CrashKonijn.Goap.Interfaces;
 using CrashKonijn.Goap.Sensors;
-using Unity.Mathematics;
 using UnityEngine;
-using Random = UnityEngine.Random;
-using UnityEngine.AI;
 
 public class HostileLineOfSightSensor : LocalWorldSensorBase, IInjectable
 {
+	private const float SenseIntervalSeconds = 0.1f;
+	private const float AgentMoveThresholdSqr = 0.25f;
+	private const float TargetMoveThresholdSqr = 1f;
 
-	private Collider[] Colliders = new Collider[1];
 	private AttackConfigSO AttackConfig;
+	private readonly System.Collections.Generic.Dictionary<int, AgentRuntimeState> AgentStates = new System.Collections.Generic.Dictionary<int, AgentRuntimeState>();
+
+	private sealed class AgentRuntimeState
+	{
+		public SenseValue CachedValue;
+		public bool HasCachedValue;
+		public float NextSenseTime;
+		public Vector3 LastAgentPosition;
+		public Transform LastTargetTransform;
+		public Vector3 LastTargetPosition;
+	}
 
 	public override void Created()
 	{
@@ -22,53 +32,72 @@ public class HostileLineOfSightSensor : LocalWorldSensorBase, IInjectable
 
 	public override SenseValue Sense(IMonoAgent agent, IComponentReference references)
 	{
-		//agent.GetComponentInChildren<BodyState>().positionTracker.transform.position = agent.GetComponentInChildren<BodyState>().rightArm.transform.position;
-		//agent.GetComponentInChildren<BodyState>().positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.white;
-		bool enemyHasLOS = true;
-		//		Debug.Log(AttackConfig == null ? "AttackConfig Is null" : "AttackConfig Is OK");
-		if (Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.AttackableLayerMask) > 0)
+		var perception = SharedAgentPerception.GetSnapshot(agent, references, AttackConfig);
+		var runtimeState = GetRuntimeState(agent);
+		if (perception.BodyState == null)
 		{
-			//Player is in range, check if we can see them
-			RaycastHit hit1;
-			Vector3 direction1 = (Colliders[0].transform.position - agent.GetComponentInChildren<BodyState>().headCollider.transform.position).normalized;
-			if (Physics.SphereCast(agent.GetComponentInChildren<BodyState>().headCollider.transform.position, AttackConfig.LineOfSightSphereCastRadius, direction1, out hit1, Mathf.Infinity, AttackConfig.AttackableLayerMask | AttackConfig.ObstructionLayerMask))
-			{
-				//Debug.Log(hit1.collider.gameObject.name);
-				if (hit1.transform.GetComponent<PlayerController>() == null)
-				{
-					enemyHasLOS = false;
-					//agent.GetComponentInChildren<BodyState>().positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.red;
-				}
-				else
-				{
-					//Debug.Log("No LOS");
-					enemyHasLOS = true;
-				}
-			}
-			else
-			{
-				//Debug.Log("No LOS");
-				enemyHasLOS = true;
-			}
+			return new SenseValue(1);
 		}
-		else
-		{
-			//Debug.Log("No LOS");
-			enemyHasLOS = true;
-		}
-		if (enemyHasLOS)
-		{
-			// Debug.Log("LOS");
-			//agent.GetComponentInChildren<BodyState>().positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.red;
 
-		}
-		else
+		if (CanReuseCachedResult(agent.transform.position, runtimeState, perception))
 		{
-			//			Debug.Log("No LOS");
-			//agent.GetComponentInChildren<BodyState>().positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.white;
+			return runtimeState.CachedValue;
 		}
-		return new SenseValue(enemyHasLOS == true ? 1 : 0);
+
+		bool enemyHasLOS = !perception.IsTargetObstructed;
+		Transform targetTransform = perception.TargetTransform;
+		SenseValue value = new SenseValue(enemyHasLOS ? 1 : 0);
+		runtimeState.CachedValue = value;
+		runtimeState.HasCachedValue = true;
+		runtimeState.LastAgentPosition = agent.transform.position;
+		runtimeState.LastTargetTransform = targetTransform;
+		if (targetTransform != null)
+		{
+			runtimeState.LastTargetPosition = targetTransform.position;
+		}
+		runtimeState.NextSenseTime = Time.time + SenseIntervalSeconds + (Mathf.Abs(agent.transform.GetInstanceID()) % 5) * 0.01f;
+		return value;
 		//return new SenseValue(Mathf.CeilToInt(references.GetCachedComponent<NPCBrain>().bodyState.HeatContainer_getCurrentHeat()));
+	}
+
+	private AgentRuntimeState GetRuntimeState(IMonoAgent agent)
+	{
+		int key = agent.transform.GetInstanceID();
+		if (!AgentStates.TryGetValue(key, out AgentRuntimeState state))
+		{
+			state = new AgentRuntimeState();
+			AgentStates.Add(key, state);
+		}
+
+		return state;
+	}
+
+	private bool CanReuseCachedResult(Vector3 agentPosition, AgentRuntimeState runtimeState, SharedAgentPerception.Snapshot perception)
+	{
+		if (!runtimeState.HasCachedValue || Time.time >= runtimeState.NextSenseTime)
+		{
+			return false;
+		}
+
+		if ((agentPosition - runtimeState.LastAgentPosition).sqrMagnitude > AgentMoveThresholdSqr)
+		{
+			return false;
+		}
+
+		if (runtimeState.LastTargetTransform != perception.TargetTransform)
+		{
+			return false;
+		}
+
+		if (perception.TargetTransform != null)
+		{
+			if ((perception.TargetPosition - runtimeState.LastTargetPosition).sqrMagnitude > TargetMoveThresholdSqr)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	public void Inject(DependencyInjector injector)

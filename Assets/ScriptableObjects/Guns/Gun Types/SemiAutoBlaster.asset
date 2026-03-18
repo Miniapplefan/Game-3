@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 1
   GunName: Semi-Auto Blaster
-  ModelPrefab: {fileID: 7598915565659394106, guid: f922dffc9647a4044a3d9fba3acf6ac7, type: 3}
+  ModelPrefab: {fileID: 7598915565659394106, guid: 7b4dc96b410e845d28d56911a9471d51, type: 3}
   SpawnPoint: {x: 0, y: 0, z: 0}
   SpawnRotation: {x: 0, y: 0, z: 0}
   isNPCWeapon: 0

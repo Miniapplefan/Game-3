@@ -1,22 +1,46 @@
 using CrashKonijn.Goap.Classes;
 using CrashKonijn.Goap.Interfaces;
 using CrashKonijn.Goap.Sensors;
-using Unity.Mathematics;
 using UnityEngine;
 using Random = UnityEngine.Random;
 using UnityEngine.AI;
-using CrashKonijn.Goap.Classes.References;
 using System.Collections.Generic;
 
 public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 {
+	private const float SenseIntervalSeconds = 0.2f;
+	private const float AgentMoveThresholdSqr = 0.25f;
+	private const float TargetMoveThresholdSqr = 1f;
+	private const int MaxStrafePointSamples = 6;
+	private const int StrafePointsPerSense = 3;
+	private const int ObstacleChecksPerSense = 3;
+	private const int MaxRandomPositionAttempts = 3;
+	private const float ObstacleRefreshIntervalSeconds = 0.35f;
+	private const float ObstacleRefreshMoveThresholdSqr = 1f;
+
 	private AttackConfigSO AttackConfig;
-	private Collider[] TargetCollider = new Collider[1];
-	private Collider[] Colliders = new Collider[10];
 	private Collider[] EnvironmentalCoolingColliders = new Collider[10];
 	private Vector3 currentPosition;
 	private NavMeshAgent navMeshAgent;
-	private readonly List<Vector3> strafePoints = new List<Vector3>(16);
+	private readonly Dictionary<int, AgentRuntimeState> AgentStates = new Dictionary<int, AgentRuntimeState>();
+
+	private sealed class AgentRuntimeState
+	{
+		public readonly Collider[] CachedObstacles = new Collider[10];
+		public Vector3 CachedPosition;
+		public bool HasCachedPosition;
+		public float NextSenseTime;
+		public Vector3 LastAgentPosition;
+		public Transform LastTargetTransform;
+		public Vector3 LastTargetPosition;
+		public int StrafePointStartIndex;
+		public int ObstacleScanStartIndex;
+		public int CachedObstacleCount;
+		public float NextObstacleRefreshTime;
+		public Transform ObstacleTargetTransform;
+		public Vector3 ObstacleTargetPosition;
+		public Vector3 ObstacleAgentPosition;
+	}
 
 	public override void Created()
 	{
@@ -28,19 +52,23 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 
 	public override ITarget Sense(IMonoAgent agent, IComponentReference references)
 	{
+		var perception = SharedAgentPerception.GetSnapshot(agent, references, AttackConfig);
+		var runtimeState = GetRuntimeState(agent);
 		currentPosition = agent.transform.position;
-		navMeshAgent = agent.GetComponent<NavMeshAgent>();
+		navMeshAgent = perception.NavMeshAgent;
 
-		// 	Vector3 coverPosition = GetCoverPosition(agent);
-		// 	Vector3 environmentalCoolingElementPosition = GetEnvironmentalCoolingPosition(agent);
-		// 	Vector3 position;
+		if (perception.BodyState == null || navMeshAgent == null)
+		{
+			return new PositionTarget(agent.transform.position);
+		}
 
-		// 	position = Vector3.Distance(currentPosition, coverPosition) <
-		//  Vector3.Distance(currentPosition, environmentalCoolingElementPosition) ? coverPosition : environmentalCoolingElementPosition;
+		if (CanReuseCachedResult(agent.transform.position, runtimeState, perception))
+		{
+			return new PositionTarget(runtimeState.CachedPosition);
+		}
 
-		Vector3 position = GetCoverPosition(agent);
-
-		return new PositionTarget(position);
+		Vector3 position = GetCoverPosition(agent, perception, runtimeState, out Transform targetTransform);
+		return CachePosition(runtimeState, agent.transform.GetInstanceID(), position, agent.transform.position, targetTransform);
 	}
 
 	private Vector3 GetEnvironmentalCoolingPosition(IMonoAgent agent)
@@ -101,174 +129,200 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 	}
 
-	private Vector3 GetCoverPosition(IMonoAgent agent)
+	private Vector3 GetCoverPosition(IMonoAgent agent, SharedAgentPerception.Snapshot perception, AgentRuntimeState runtimeState, out Transform targetTransform)
 	{
-		int count = 0;
-
-		if (Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.AttackableLayerMask) > 0)
+		targetTransform = perception.TargetTransform;
+		if (perception.HasTarget)
 		{
-			var bodyState = agent.GetComponentInChildren<BodyState>();
-			var ag = bodyState.heatContainer.airGrid;
-			RaycastHit hit1;
-			Vector3 direction1 = (Colliders[0].gameObject.GetComponentInParent<BodyState>().headCollider.transform.position - agent.GetComponentInChildren<BodyState>().headCollider.transform.position).normalized;
-			//+ AttackConfig.EyeLevel
-			if (Physics.SphereCast(agent.GetComponentInChildren<BodyState>().headCollider.transform.position, AttackConfig.LineOfSightSphereCastRadius, direction1, out hit1, Mathf.Infinity, AttackConfig.AttackableLayerMask | AttackConfig.ObstructionLayerMask))
+			Vector3 targetPosition = perception.TargetPosition;
+			if (perception.CanSeeTarget)
 			{
-				if (hit1.transform.GetComponent<PlayerController>() != null)
+				if (TryGetClosestHiddenStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
 				{
-					//********
-					// float distanceToPlayer = Vector3.Distance(agent.transform.position, Colliders[0].transform.position);
+					return closestPoint;
+				}
 
-					// // TODO Huge frame drop spike related to this while loop. spread the work out over multiple frames somehow
-					// while (count < 10)
-					// {
-					// 	Vector3 randomPointOnCircle = GetRandomPointOnCircle(Colliders[0].transform.position, distanceToPlayer);
-					// 	float distance = Vector3.Distance(agent.transform.position, randomPointOnCircle);
-
-					// 	if (distance < distanceToPlayer)
-					// 	{
-					// 		Vector3 direction2 = (Colliders[0].transform.position - randomPointOnCircle).normalized;
-					// 		RaycastHit hit2;
-					// 		if (Physics.Raycast(randomPointOnCircle, direction2, out hit2, Mathf.Infinity, AttackConfig.AttackableLayerMask | AttackConfig.ObstructionLayerMask))
-					// 		{
-					// 			if (hit2.transform.GetComponent<PlayerController>() == null)
-					// 			{
-					// 				//Debug.Log("Do not see player, moving");
-					// 				return randomPointOnCircle;
-					// 			}
-					// 		}
-					// 	}
-					// 	count++;
-					// }
-					//********
-					strafePoints.Clear();
-					float lineLength = 20f; // Length of the strafing line
-					int numberOfPoints = 10; // Number of points to evaluate
-					Vector3 direction = Vector3.Cross(Vector3.up, (Colliders[0].transform.position - agent.transform.position).normalized); // Perpendicular to the player direction
-
-					for (int i = numberOfPoints - 1; i >= 0; i--) // Reverse the order
-					{
-						float t = (float)i / (numberOfPoints - 1); // Normalize to range [0, 1]
-						Vector3 point = agent.transform.position + direction * (t * lineLength - lineLength / 2);
-						strafePoints.Add(point);
-					}
-
-					Vector3 closestPoint = Vector3.zero;
-					float closestDistance = float.MaxValue;
-
-					foreach (Vector3 point in strafePoints)
-					{
-						//Debug.Log("checking points");
-						float distanceToPlayer = Vector3.Distance(agent.transform.position, Colliders[0].transform.position);
-						float distanceToAI = Vector3.Distance(point, agent.transform.position);
-						//distanceToAI < distanceToPlayer && 
-						if (!HasLineOfSight(point, Colliders[0].transform.position))
-						{
-							//Debug.Log("point within range and has los");
-							if (distanceToAI < closestDistance)
-							{
-								//Debug.Log("closer point found");
-								closestDistance = distanceToAI;
-								closestPoint = point;
-							}
-						}
-					}
-
-					if (closestPoint != Vector3.zero)
-					{
-						//						Debug.Log("Strafe");
-						return closestPoint;
-					}
-
-
-					while (count < 10)
-					{
-						for (int i = 0; i < Colliders.Length; i++)
-						{
-							Colliders[i] = null;
-						}
-
-						int target = Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, TargetCollider, AttackConfig.AttackableLayerMask);
-
-						int hits = Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.ObstructionLayerMask);
-
-						int hitReduction = 0;
-						for (int i = 0; i < hits; i++)
-						{
-							if (Vector3.Distance(Colliders[i].transform.position, TargetCollider[0].transform.position) < AttackConfig.MinPlayerDistance || Colliders[i].bounds.size.y < AttackConfig.MinObstacleHeight)
-							{
-								Colliders[i] = null;
-								hitReduction++;
-							}
-						}
-						hits -= hitReduction;
-
-						System.Array.Sort(Colliders, ColliderArraySortComparer);
-
-						for (int i = 0; i < hits; i++)
-						{
-							if (NavMesh.SamplePosition(Colliders[i].transform.position, out NavMeshHit hit, 4f, navMeshAgent.areaMask))
-							{
-								if (!NavMesh.FindClosestEdge(hit.position, out hit, navMeshAgent.areaMask))
-								{
-									Debug.LogError($"Unable to find edge close to {hit.position}");
-								}
-								if (Vector3.Dot(hit.normal, (TargetCollider[0].transform.position - hit.position).normalized) < AttackConfig.HideSensitivity)
-								{
-									//Debug.Log("Llama");
-									return hit.position;
-								}
-								else
-								{
-									// Since the previous spot wasn't facing "away" enough from the target, we'll try on the other side of the object
-									if (NavMesh.SamplePosition(Colliders[i].transform.position - (TargetCollider[0].transform.position - hit.position).normalized * 2, out NavMeshHit hit2, 2f, navMeshAgent.areaMask))
-									{
-										if (!NavMesh.FindClosestEdge(hit2.position, out hit2, navMeshAgent.areaMask))
-										{
-											Debug.LogError($"Unable to find edge close to {hit2.position} (second attempt)");
-										}
-
-
-										if (Vector3.Dot(hit2.normal, (TargetCollider[0].transform.position - hit2.position).normalized) < AttackConfig.HideSensitivity)
-										{
-											//Debug.Log("Llama");
-											return hit2.position;
-										}
-									}
-								}
-							}
-							else
-							{
-								Debug.LogError($"Unable to find NavMesh near object {Colliders[i].name} at {Colliders[i].transform.position}");
-							}
-						}
-						count++;
-
-					}
+				if (TryGetIncrementalCoverPoint(agent, targetTransform, targetPosition, runtimeState, out Vector3 coverPoint))
+				{
+					return coverPoint;
 				}
 			}
+
 			Vector3 randPos = GetRandomPosition(agent);
-			while (Vector3.Distance(randPos, agent.transform.position) > Vector3.Distance(Colliders[0].transform.position, agent.transform.position))
+			while (Vector3.Distance(randPos, agent.transform.position) > Vector3.Distance(targetPosition, agent.transform.position))
 			{
 				randPos = GetRandomPosition(agent);
 			}
 			//Debug.Log("Random");
 			return randPos;
 		}
+
+		if (runtimeState.LastTargetTransform != null)
+		{
+			targetTransform = runtimeState.LastTargetTransform;
+		}
+
 		//Debug.Log("Random");
 		return GetRandomPosition(agent);
 	}
 
+	private bool TryGetClosestHiddenStrafePoint(IMonoAgent agent, Vector3 targetPosition, AgentRuntimeState runtimeState, out Vector3 closestPoint)
+	{
+		closestPoint = Vector3.zero;
+		float closestDistance = float.MaxValue;
+		float lineLength = 20f;
+		Vector3 direction = Vector3.Cross(Vector3.up, (targetPosition - agent.transform.position).normalized);
+		int totalPoints = MaxStrafePointSamples;
+		int samplesToCheck = Mathf.Min(totalPoints, StrafePointsPerSense);
+		int startIndex = runtimeState.StrafePointStartIndex;
+
+		for (int i = 0; i < samplesToCheck; i++)
+		{
+			int index = (startIndex + i) % totalPoints;
+			float t = totalPoints <= 1 ? 0.5f : (float)index / (totalPoints - 1);
+			Vector3 point = agent.transform.position + direction * (t * lineLength - lineLength / 2f);
+			float distanceToAgent = Vector3.Distance(point, agent.transform.position);
+
+			if (HasLineOfSight(point, targetPosition))
+			{
+				continue;
+			}
+
+			if (distanceToAgent < closestDistance)
+			{
+				closestDistance = distanceToAgent;
+				closestPoint = point;
+			}
+		}
+
+		runtimeState.StrafePointStartIndex = (startIndex + samplesToCheck) % totalPoints;
+		return closestPoint != Vector3.zero;
+	}
+
+	private bool TryGetIncrementalCoverPoint(IMonoAgent agent, Transform targetTransform, Vector3 targetPosition, AgentRuntimeState runtimeState, out Vector3 coverPoint)
+	{
+		coverPoint = agent.transform.position;
+		RefreshObstacleCandidatesIfNeeded(agent, runtimeState, targetTransform, targetPosition);
+		if (runtimeState.CachedObstacleCount <= 0)
+		{
+			return false;
+		}
+
+		int checksToRun = Mathf.Min(runtimeState.CachedObstacleCount, ObstacleChecksPerSense);
+		int startIndex = runtimeState.ObstacleScanStartIndex;
+
+		for (int i = 0; i < checksToRun; i++)
+		{
+			int index = (startIndex + i) % runtimeState.CachedObstacleCount;
+			Collider obstacle = runtimeState.CachedObstacles[index];
+			if (obstacle == null)
+			{
+				continue;
+			}
+
+			if (TryGetCoverPointNearObstacle(obstacle, targetPosition, out coverPoint))
+			{
+				runtimeState.ObstacleScanStartIndex = (index + 1) % runtimeState.CachedObstacleCount;
+				return true;
+			}
+		}
+
+		runtimeState.ObstacleScanStartIndex = (startIndex + checksToRun) % runtimeState.CachedObstacleCount;
+		return false;
+	}
+
+	private void RefreshObstacleCandidatesIfNeeded(IMonoAgent agent, AgentRuntimeState runtimeState, Transform targetTransform, Vector3 targetPosition)
+	{
+		bool shouldRefresh = Time.time >= runtimeState.NextObstacleRefreshTime
+			|| runtimeState.ObstacleTargetTransform != targetTransform
+			|| (agent.transform.position - runtimeState.ObstacleAgentPosition).sqrMagnitude > ObstacleRefreshMoveThresholdSqr
+			|| (targetPosition - runtimeState.ObstacleTargetPosition).sqrMagnitude > ObstacleRefreshMoveThresholdSqr;
+
+		if (!shouldRefresh)
+		{
+			return;
+		}
+
+		for (int i = 0; i < runtimeState.CachedObstacles.Length; i++)
+		{
+			runtimeState.CachedObstacles[i] = null;
+		}
+
+		int hits = Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, runtimeState.CachedObstacles, AttackConfig.ObstructionLayerMask);
+		int filteredCount = 0;
+		for (int i = 0; i < hits; i++)
+		{
+			Collider obstacle = runtimeState.CachedObstacles[i];
+			if (obstacle == null)
+			{
+				continue;
+			}
+
+			if (Vector3.Distance(obstacle.transform.position, targetPosition) < AttackConfig.MinPlayerDistance || obstacle.bounds.size.y < AttackConfig.MinObstacleHeight)
+			{
+				continue;
+			}
+
+			runtimeState.CachedObstacles[filteredCount] = obstacle;
+			filteredCount++;
+		}
+
+		for (int i = filteredCount; i < runtimeState.CachedObstacles.Length; i++)
+		{
+			runtimeState.CachedObstacles[i] = null;
+		}
+
+		runtimeState.CachedObstacleCount = filteredCount;
+		currentPosition = agent.transform.position;
+		System.Array.Sort(runtimeState.CachedObstacles, ColliderArraySortComparer);
+		runtimeState.ObstacleScanStartIndex = 0;
+		runtimeState.ObstacleTargetTransform = targetTransform;
+		runtimeState.ObstacleTargetPosition = targetPosition;
+		runtimeState.ObstacleAgentPosition = agent.transform.position;
+		runtimeState.NextObstacleRefreshTime = Time.time + ObstacleRefreshIntervalSeconds;
+	}
+
+	private bool TryGetCoverPointNearObstacle(Collider obstacle, Vector3 targetPosition, out Vector3 coverPoint)
+	{
+		coverPoint = obstacle.transform.position;
+		if (NavMesh.SamplePosition(obstacle.transform.position, out NavMeshHit hit, 4f, navMeshAgent.areaMask))
+		{
+			if (!NavMesh.FindClosestEdge(hit.position, out hit, navMeshAgent.areaMask))
+			{
+				Debug.LogError($"Unable to find edge close to {hit.position}");
+			}
+
+			if (Vector3.Dot(hit.normal, (targetPosition - hit.position).normalized) < AttackConfig.HideSensitivity)
+			{
+				coverPoint = hit.position;
+				return true;
+			}
+
+			Vector3 fallbackDirection = (targetPosition - hit.position).normalized;
+			if (NavMesh.SamplePosition(obstacle.transform.position - fallbackDirection * 2f, out NavMeshHit hit2, 2f, navMeshAgent.areaMask))
+			{
+				if (!NavMesh.FindClosestEdge(hit2.position, out hit2, navMeshAgent.areaMask))
+				{
+					Debug.LogError($"Unable to find edge close to {hit2.position} (second attempt)");
+				}
+
+				if (Vector3.Dot(hit2.normal, (targetPosition - hit2.position).normalized) < AttackConfig.HideSensitivity)
+				{
+					coverPoint = hit2.position;
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		Debug.LogError($"Unable to find NavMesh near object {obstacle.name} at {obstacle.transform.position}");
+		return false;
+	}
+
 	bool HasLineOfSight(Vector3 start, Vector3 end)
 	{
-		RaycastHit hit;
-		//Physics.Raycast(start, (end - start).normalized, out hit, Mathf.Infinity)
-		if (Physics.SphereCast(start, AttackConfig.LineOfSightSphereCastRadius, (end - start).normalized, out hit, Mathf.Infinity, AttackConfig.AttackableLayerMask | AttackConfig.ObstructionLayerMask))
-		{
-			//Debug.Log(hit.transform.GetComponent<PlayerController>() != null);
-			return hit.transform.GetComponent<PlayerController>() != null;
-		}
-		return false;
+		return SharedAgentPerception.HasLineOfSight(start, end, AttackConfig);
 	}
 
 	public int ColliderArraySortComparer(Collider A, Collider B)
@@ -295,7 +349,7 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 	{
 		int count = 0;
 
-		while (count < 5)
+		while (count < MaxRandomPositionAttempts)
 		{
 			Vector2 random = Random.insideUnitCircle * 10;
 			Vector3 position = agent.transform.position + new UnityEngine.Vector3(
@@ -329,6 +383,60 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 
 		// Return the random point on the circle
 		return new Vector3(x, y, z);
+	}
+
+	private AgentRuntimeState GetRuntimeState(IMonoAgent agent)
+	{
+		int key = agent.transform.GetInstanceID();
+		if (!AgentStates.TryGetValue(key, out AgentRuntimeState state))
+		{
+			state = new AgentRuntimeState();
+			AgentStates.Add(key, state);
+		}
+
+		return state;
+	}
+
+	private bool CanReuseCachedResult(Vector3 agentPosition, AgentRuntimeState runtimeState, SharedAgentPerception.Snapshot perception)
+	{
+		if (!runtimeState.HasCachedPosition || Time.time >= runtimeState.NextSenseTime)
+		{
+			return false;
+		}
+
+		if ((agentPosition - runtimeState.LastAgentPosition).sqrMagnitude > AgentMoveThresholdSqr)
+		{
+			return false;
+		}
+
+		if (runtimeState.LastTargetTransform != perception.TargetTransform)
+		{
+			return false;
+		}
+
+		if (perception.TargetTransform != null)
+		{
+			if ((perception.TargetPosition - runtimeState.LastTargetPosition).sqrMagnitude > TargetMoveThresholdSqr)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private PositionTarget CachePosition(AgentRuntimeState runtimeState, int agentId, Vector3 position, Vector3 agentPosition, Transform targetTransform)
+	{
+		runtimeState.CachedPosition = position;
+		runtimeState.HasCachedPosition = true;
+		runtimeState.LastAgentPosition = agentPosition;
+		runtimeState.LastTargetTransform = targetTransform;
+		if (targetTransform != null)
+		{
+			runtimeState.LastTargetPosition = targetTransform.position;
+		}
+		runtimeState.NextSenseTime = Time.time + SenseIntervalSeconds + (Mathf.Abs(agentId) % 5) * 0.01f;
+		return new PositionTarget(position);
 	}
 
 	public void Inject(DependencyInjector injector)

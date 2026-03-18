@@ -26,7 +26,7 @@ public class AgentMoveBehavior : MonoBehaviour
 		bodyController = GetComponentInChildren<BodyController>();
 		bodyState = GetComponentInChildren<BodyState>();
 		navMeshSurface = FindObjectOfType<NavMeshSurface>();
-		// NavMeshAgent.autoRepath = true;
+		NavMeshAgent.autoRepath = true;
 	}
 
 	private void OnEnable()
@@ -87,9 +87,6 @@ public class AgentMoveBehavior : MonoBehaviour
 
 		if (MinMoveDistance <= Vector3.Distance(CurrentTarget.Position, LastPosition) && NavMeshAgent.enabled)
 		{
-			navMeshSurface.UpdateNavMesh(navMeshSurface.navMeshData);
-			navMeshSurface.BuildNavMesh();
-			NavMeshAgent.ResetPath();
 			LastPosition = CurrentTarget.Position;
 			NavMeshAgent.SetDestination(CurrentTarget.Position);
 			//AIController.SetAimTarget(CurrentTarget.Position + EyeLevel);
