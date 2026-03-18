@@ -107,6 +107,37 @@ CapsuleCollider:
   m_Height: 30
   m_Direction: 1
   m_Center: {x: 0.0000010096046, y: 13.87, z: -0.00000008940697}
+--- !u!1 &6494620213105966851
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7608259967045973232}
+  m_Layer: 0
+  m_Name: grip
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7608259967045973232
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6494620213105966851}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0.009, y: 0.026, z: 0.098}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7598915565659394107}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7592178318400311075
 GameObject:
   m_ObjectHideFlags: 0
@@ -222,6 +253,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7598915565659394107}
+  - component: {fileID: 4364966399554045612}
   m_Layer: 0
   m_Name: beretta
   m_TagString: Untagged
@@ -247,8 +279,23 @@ Transform:
   - {fileID: 2738374136521435646}
   - {fileID: 7141675774264887405}
   - {fileID: 1610701812815782839}
+  - {fileID: 7608259967045973232}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4364966399554045612
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7598915565659394106}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5bb889f8f4f548c28e130022b6c85132, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grip: {fileID: 7608259967045973232}
+  muzzle: {fileID: 7141675774264887405}
 --- !u!1 &7598915565909737474
 GameObject:
   m_ObjectHideFlags: 0
@@ -299,7 +346,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7598915565909737474}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 1
   m_DynamicOccludee: 1
@@ -488,7 +535,7 @@ Transform:
   m_GameObject: {fileID: 7871220653687401201}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.078, z: 0.311}
+  m_LocalPosition: {x: 0, y: 0.096, z: 0.293}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -5502,10 +5549,30 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -4683669308469848369, guid: 6f0ee9fb65a224f92980ff2c1c18d85b, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 3ea1490c98e5148f791ce33d3b81e115, type: 2}
+    - target: {fileID: -678588488315902003, guid: 6f0ee9fb65a224f92980ff2c1c18d85b, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 3ea1490c98e5148f791ce33d3b81e115, type: 2}
     - target: {fileID: 919132149155446097, guid: 6f0ee9fb65a224f92980ff2c1c18d85b, type: 3}
       propertyPath: m_Name
       value: Beretta 92fs
       objectReference: {fileID: 0}
+    - target: {fileID: 1442450553484104045, guid: 6f0ee9fb65a224f92980ff2c1c18d85b, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6745302439343835087, guid: 6f0ee9fb65a224f92980ff2c1c18d85b, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 3ea1490c98e5148f791ce33d3b81e115, type: 2}
+    - target: {fileID: 7202271454713460447, guid: 6f0ee9fb65a224f92980ff2c1c18d85b, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 3ea1490c98e5148f791ce33d3b81e115, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

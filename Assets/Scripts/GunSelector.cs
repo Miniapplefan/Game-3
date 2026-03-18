@@ -25,6 +25,7 @@ public class GunSelector : MonoBehaviour
 	private LineRenderer laser;
 	public TMP_Text ammoIndicator;
 	private Vector3 raycastPoint;
+	private Quaternion initialLocalRotation;
 
 	[Space]
 	[Header("Runtime Filled")]
@@ -40,6 +41,7 @@ public class GunSelector : MonoBehaviour
 
 	private void Start()
 	{
+		initialLocalRotation = transform.localRotation;
 		ActiveGun1 = CreateGun(Gun1, Gun1Parent);
 		ActiveGun2 = CreateGun(Gun2, Gun2Parent);
 		ActiveGun3 = CreateGun(Gun3, Gun3Parent);
@@ -86,10 +88,63 @@ public class GunSelector : MonoBehaviour
 	{
 		foreach (Transform gun in gunHolders)
 		{
+			// Slot 1 is now treated as the hand-held weapon, so let the hand aim it.
+			if (
+				Gun1Parent != null
+				&& (gun == Gun1Parent.transform || gun.IsChildOf(Gun1Parent.transform))
+				&& ActiveGun1 != null
+				&& ActiveGun1.GripTransform != null
+			)
+			{
+				continue;
+			}
+
 			Vector3 targetDirection = targetPoint - gun.position;
 			Quaternion targetRotation = Quaternion.LookRotation(targetDirection);
 			gun.rotation = targetRotation;
 		}
+	}
+
+	public Quaternion GetPrimaryHandAimRotation(Vector3 targetPoint, Vector3 fallbackUp)
+	{
+		Transform muzzle = ActiveGun1 != null ? ActiveGun1.MuzzleTransform : null;
+		if (muzzle == null)
+		{
+			Vector3 fallbackDirection = targetPoint - transform.position;
+			if (fallbackDirection.sqrMagnitude <= Mathf.Epsilon)
+			{
+				return transform.rotation;
+			}
+
+			return Quaternion.LookRotation(fallbackDirection.normalized, fallbackUp);
+		}
+
+		Vector3 desiredDirection = targetPoint - muzzle.position;
+		if (desiredDirection.sqrMagnitude <= Mathf.Epsilon)
+		{
+			return transform.rotation;
+		}
+
+		Vector3 desiredForward = desiredDirection.normalized;
+		Quaternion parentRotation = transform.parent != null ? transform.parent.rotation : Quaternion.identity;
+		Vector3 preferredUp = parentRotation * (initialLocalRotation * Vector3.up);
+		Vector3 correctedUp = Vector3.ProjectOnPlane(preferredUp, desiredForward);
+
+		// Keep a stable roll reference by projecting the authored local +Y onto the aim plane.
+		if (correctedUp.sqrMagnitude <= 0.0001f)
+		{
+			correctedUp = fallbackUp;
+			correctedUp = Vector3.ProjectOnPlane(correctedUp, desiredForward);
+			if (correctedUp.sqrMagnitude <= 0.0001f)
+			{
+				correctedUp = Vector3.ProjectOnPlane(parentRotation * (initialLocalRotation * Vector3.right), desiredForward);
+			}
+		}
+		correctedUp.Normalize();
+
+		Quaternion desiredMuzzleRotation = Quaternion.LookRotation(desiredForward, correctedUp);
+		Quaternion localMuzzleRotation = Quaternion.Inverse(transform.rotation) * muzzle.rotation;
+		return desiredMuzzleRotation * Quaternion.Inverse(localMuzzleRotation);
 	}
 
 	private void DrawLaser(Vector3 startPosition, Vector3 endPosition)
@@ -172,4 +227,3 @@ public class GunSelector : MonoBehaviour
 		Gizmos.DrawLine(transform.position, destination);
 	}
 }
-

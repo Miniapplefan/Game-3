@@ -7,15 +7,20 @@ using UnityEngine.Pool;
 public class Gun : MonoBehaviour
 {
 	public GunDataScriptableObject gunData;
+	public Transform ModelRoot => modelRoot;
+	public Transform GripTransform => mountPoints != null ? mountPoints.Grip : null;
+	public Transform MuzzleTransform => mountPoints != null && mountPoints.Muzzle != null ? mountPoints.Muzzle : shootSystem != null ? shootSystem.transform : null;
 
 	private Rigidbody weapon;
+	private Transform modelRoot;
+	private WeaponMountPoints mountPoints;
 	private ParticleSystem shootSystem;
 	private LineRenderer laser;
 	private float lastRaycastTime;
 	private float raycastInterval = 0.5f;
 	private GameObject weaponHitPoint;
 	private float lastShootTime;
-	private GameObject weaponSlotLocation;
+	private Transform weaponSlotLocation;
 	private ObjectPool<TrailRenderer> TrailPool;
 	private ObjectPool<ParticleSystem> HitParticlePool;
 	public bool isPowered;
@@ -34,7 +39,7 @@ public class Gun : MonoBehaviour
 
 	public void SetParent(GameObject parent, Rigidbody weap)
 	{
-		weaponSlotLocation = parent;
+		weaponSlotLocation = parent != null ? parent.transform : null;
 		weapon = weap;
 	}
 
@@ -46,9 +51,14 @@ public class Gun : MonoBehaviour
 		HitParticlePool = new ObjectPool<ParticleSystem>(CreateHitParticles);
 
 		GameObject model = Instantiate(gunData.ModelPrefab);
-		model.transform.SetParent(weaponSlotLocation.transform, false);
-		model.transform.localPosition = gunData.SpawnPoint;
-		model.transform.localRotation = Quaternion.Euler(gunData.SpawnRotation);
+		modelRoot = model.transform;
+		mountPoints = model.GetComponent<WeaponMountPoints>();
+		if (mountPoints == null)
+		{
+			mountPoints = model.GetComponentInChildren<WeaponMountPoints>();
+		}
+
+		AttachModelToSocket(modelRoot);
 
 		shootSystem = model.GetComponentInChildren<ParticleSystem>();
 		laser = model.GetComponentInChildren<LineRenderer>();
@@ -58,14 +68,41 @@ public class Gun : MonoBehaviour
 
 		prepTimeLeftCache = gunData.shootConfig.prepTime;
 		prepInd = model.transform.Find("prep");
-		prepIndicatorSizeCache = prepInd.transform.localScale;
-		prepInd.gameObject.SetActive(false);
+		if (prepInd != null)
+		{
+			prepIndicatorSizeCache = prepInd.transform.localScale;
+			prepInd.gameObject.SetActive(false);
+		}
 
 		raycastInterval += Random.Range(0.01f, 0.02f);
 
 		isAI = weapon.GetComponentInParent<AIController>() != null ? true : false;
 
 		if (!isAI) bodyController = weapon.GetComponentInParent<BodyController>();
+	}
+
+	private void AttachModelToSocket(Transform model)
+	{
+		if (model == null || weaponSlotLocation == null)
+		{
+			return;
+		}
+
+		if (mountPoints != null && mountPoints.Grip != null)
+		{
+			Transform grip = mountPoints.Grip;
+			Quaternion rotationDelta = weaponSlotLocation.rotation * Quaternion.Inverse(grip.rotation);
+			Quaternion targetRotation = rotationDelta * model.rotation;
+			Vector3 targetPosition = weaponSlotLocation.position + rotationDelta * (model.position - grip.position);
+
+			model.SetPositionAndRotation(targetPosition, targetRotation);
+			model.SetParent(weaponSlotLocation, true);
+			return;
+		}
+
+		model.SetParent(weaponSlotLocation, false);
+		model.localPosition = gunData.SpawnPoint;
+		model.localRotation = Quaternion.Euler(gunData.SpawnRotation);
 	}
 
 	public bool isCharged()
@@ -89,10 +126,14 @@ public class Gun : MonoBehaviour
 				{
 					SingleShot();
 				}
+
 				chargeTimeLeftCache = gunData.shootConfig.fireRate;
 				prepTimeLeftCache = gunData.shootConfig.prepTime;
-				prepInd.gameObject.SetActive(false);
-				prepInd.localScale = prepIndicatorSizeCache;
+				if (prepInd != null)
+				{
+					prepInd.gameObject.SetActive(false);
+					prepInd.localScale = prepIndicatorSizeCache;
+				}
 
 				isFiring = false;
 				return true;
@@ -162,8 +203,9 @@ public class Gun : MonoBehaviour
 						gunData.shootConfig.Spread.z
 					)
 				);
-			shootDirection.Normalize();
-			weapon.AddForce((-weaponSlotLocation.GetComponentInParent<GunSelector>().gameObject.transform.right).normalized * gunData.shootConfig.recoil, ForceMode.Impulse);
+				shootDirection.Normalize();
+				Vector3 recoilDirection = modelRoot != null ? modelRoot.up.normalized : transform.up.normalized;
+				weapon.AddForce(recoilDirection * gunData.shootConfig.recoil, ForceMode.Impulse);
 
 			if (isAI)
 			{
@@ -397,8 +439,11 @@ public class Gun : MonoBehaviour
 
 		if (isPowered && prepTimeLeftCache > 0 && isFiring)
 		{
-			prepInd.gameObject.SetActive(true);
-			prepInd.localScale *= 1.05f;
+			if (prepInd != null)
+			{
+				prepInd.gameObject.SetActive(true);
+				prepInd.localScale *= 1.05f;
+			}
 
 			prepTimeLeftCache -= Time.deltaTime;
 			Shoot();

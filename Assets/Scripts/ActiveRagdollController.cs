@@ -263,7 +263,6 @@ public class ActiveRagdollController : MonoBehaviour
 
 		if (bodyState.hitStunAmount <= 0 && !bodyController.isDead)
 		{
-
 			float speedR = (1f / RagdollRightArmRb.velocity.magnitude);
 			Vector3 direction = target.transform.position - RagdollRightArm.transform.position;
 			Quaternion toRotation = Quaternion.LookRotation(direction, transform.up);
@@ -276,7 +275,9 @@ public class ActiveRagdollController : MonoBehaviour
 			RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speedR * Time.deltaTime);
 
 			Vector3 d = target.transform.position - RagdollRightWeapon.transform.position;
-			Quaternion t = Quaternion.LookRotation(d, transform.right);
+			Quaternion t = bodyController.guns != null
+				? bodyController.guns.GetPrimaryHandAimRotation(target.transform.position, transform.right)
+				: Quaternion.LookRotation(d, transform.right);
 
 			RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, t, speedR * Time.deltaTime);
 
@@ -288,7 +289,9 @@ public class ActiveRagdollController : MonoBehaviour
 			RagdollLeftArm.transform.rotation = Quaternion.Lerp(RagdollLeftArm.transform.rotation, toRotation, speedL * Time.deltaTime);
 
 			d = targetL.transform.position - RagdollLeftWeapon.transform.position;
-			t = Quaternion.LookRotation(d, transform.right);
+			t = bodyController.gunsL != null
+				? bodyController.gunsL.GetPrimaryHandAimRotation(targetL.transform.position, transform.right)
+				: Quaternion.LookRotation(d, transform.right);
 
 			RagdollLeftWeapon.transform.rotation = Quaternion.Lerp(RagdollLeftWeapon.transform.rotation, t, speedL * Time.deltaTime);
 
