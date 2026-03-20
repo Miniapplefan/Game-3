@@ -13619,6 +13619,56 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1e6718bf8d7134189a29bc45e124181b, type: 3}
+--- !u!1 &1689092046 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2857187716034250568, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+  m_PrefabInstance: {fileID: 4126486493731784468}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1689092050
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1689092046}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2dfefcdf681c7064dbc706c822b5c9a1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  projectionType: 4
+  fieldOfView: 160
+  fieldOfViewSetting: 2
+  intensity: 0.7
+  isAdaptiveAutomatic: 0
+  adaptivePower: 9
+  adaptiveTolerance: 1
+  adaptiveReferenceUp: {x: 0, y: 1, z: 0}
+  obliqueBias: {x: 0, y: 0}
+  obliqueZeroDistance: 0
+  perspectiveOffset: 2000
+  orthographicSize: 100
+  renderSizeFactor: 2
+  projectionPrecision: 32
+  targetTexture: {fileID: 0}
+  viewportRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  filterMode: 2
+  filterSharpen: 1.414
+  renderTextureDepthBits: 16
+  projectionWireframe: 0
+  screenshotRenderSizeFactor: 1
+  screenshotPassCount: 1
+  screenshotPassImproveSSAA: 1
+  screenshotWidth: 1920
+  screenshotHeight: 1080
+  shaderOverSampling: {fileID: 4800000, guid: 3a23ee0b3d58aae46826bb2e22ea14c7, type: 3}
+  shaderStereoShapeProj: {fileID: 4800000, guid: 99a35421d3bedaf42bb9871c77b8d6fa, type: 3}
+  shaderUnityFishEye: {fileID: 4800000, guid: b802320095d7b8f4dad6142b36df90ff, type: 3}
 --- !u!1 &1729408273
 GameObject:
   m_ObjectHideFlags: 0
@@ -15091,6 +15141,38 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 1273087590986190098, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.1818
+      objectReference: {fileID: 0}
+    - target: {fileID: 1273087590986190098, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -0.0299
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187716034250569, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187716034250569, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.14
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187716034250569, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.15
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: field of view
+      value: 143.18504
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_TargetTexture
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_projectionMatrixMode
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3457758011005780888, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_LocalPosition.y
       value: 0.25
@@ -15121,6 +15203,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 3936882721683731292, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
+    - targetCorrespondingSourceObject: {fileID: 2857187716034250568, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1689092050}
     - targetCorrespondingSourceObject: {fileID: 4534128745831005627, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       insertIndex: -1
       addedObject: {fileID: 0}
