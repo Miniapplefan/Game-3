@@ -13,6 +13,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private const int MaxCirclePointSamples = 12;
 	private const int MaxFallbackPointSamples = 8;
 	private const int MaxStrafePointSamples = 12;
+	private const int RadialSectorCount = 9;
+	private const int MaxRadialDistanceSamples = 8;
 	private const int CirclePointsPerSense = 4;
 	private const int FallbackPointsPerSense = 4;
 	private const int StrafePointsPerSense = 4;
@@ -30,9 +32,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float agentFallbackRadius = 6f;
 	public int agentFallbackPoints = 16;
 	public float agentFallbackPlayerWeight = 1f;
+	public float radialMinDistanceMultiplier = 0.35f;
+	public float radialMaxDistanceMultiplier = 0.75f;
+	public float radialDistanceStep = 1.5f;
+	public float radialClaimDuration = 0.5f;
+	public float radialDestinationReachedDistance = 0.75f;
+	public float radialClaimReuseTargetMoveThreshold = 1f;
+	public float radialClaimCleanupTargetMoveThreshold = 2f;
+	public float radialClaimRelevanceDistanceMultiplier = 1.5f;
 	private Collider[] AllyColliders = new Collider[32];
 	private List<Vector3> AllyPositions = new List<Vector3>(32);
 	private List<Transform> AllyRoots = new List<Transform>(32);
+	private readonly List<int> ClaimCleanupAgentIds = new List<int>(16);
 	private readonly Dictionary<int, AgentRuntimeState> AgentStates = new Dictionary<int, AgentRuntimeState>();
 
 	private sealed class AgentRuntimeState
@@ -46,6 +57,111 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public int CirclePointStartIndex;
 		public int FallbackPointStartIndex;
 		public int StrafePointStartIndex;
+		public int LastClaimedSectorIndex = -1;
+	}
+
+	private sealed class AngleClaim
+	{
+		public int AgentId;
+		public int TargetId;
+		public int SectorIndex = -1;
+		public float LastUpdatedTime;
+		public float ExpiresAt;
+		public Vector3 LastKnownAgentPosition;
+		public Vector3 LastKnownTargetPosition;
+		public Vector3 ClaimedPosition;
+	}
+
+	private sealed class TargetAngleClaimState
+	{
+		public int TargetId;
+		public Transform TargetTransform;
+		public readonly Dictionary<int, AngleClaim> ClaimsByAgent = new Dictionary<int, AngleClaim>();
+	}
+
+	private static class SharedAngleClaims
+	{
+		private static readonly Dictionary<int, TargetAngleClaimState> ClaimsByTarget = new Dictionary<int, TargetAngleClaimState>();
+
+		public static bool TryGetTargetState(Transform targetTransform, out TargetAngleClaimState state)
+		{
+			state = null;
+			if (targetTransform == null)
+			{
+				return false;
+			}
+
+			return ClaimsByTarget.TryGetValue(targetTransform.GetInstanceID(), out state);
+		}
+
+		public static TargetAngleClaimState GetOrCreateTargetState(Transform targetTransform)
+		{
+			if (targetTransform == null)
+			{
+				return null;
+			}
+
+			int targetId = targetTransform.GetInstanceID();
+			if (!ClaimsByTarget.TryGetValue(targetId, out TargetAngleClaimState state))
+			{
+				state = new TargetAngleClaimState
+				{
+					TargetId = targetId,
+					TargetTransform = targetTransform,
+				};
+				ClaimsByTarget.Add(targetId, state);
+			}
+			else if (state.TargetTransform == null)
+			{
+				state.TargetTransform = targetTransform;
+			}
+
+			return state;
+		}
+
+		public static bool TryGetClaim(Transform targetTransform, int agentId, out AngleClaim claim)
+		{
+			claim = null;
+			return TryGetTargetState(targetTransform, out TargetAngleClaimState state)
+				&& state.ClaimsByAgent.TryGetValue(agentId, out claim);
+		}
+
+		public static AngleClaim GetOrCreateClaim(Transform targetTransform, int agentId)
+		{
+			TargetAngleClaimState state = GetOrCreateTargetState(targetTransform);
+			if (state == null)
+			{
+				return null;
+			}
+
+			if (!state.ClaimsByAgent.TryGetValue(agentId, out AngleClaim claim))
+			{
+				claim = new AngleClaim
+				{
+					AgentId = agentId,
+					TargetId = state.TargetId,
+				};
+				state.ClaimsByAgent.Add(agentId, claim);
+			}
+
+			return claim;
+		}
+
+		public static bool RemoveClaim(Transform targetTransform, int agentId)
+		{
+			return TryGetTargetState(targetTransform, out TargetAngleClaimState state)
+				&& state.ClaimsByAgent.Remove(agentId);
+		}
+
+		public static void ClearTargetClaims(Transform targetTransform)
+		{
+			if (targetTransform == null)
+			{
+				return;
+			}
+
+			ClaimsByTarget.Remove(targetTransform.GetInstanceID());
+		}
 	}
 
 	public override void Created()
@@ -91,10 +207,15 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			if (seeTarget && distanceToPlayer <= inRangeDistance / 1.5f)
 			{
 				result = agent.transform.position;
+				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), GetSectorIndex(targetPosition, agent.transform.position), result, agent.transform.position, targetPosition, runtimeState);
 			}
 			else if (seeTarget && !(distanceToPlayer <= inRangeDistance / 1.5f))
 			{
-				if (TryGetBestPointOnCircle(targetPosition, inRangeDistance / 2f, agent, runtimeState, true, distanceToPlayer, out Vector3 bestPoint))
+				if (TryGetBestRadialPoint(agent, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 bestPoint))
+				{
+					result = bestPoint;
+				}
+				else if (TryGetBestPointOnCircle(targetPosition, inRangeDistance / 2f, agent, runtimeState, true, distanceToPlayer, out bestPoint))
 				{
 					result = bestPoint;
 				}
@@ -136,6 +257,340 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		return CachePosition(runtimeState, agent.transform.GetInstanceID(), result, agent.transform.position, targetTransform);
+	}
+
+	private bool TryGetBestRadialPoint(IMonoAgent agent, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		if (targetTransform == null)
+		{
+			return false;
+		}
+
+		int agentId = agent.transform.GetInstanceID();
+		int currentSector = GetSectorIndex(targetPosition, agent.transform.position);
+		int attemptedMask = 0;
+		CleanupClaimsForTarget(targetTransform, targetPosition, weaponRange);
+		SharedAngleClaims.TryGetTargetState(targetTransform, out TargetAngleClaimState targetState);
+
+		if (SharedAngleClaims.TryGetClaim(targetTransform, agentId, out AngleClaim claim) && claim.SectorIndex >= 0)
+		{
+			if (TryReuseClaimedPosition(agent, claim, targetPosition, out bestPoint))
+			{
+				UpdateAngleClaim(targetTransform, agentId, claim.SectorIndex, bestPoint, agent.transform.position, targetPosition, runtimeState);
+				return true;
+			}
+
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, claim.SectorIndex, agentId, ref attemptedMask, out bestPoint))
+			{
+				return true;
+			}
+		}
+		else if (runtimeState.LastTargetTransform == targetTransform
+			&& runtimeState.LastClaimedSectorIndex >= 0
+			&& (!TryGetSectorOwnerClaim(targetState, runtimeState.LastClaimedSectorIndex, out AngleClaim lastSectorOwner) || lastSectorOwner.AgentId == agentId))
+		{
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, runtimeState.LastClaimedSectorIndex, agentId, ref attemptedMask, out bestPoint))
+			{
+				return true;
+			}
+		}
+
+		return TryGetOpenRadialPoint(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, ref attemptedMask, out bestPoint);
+	}
+
+	private void CleanupClaimsForTarget(Transform targetTransform, Vector3 targetPosition, float weaponRange)
+	{
+		if (!SharedAngleClaims.TryGetTargetState(targetTransform, out TargetAngleClaimState targetState))
+		{
+			return;
+		}
+
+		float targetMoveThresholdSqr = radialClaimCleanupTargetMoveThreshold * radialClaimCleanupTargetMoveThreshold;
+		float maxRelevantDistance = Mathf.Max(weaponRange, weaponRange * radialClaimRelevanceDistanceMultiplier);
+		float maxRelevantDistanceSqr = maxRelevantDistance * maxRelevantDistance;
+
+		ClaimCleanupAgentIds.Clear();
+
+		foreach (KeyValuePair<int, AngleClaim> entry in targetState.ClaimsByAgent)
+		{
+			AngleClaim claim = entry.Value;
+			if (claim == null)
+			{
+				ClaimCleanupAgentIds.Add(entry.Key);
+				continue;
+			}
+
+			if (Time.time > claim.ExpiresAt)
+			{
+				ClaimCleanupAgentIds.Add(entry.Key);
+				continue;
+			}
+
+			if ((targetPosition - claim.LastKnownTargetPosition).sqrMagnitude > targetMoveThresholdSqr)
+			{
+				ClaimCleanupAgentIds.Add(entry.Key);
+				continue;
+			}
+
+			if ((claim.LastKnownAgentPosition - targetPosition).sqrMagnitude > maxRelevantDistanceSqr)
+			{
+				ClaimCleanupAgentIds.Add(entry.Key);
+			}
+		}
+
+		for (int i = 0; i < ClaimCleanupAgentIds.Count; i++)
+		{
+			targetState.ClaimsByAgent.Remove(ClaimCleanupAgentIds[i]);
+		}
+
+		if (targetState.ClaimsByAgent.Count == 0)
+		{
+			SharedAngleClaims.ClearTargetClaims(targetTransform);
+		}
+	}
+
+	private bool TryReuseClaimedPosition(IMonoAgent agent, AngleClaim claim, Vector3 targetPosition, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		if (claim == null)
+		{
+			return false;
+		}
+
+		float targetShiftThresholdSqr = radialClaimReuseTargetMoveThreshold * radialClaimReuseTargetMoveThreshold;
+		if ((targetPosition - claim.LastKnownTargetPosition).sqrMagnitude > targetShiftThresholdSqr)
+		{
+			return false;
+		}
+
+		float destinationReachedDistanceSqr = radialDestinationReachedDistance * radialDestinationReachedDistance;
+		if ((agent.transform.position - claim.ClaimedPosition).sqrMagnitude <= destinationReachedDistanceSqr)
+		{
+			return false;
+		}
+
+		if (!NavMesh.SamplePosition(claim.ClaimedPosition, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+		{
+			return false;
+		}
+
+		if (!HasLineOfSight(hit.position, targetPosition))
+		{
+			return false;
+		}
+
+		bestPoint = hit.position;
+		return true;
+	}
+
+	private bool TryGetOpenRadialPoint(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int currentSector, int agentId, ref int attemptedMask, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		bool searchPositiveDirectionFirst = ShouldSearchPositiveDirectionFirst(agentId);
+
+		for (int offset = 0; offset < RadialSectorCount; offset++)
+		{
+			int primarySector = searchPositiveDirectionFirst
+				? WrapSectorIndex(currentSector + offset)
+				: WrapSectorIndex(currentSector - offset);
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, primarySector, agentId, ref attemptedMask, out bestPoint))
+			{
+				return true;
+			}
+
+			if (offset == 0)
+			{
+				continue;
+			}
+
+			int secondarySector = searchPositiveDirectionFirst
+				? WrapSectorIndex(currentSector - offset)
+				: WrapSectorIndex(currentSector + offset);
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, secondarySector, agentId, ref attemptedMask, out bestPoint))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryRadialSector(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int sectorIndex, int agentId, ref int attemptedMask, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		int sectorMask = 1 << sectorIndex;
+		if ((attemptedMask & sectorMask) != 0)
+		{
+			return false;
+		}
+
+		if (TryGetSectorOwnerClaim(targetState, sectorIndex, out AngleClaim sectorOwner) && sectorOwner.AgentId != agentId)
+		{
+			return false;
+		}
+
+		attemptedMask |= sectorMask;
+
+		if (!TrySampleRadialPoint(agent, targetPosition, sectorIndex, weaponRange, out bestPoint))
+		{
+			return false;
+		}
+
+		UpdateAngleClaim(targetTransform, agentId, sectorIndex, bestPoint, agent.transform.position, targetPosition, runtimeState);
+		return true;
+	}
+
+	private bool TrySampleRadialPoint(IMonoAgent agent, Vector3 targetPosition, int sectorIndex, float weaponRange, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		Vector3 direction = GetSectorDirection(sectorIndex);
+		if (direction.sqrMagnitude < 0.0001f)
+		{
+			return false;
+		}
+
+		float minDistance = Mathf.Max(1f, weaponRange * radialMinDistanceMultiplier);
+		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * radialMaxDistanceMultiplier);
+		float distanceStep = Mathf.Max(0.25f, radialDistanceStep);
+		int sampleCount = Mathf.Clamp(Mathf.CeilToInt((maxDistance - minDistance) / distanceStep) + 1, 1, MaxRadialDistanceSamples);
+		int attemptedSampleMask = 0;
+		int attemptedSampleCount = 0;
+
+		while (attemptedSampleCount < sampleCount)
+		{
+			int nearestSampleIndex = -1;
+			float nearestDistanceToAgent = float.MaxValue;
+
+			for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+			{
+				int sampleMask = 1 << sampleIndex;
+				if ((attemptedSampleMask & sampleMask) != 0)
+				{
+					continue;
+				}
+
+				float t = sampleCount <= 1 ? 0f : (float)sampleIndex / (sampleCount - 1);
+				float radialDistance = Mathf.Lerp(minDistance, maxDistance, t);
+				Vector3 rawPoint = targetPosition + direction * radialDistance;
+				float distanceToAgent = (rawPoint - agent.transform.position).sqrMagnitude;
+
+				if (distanceToAgent < nearestDistanceToAgent)
+				{
+					nearestDistanceToAgent = distanceToAgent;
+					nearestSampleIndex = sampleIndex;
+				}
+			}
+
+			if (nearestSampleIndex < 0)
+			{
+				break;
+			}
+
+			attemptedSampleMask |= 1 << nearestSampleIndex;
+			attemptedSampleCount++;
+			float nearestT = sampleCount <= 1 ? 0f : (float)nearestSampleIndex / (sampleCount - 1);
+			float nearestRadialDistance = Mathf.Lerp(minDistance, maxDistance, nearestT);
+			Vector3 nearestRawPoint = targetPosition + direction * nearestRadialDistance;
+
+			if (!NavMesh.SamplePosition(nearestRawPoint, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+			{
+				continue;
+			}
+
+			if (!HasLineOfSight(hit.position, targetPosition))
+			{
+				continue;
+			}
+
+			bestPoint = hit.position;
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryGetSectorOwnerClaim(TargetAngleClaimState targetState, int sectorIndex, out AngleClaim ownerClaim)
+	{
+		ownerClaim = null;
+		if (targetState == null)
+		{
+			return false;
+		}
+
+		foreach (AngleClaim claim in targetState.ClaimsByAgent.Values)
+		{
+			if (claim == null)
+			{
+				continue;
+			}
+
+			if (claim.SectorIndex == sectorIndex)
+			{
+				ownerClaim = claim;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private void UpdateAngleClaim(Transform targetTransform, int agentId, int sectorIndex, Vector3 claimedPosition, Vector3 agentPosition, Vector3 targetPosition, AgentRuntimeState runtimeState)
+	{
+		AngleClaim claim = SharedAngleClaims.GetOrCreateClaim(targetTransform, agentId);
+		if (claim == null)
+		{
+			return;
+		}
+
+		claim.SectorIndex = sectorIndex;
+		claim.LastUpdatedTime = Time.time;
+		claim.ExpiresAt = Time.time + radialClaimDuration;
+		claim.ClaimedPosition = claimedPosition;
+		claim.LastKnownAgentPosition = agentPosition;
+		claim.LastKnownTargetPosition = targetPosition;
+		runtimeState.LastClaimedSectorIndex = sectorIndex;
+	}
+
+	private int GetSectorIndex(Vector3 center, Vector3 position)
+	{
+		Vector2 direction = new Vector2(position.x - center.x, position.z - center.z);
+		if (direction.sqrMagnitude < 0.0001f)
+		{
+			return 0;
+		}
+
+		float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+		if (angle < 0f)
+		{
+			angle += 360f;
+		}
+
+		float sectorSize = 360f / RadialSectorCount;
+		return Mathf.Clamp(Mathf.FloorToInt(angle / sectorSize), 0, RadialSectorCount - 1);
+	}
+
+	private Vector3 GetSectorDirection(int sectorIndex)
+	{
+		float sectorSize = 360f / RadialSectorCount;
+		float angle = (WrapSectorIndex(sectorIndex) + 0.5f) * sectorSize * Mathf.Deg2Rad;
+		return new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+	}
+
+	private int WrapSectorIndex(int sectorIndex)
+	{
+		int wrapped = sectorIndex % RadialSectorCount;
+		if (wrapped < 0)
+		{
+			wrapped += RadialSectorCount;
+		}
+
+		return wrapped;
+	}
+
+	private bool ShouldSearchPositiveDirectionFirst(int agentId)
+	{
+		return (Mathf.Abs(agentId) & 1) == 0;
 	}
 
 	private bool TryGetBestPointOnCircle(Vector3 center, float radius, IMonoAgent agent, AgentRuntimeState runtimeState, bool requireLineOfSight, float maxDistanceFromAgent, out Vector3 bestPoint)

@@ -10,6 +10,7 @@ public static class SharedAgentPerception
 	private const float TargetMoveThresholdSqr = 1f;
 
 	private static readonly Dictionary<int, AgentPerceptionState> States = new Dictionary<int, AgentPerceptionState>();
+	private static readonly RaycastHit[] LineOfSightHits = new RaycastHit[16];
 
 	public readonly struct Snapshot
 	{
@@ -105,14 +106,46 @@ public static class SharedAgentPerception
 			state.IsTargetObstructed);
 	}
 
-	public static bool HasLineOfSight(Vector3 start, Vector3 end, AttackConfigSO attackConfig)
+	public static bool HasLineOfSight(Vector3 start, Vector3 end, AttackConfigSO attackConfig, Transform ignoredRoot = null)
 	{
-		if (Physics.SphereCast(start, attackConfig.LineOfSightSphereCastRadius, (end - start).normalized, out RaycastHit hit, Mathf.Infinity, attackConfig.AttackableLayerMask | attackConfig.ObstructionLayerMask))
+		Vector3 direction = end - start;
+		float distance = direction.magnitude;
+		if (distance <= 0.0001f)
 		{
-			return hit.transform.GetComponent<PlayerController>() != null;
+			return false;
 		}
 
-		return false;
+		int layerMask = attackConfig.AttackableLayerMask | attackConfig.ObstructionLayerMask | attackConfig.AllyLayerMask;
+		int hitCount = Physics.SphereCastNonAlloc(start, attackConfig.LineOfSightSphereCastRadius, direction / distance, LineOfSightHits, distance, layerMask);
+		if (hitCount <= 0)
+		{
+			return false;
+		}
+
+		RaycastHit? nearestHit = null;
+		float nearestDistance = float.MaxValue;
+
+		for (int i = 0; i < hitCount; i++)
+		{
+			RaycastHit hit = LineOfSightHits[i];
+			if (hit.transform == null)
+			{
+				continue;
+			}
+
+			if (ignoredRoot != null && hit.transform.root == ignoredRoot)
+			{
+				continue;
+			}
+
+			if (hit.distance < nearestDistance)
+			{
+				nearestDistance = hit.distance;
+				nearestHit = hit;
+			}
+		}
+
+		return nearestHit.HasValue && nearestHit.Value.transform.GetComponent<PlayerController>() != null;
 	}
 
 	private static bool NeedsRefresh(AgentPerceptionState state, Vector3 agentPosition)
@@ -154,17 +187,9 @@ public static class SharedAgentPerception
 
 			if (state.BodyState != null && state.BodyState.headCollider != null)
 			{
-				if (Physics.SphereCast(state.BodyState.headCollider.transform.position, attackConfig.LineOfSightSphereCastRadius, (state.TargetHeadPosition - state.BodyState.headCollider.transform.position).normalized, out RaycastHit hit, Mathf.Infinity, attackConfig.AttackableLayerMask | attackConfig.ObstructionLayerMask))
-				{
-					bool hitPlayer = hit.transform.GetComponent<PlayerController>() != null;
-					state.CanSeeTarget = hitPlayer;
-					state.IsTargetObstructed = !hitPlayer;
-				}
-				else
-				{
-					state.CanSeeTarget = false;
-					state.IsTargetObstructed = false;
-				}
+				bool hitPlayer = HasLineOfSight(state.BodyState.headCollider.transform.position, state.TargetHeadPosition, attackConfig, state.BodyState.transform.root);
+				state.CanSeeTarget = hitPlayer;
+				state.IsTargetObstructed = !hitPlayer;
 			}
 			else
 			{
