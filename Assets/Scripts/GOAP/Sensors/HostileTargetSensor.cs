@@ -40,6 +40,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float radialClaimReuseTargetMoveThreshold = 1f;
 	public float radialClaimCleanupTargetMoveThreshold = 2f;
 	public float radialClaimRelevanceDistanceMultiplier = 1.5f;
+	public float radialSectorSwitchCooldown = 0.75f;
+	public int radialSectorFailureThreshold = 3;
+	public float radialRecoveryMinDistanceMultiplier = 0.2f;
+	public float radialRecoveryMaxDistanceMultiplier = 1f;
 	private Collider[] AllyColliders = new Collider[32];
 	private List<Vector3> AllyPositions = new List<Vector3>(32);
 	private List<Transform> AllyRoots = new List<Transform>(32);
@@ -58,6 +62,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public int FallbackPointStartIndex;
 		public int StrafePointStartIndex;
 		public int LastClaimedSectorIndex = -1;
+		public float NextAllowedSectorSwitchTime;
+		public int ConsecutiveClaimedSectorFailures;
 	}
 
 	private sealed class AngleClaim
@@ -227,7 +233,11 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 			else if (!seeTarget)//&& distanceToPlayer <= inRangeDistance / 2
 			{
-				if (TryGetClosestStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
+				if (TryGetBestRadialRecoveryPoint(agent, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 recoveryPoint))
+				{
+					result = recoveryPoint;
+				}
+				else if (TryGetClosestStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
 				{
 					result = closestPoint;
 				}
@@ -259,7 +269,17 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return CachePosition(runtimeState, agent.transform.GetInstanceID(), result, agent.transform.position, targetTransform);
 	}
 
+	private bool TryGetBestRadialRecoveryPoint(IMonoAgent agent, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out Vector3 bestPoint)
+	{
+		return TryGetBestRadialPoint(agent, targetTransform, targetPosition, weaponRange, runtimeState, radialRecoveryMinDistanceMultiplier, radialRecoveryMaxDistanceMultiplier, out bestPoint);
+	}
+
 	private bool TryGetBestRadialPoint(IMonoAgent agent, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out Vector3 bestPoint)
+	{
+		return TryGetBestRadialPoint(agent, targetTransform, targetPosition, weaponRange, runtimeState, radialMinDistanceMultiplier, radialMaxDistanceMultiplier, out bestPoint);
+	}
+
+	private bool TryGetBestRadialPoint(IMonoAgent agent, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, float minDistanceMultiplier, float maxDistanceMultiplier, out Vector3 bestPoint)
 	{
 		bestPoint = agent.transform.position;
 		if (targetTransform == null)
@@ -272,17 +292,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		int attemptedMask = 0;
 		CleanupClaimsForTarget(targetTransform, targetPosition, weaponRange);
 		SharedAngleClaims.TryGetTargetState(targetTransform, out TargetAngleClaimState targetState);
+		bool hasLockedSector = false;
+		int lockedSectorIndex = -1;
 
 		if (SharedAngleClaims.TryGetClaim(targetTransform, agentId, out AngleClaim claim) && claim.SectorIndex >= 0)
 		{
+			hasLockedSector = true;
+			lockedSectorIndex = claim.SectorIndex;
+
 			if (TryReuseClaimedPosition(agent, claim, targetPosition, out bestPoint))
 			{
+				ResetClaimedSectorFailures(runtimeState);
 				UpdateAngleClaim(targetTransform, agentId, claim.SectorIndex, bestPoint, agent.transform.position, targetPosition, runtimeState);
-				return true;
-			}
-
-			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, claim.SectorIndex, agentId, ref attemptedMask, out bestPoint))
-			{
 				return true;
 			}
 		}
@@ -290,13 +311,33 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			&& runtimeState.LastClaimedSectorIndex >= 0
 			&& (!TryGetSectorOwnerClaim(targetState, runtimeState.LastClaimedSectorIndex, out AngleClaim lastSectorOwner) || lastSectorOwner.AgentId == agentId))
 		{
-			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, runtimeState.LastClaimedSectorIndex, agentId, ref attemptedMask, out bestPoint))
+			hasLockedSector = true;
+			lockedSectorIndex = runtimeState.LastClaimedSectorIndex;
+		}
+
+		if (hasLockedSector)
+		{
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, lockedSectorIndex, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
 			{
+				ResetClaimedSectorFailures(runtimeState);
+				return true;
+			}
+
+			RegisterClaimedSectorFailure(runtimeState);
+			if (ShouldDelaySectorSwitch(runtimeState))
+			{
+				bestPoint = runtimeState.HasCachedPosition ? runtimeState.CachedPosition : agent.transform.position;
 				return true;
 			}
 		}
 
-		return TryGetOpenRadialPoint(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, ref attemptedMask, out bestPoint);
+		if (TryGetOpenRadialPoint(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
+		{
+			ResetClaimedSectorFailures(runtimeState);
+			return true;
+		}
+
+		return false;
 	}
 
 	private void CleanupClaimsForTarget(Transform targetTransform, Vector3 targetPosition, float weaponRange)
@@ -384,7 +425,27 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return true;
 	}
 
-	private bool TryGetOpenRadialPoint(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int currentSector, int agentId, ref int attemptedMask, out Vector3 bestPoint)
+	private void RegisterClaimedSectorFailure(AgentRuntimeState runtimeState)
+	{
+		runtimeState.ConsecutiveClaimedSectorFailures++;
+	}
+
+	private void ResetClaimedSectorFailures(AgentRuntimeState runtimeState)
+	{
+		runtimeState.ConsecutiveClaimedSectorFailures = 0;
+	}
+
+	private bool ShouldDelaySectorSwitch(AgentRuntimeState runtimeState)
+	{
+		if (Time.time < runtimeState.NextAllowedSectorSwitchTime)
+		{
+			return true;
+		}
+
+		return runtimeState.ConsecutiveClaimedSectorFailures < Mathf.Max(1, radialSectorFailureThreshold);
+	}
+
+	private bool TryGetOpenRadialPoint(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int currentSector, int agentId, float minDistanceMultiplier, float maxDistanceMultiplier, ref int attemptedMask, out Vector3 bestPoint)
 	{
 		bestPoint = agent.transform.position;
 		bool searchPositiveDirectionFirst = ShouldSearchPositiveDirectionFirst(agentId);
@@ -394,7 +455,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			int primarySector = searchPositiveDirectionFirst
 				? WrapSectorIndex(currentSector + offset)
 				: WrapSectorIndex(currentSector - offset);
-			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, primarySector, agentId, ref attemptedMask, out bestPoint))
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, primarySector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
 			{
 				return true;
 			}
@@ -407,7 +468,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			int secondarySector = searchPositiveDirectionFirst
 				? WrapSectorIndex(currentSector - offset)
 				: WrapSectorIndex(currentSector + offset);
-			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, secondarySector, agentId, ref attemptedMask, out bestPoint))
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, secondarySector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
 			{
 				return true;
 			}
@@ -416,7 +477,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return false;
 	}
 
-	private bool TryRadialSector(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int sectorIndex, int agentId, ref int attemptedMask, out Vector3 bestPoint)
+	private bool TryRadialSector(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int sectorIndex, int agentId, float minDistanceMultiplier, float maxDistanceMultiplier, ref int attemptedMask, out Vector3 bestPoint)
 	{
 		bestPoint = agent.transform.position;
 		int sectorMask = 1 << sectorIndex;
@@ -432,7 +493,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		attemptedMask |= sectorMask;
 
-		if (!TrySampleRadialPoint(agent, targetPosition, sectorIndex, weaponRange, out bestPoint))
+		if (!TrySampleRadialPoint(agent, targetPosition, sectorIndex, weaponRange, minDistanceMultiplier, maxDistanceMultiplier, out bestPoint))
 		{
 			return false;
 		}
@@ -441,7 +502,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return true;
 	}
 
-	private bool TrySampleRadialPoint(IMonoAgent agent, Vector3 targetPosition, int sectorIndex, float weaponRange, out Vector3 bestPoint)
+	private bool TrySampleRadialPoint(IMonoAgent agent, Vector3 targetPosition, int sectorIndex, float weaponRange, float minDistanceMultiplier, float maxDistanceMultiplier, out Vector3 bestPoint)
 	{
 		bestPoint = agent.transform.position;
 		Vector3 direction = GetSectorDirection(sectorIndex);
@@ -450,50 +511,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return false;
 		}
 
-		float minDistance = Mathf.Max(1f, weaponRange * radialMinDistanceMultiplier);
-		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * radialMaxDistanceMultiplier);
+		float minDistance = Mathf.Max(1f, weaponRange * minDistanceMultiplier);
+		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * maxDistanceMultiplier);
 		float distanceStep = Mathf.Max(0.25f, radialDistanceStep);
 		int sampleCount = Mathf.Clamp(Mathf.CeilToInt((maxDistance - minDistance) / distanceStep) + 1, 1, MaxRadialDistanceSamples);
-		int attemptedSampleMask = 0;
-		int attemptedSampleCount = 0;
 
-		while (attemptedSampleCount < sampleCount)
+		for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
 		{
-			int nearestSampleIndex = -1;
-			float nearestDistanceToAgent = float.MaxValue;
+			float t = sampleCount <= 1 ? 0f : (float)sampleIndex / (sampleCount - 1);
+			float radialDistance = Mathf.Lerp(minDistance, maxDistance, t);
+			Vector3 rawPoint = targetPosition + direction * radialDistance;
 
-			for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
-			{
-				int sampleMask = 1 << sampleIndex;
-				if ((attemptedSampleMask & sampleMask) != 0)
-				{
-					continue;
-				}
-
-				float t = sampleCount <= 1 ? 0f : (float)sampleIndex / (sampleCount - 1);
-				float radialDistance = Mathf.Lerp(minDistance, maxDistance, t);
-				Vector3 rawPoint = targetPosition + direction * radialDistance;
-				float distanceToAgent = (rawPoint - agent.transform.position).sqrMagnitude;
-
-				if (distanceToAgent < nearestDistanceToAgent)
-				{
-					nearestDistanceToAgent = distanceToAgent;
-					nearestSampleIndex = sampleIndex;
-				}
-			}
-
-			if (nearestSampleIndex < 0)
-			{
-				break;
-			}
-
-			attemptedSampleMask |= 1 << nearestSampleIndex;
-			attemptedSampleCount++;
-			float nearestT = sampleCount <= 1 ? 0f : (float)nearestSampleIndex / (sampleCount - 1);
-			float nearestRadialDistance = Mathf.Lerp(minDistance, maxDistance, nearestT);
-			Vector3 nearestRawPoint = targetPosition + direction * nearestRadialDistance;
-
-			if (!NavMesh.SamplePosition(nearestRawPoint, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+			if (!NavMesh.SamplePosition(rawPoint, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
 			{
 				continue;
 			}
@@ -541,6 +570,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		if (claim == null)
 		{
 			return;
+		}
+
+		if (runtimeState.LastClaimedSectorIndex != sectorIndex)
+		{
+			runtimeState.NextAllowedSectorSwitchTime = Time.time + radialSectorSwitchCooldown;
+			runtimeState.ConsecutiveClaimedSectorFailures = 0;
 		}
 
 		claim.SectorIndex = sectorIndex;
