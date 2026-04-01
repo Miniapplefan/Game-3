@@ -42,7 +42,7 @@ public class NPCBrain : MonoBehaviour
 
 	private void FixedUpdate()
 	{
-		if (bodyState.hitStunAmount > 0)
+		if (bodyState.hitStunAmount > 0.001f)
 		{
 			Mathf.Clamp01(bodyState.hitStunAmount -= 0.015f);
 			return;
@@ -126,7 +126,7 @@ public class NPCBrain : MonoBehaviour
 		{
 			if (bodyState.hasLOS)
 			{
-				bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.0002f, 0, 1);
+				bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.002f, 0, 1);
 			}
 			else
 			{

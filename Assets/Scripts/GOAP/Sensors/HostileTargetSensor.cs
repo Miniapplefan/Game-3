@@ -42,6 +42,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float radialClaimRelevanceDistanceMultiplier = 1.5f;
 	public float radialSectorSwitchCooldown = 0.75f;
 	public int radialSectorFailureThreshold = 3;
+	public int radialClaimSectorExclusionRadius = 1;
 	public float radialRecoveryMinDistanceMultiplier = 0.2f;
 	public float radialRecoveryMaxDistanceMultiplier = 1f;
 	private Collider[] AllyColliders = new Collider[32];
@@ -449,32 +450,90 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	{
 		bestPoint = agent.transform.position;
 		bool searchPositiveDirectionFirst = ShouldSearchPositiveDirectionFirst(agentId);
+		int preferredSector = GetPreferredSectorIndex(agentId);
+		int exclusionRadius = Mathf.Max(0, radialClaimSectorExclusionRadius);
 
-		for (int offset = 0; offset < RadialSectorCount; offset++)
+		if (TryGetOpenRadialPointWithExclusion(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, preferredSector, searchPositiveDirectionFirst, exclusionRadius, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
 		{
-			int primarySector = searchPositiveDirectionFirst
-				? WrapSectorIndex(currentSector + offset)
-				: WrapSectorIndex(currentSector - offset);
-			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, primarySector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
+			return true;
+		}
+
+		if (exclusionRadius <= 0)
+		{
+			return false;
+		}
+
+		return TryGetOpenRadialPointWithExclusion(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, preferredSector, searchPositiveDirectionFirst, 0, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint);
+	}
+
+	private bool TryGetOpenRadialPointWithExclusion(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int currentSector, int agentId, int preferredSector, bool searchPositiveDirectionFirst, int exclusionRadius, float minDistanceMultiplier, float maxDistanceMultiplier, ref int attemptedMask, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+
+		for (int i = 0; i < RadialSectorCount; i++)
+		{
+			if (!TryGetBestOpenSectorCandidate(targetState, currentSector, preferredSector, agentId, attemptedMask, searchPositiveDirectionFirst, exclusionRadius, out int candidateSector))
 			{
-				return true;
+				break;
 			}
 
-			if (offset == 0)
-			{
-				continue;
-			}
-
-			int secondarySector = searchPositiveDirectionFirst
-				? WrapSectorIndex(currentSector - offset)
-				: WrapSectorIndex(currentSector + offset);
-			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, secondarySector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
+			if (TryRadialSector(agent, targetState, targetTransform, targetPosition, weaponRange, runtimeState, candidateSector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
 			{
 				return true;
 			}
 		}
 
 		return false;
+	}
+
+	private bool TryGetBestOpenSectorCandidate(TargetAngleClaimState targetState, int currentSector, int preferredSector, int agentId, int attemptedMask, bool searchPositiveDirectionFirst, int exclusionRadius, out int bestSector)
+	{
+		bestSector = -1;
+		int bestGapScore = -1;
+		int bestGapCenterOffset = int.MaxValue;
+		int bestPreferredDistance = int.MaxValue;
+		int bestTravelDistance = int.MaxValue;
+		int bestDirectionPriority = -1;
+
+		for (int sectorIndex = 0; sectorIndex < RadialSectorCount; sectorIndex++)
+		{
+			int sectorMask = 1 << sectorIndex;
+			if ((attemptedMask & sectorMask) != 0)
+			{
+				continue;
+			}
+
+			if (TryGetSectorOwnerClaim(targetState, sectorIndex, out AngleClaim sectorOwner) && sectorOwner.AgentId != agentId)
+			{
+				continue;
+			}
+
+			if (IsSectorWithinClaimExclusion(targetState, sectorIndex, exclusionRadius))
+			{
+				continue;
+			}
+
+			GetSectorGapMetrics(targetState, sectorIndex, out int gapScore, out int gapCenterOffset);
+			int preferredDistance = GetWrappedSectorDistance(preferredSector, sectorIndex);
+			int travelDistance = GetWrappedSectorDistance(currentSector, sectorIndex);
+			int directionPriority = GetSectorDirectionPriority(currentSector, sectorIndex, searchPositiveDirectionFirst);
+
+			if (gapScore > bestGapScore
+				|| (gapScore == bestGapScore && gapCenterOffset < bestGapCenterOffset)
+				|| (gapScore == bestGapScore && gapCenterOffset == bestGapCenterOffset && preferredDistance < bestPreferredDistance)
+				|| (gapScore == bestGapScore && gapCenterOffset == bestGapCenterOffset && preferredDistance == bestPreferredDistance && travelDistance < bestTravelDistance)
+				|| (gapScore == bestGapScore && gapCenterOffset == bestGapCenterOffset && preferredDistance == bestPreferredDistance && travelDistance == bestTravelDistance && directionPriority > bestDirectionPriority))
+			{
+				bestSector = sectorIndex;
+				bestGapScore = gapScore;
+				bestGapCenterOffset = gapCenterOffset;
+				bestPreferredDistance = preferredDistance;
+				bestTravelDistance = travelDistance;
+				bestDirectionPriority = directionPriority;
+			}
+		}
+
+		return bestSector >= 0;
 	}
 
 	private bool TryRadialSector(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int sectorIndex, int agentId, float minDistanceMultiplier, float maxDistanceMultiplier, ref int attemptedMask, out Vector3 bestPoint)
@@ -562,6 +621,89 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		return false;
+	}
+
+	private void GetSectorGapMetrics(TargetAngleClaimState targetState, int sectorIndex, out int gapScore, out int gapCenterOffset)
+	{
+		if (targetState == null || targetState.ClaimsByAgent.Count == 0)
+		{
+			gapScore = RadialSectorCount * 2;
+			gapCenterOffset = 0;
+			return;
+		}
+
+		int clockwiseDistance = RadialSectorCount;
+		int counterClockwiseDistance = RadialSectorCount;
+
+		foreach (AngleClaim claim in targetState.ClaimsByAgent.Values)
+		{
+			if (claim == null)
+			{
+				continue;
+			}
+
+			int clockwiseOffset = GetClockwiseSectorDistance(sectorIndex, claim.SectorIndex);
+			int counterClockwiseOffset = GetClockwiseSectorDistance(claim.SectorIndex, sectorIndex);
+			clockwiseDistance = Mathf.Min(clockwiseDistance, clockwiseOffset);
+			counterClockwiseDistance = Mathf.Min(counterClockwiseDistance, counterClockwiseOffset);
+		}
+
+		gapScore = clockwiseDistance + counterClockwiseDistance;
+		gapCenterOffset = Mathf.Abs(clockwiseDistance - counterClockwiseDistance);
+	}
+
+	private int GetWrappedSectorDistance(int firstSector, int secondSector)
+	{
+		int delta = Mathf.Abs(WrapSectorIndex(firstSector) - WrapSectorIndex(secondSector));
+		return Mathf.Min(delta, RadialSectorCount - delta);
+	}
+
+	private bool IsSectorWithinClaimExclusion(TargetAngleClaimState targetState, int sectorIndex, int exclusionRadius)
+	{
+		if (targetState == null || exclusionRadius <= 0)
+		{
+			return false;
+		}
+
+		foreach (AngleClaim claim in targetState.ClaimsByAgent.Values)
+		{
+			if (claim == null)
+			{
+				continue;
+			}
+
+			if (GetWrappedSectorDistance(sectorIndex, claim.SectorIndex) <= exclusionRadius)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private int GetClockwiseSectorDistance(int fromSector, int toSector)
+	{
+		return WrapSectorIndex(toSector - fromSector);
+	}
+
+	private int GetPreferredSectorIndex(int agentId)
+	{
+		long hash = (long)agentId * 73856093L;
+		long positiveHash = hash < 0 ? -hash : hash;
+		return WrapSectorIndex((int)(positiveHash % RadialSectorCount));
+	}
+
+	private int GetSectorDirectionPriority(int currentSector, int sectorIndex, bool searchPositiveDirectionFirst)
+	{
+		if (sectorIndex == currentSector)
+		{
+			return 1;
+		}
+
+		int positiveOffset = WrapSectorIndex(sectorIndex - currentSector);
+		int negativeOffset = WrapSectorIndex(currentSector - sectorIndex);
+		bool isPositiveDirection = positiveOffset <= negativeOffset;
+		return isPositiveDirection == searchPositiveDirectionFirst ? 1 : 0;
 	}
 
 	private void UpdateAngleClaim(Transform targetTransform, int agentId, int sectorIndex, Vector3 claimedPosition, Vector3 agentPosition, Vector3 targetPosition, AgentRuntimeState runtimeState)
@@ -734,11 +876,15 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		Vector3 direction = Vector3.Cross(Vector3.up, (targetPosition - agent.transform.position).normalized);
 		int totalPoints = MaxStrafePointSamples;
 		int samplesToCheck = Mathf.Min(totalPoints, StrafePointsPerSense);
-		int startIndex = runtimeState.StrafePointStartIndex;
+		int startIndex = (runtimeState.StrafePointStartIndex + GetStrafeSampleOffset(agent.transform.GetInstanceID(), totalPoints)) % totalPoints;
+		bool searchPositiveDirectionFirst = ShouldSearchPositiveDirectionFirst(agent.transform.GetInstanceID());
 
 		for (int i = 0; i < samplesToCheck; i++)
 		{
-			int index = (startIndex + i) % totalPoints;
+			int sampleOffset = searchPositiveDirectionFirst
+				? i
+				: -i;
+			int index = (startIndex + sampleOffset + totalPoints) % totalPoints;
 			float t = totalPoints <= 1 ? 0.5f : (float)index / (totalPoints - 1);
 			Vector3 point = agent.transform.position + new Vector3(0f, 2f, 0f) + direction * (t * lineLength - lineLength / 2f);
 			float distanceToAgent = Vector3.Distance(point, agent.transform.position);
@@ -757,6 +903,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		runtimeState.StrafePointStartIndex = (startIndex + samplesToCheck) % totalPoints;
 		return closestPoint != Vector3.zero;
+	}
+
+	private int GetStrafeSampleOffset(int agentId, int totalPoints)
+	{
+		if (totalPoints <= 0)
+		{
+			return 0;
+		}
+
+		long hash = (long)agentId * 19349663L;
+		long positiveHash = hash < 0 ? -hash : hash;
+		return (int)(positiveHash % totalPoints);
 	}
 
 	private void RefreshAllyPositions(Vector3 center, Transform self, float searchRadius)

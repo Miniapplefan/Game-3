@@ -1537,6 +1537,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Destructible Pillar (2)
       objectReference: {fileID: 0}
+    - target: {fileID: 7563722836623518858, guid: 1e6718bf8d7134189a29bc45e124181b, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -13512,6 +13516,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Destructible Pillar (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 7563722836623518858, guid: 1e6718bf8d7134189a29bc45e124181b, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -14767,17 +14775,9 @@ PrefabInstance:
       propertyPath: m_projectionMatrixMode
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: isGodMode
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 5410714147512533004, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_Name
       value: Body_total new
-      objectReference: {fileID: 0}
-    - target: {fileID: 8654456984567952175, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_Enabled
-      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

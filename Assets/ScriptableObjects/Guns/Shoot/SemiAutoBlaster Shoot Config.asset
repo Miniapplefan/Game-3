@@ -16,7 +16,7 @@ MonoBehaviour:
   HitMask:
     serializedVersion: 2
     m_Bits: 4672
-  Spread: {x: 0.09, y: 0.05, z: 0}
+  Spread: {x: 0.19, y: 0.02, z: 0}
   rawDamage: 1
   maxRange: 100
   isBurst: 0
