@@ -18,7 +18,7 @@ MonoBehaviour:
     m_Bits: 4672
   Spread: {x: 0.19, y: 0.02, z: 0}
   rawDamage: 1
-  maxRange: 30
+  maxRange: 20
   isBurst: 0
   burst_numShots: 3
   burst_delayBetweenShots: 0.2

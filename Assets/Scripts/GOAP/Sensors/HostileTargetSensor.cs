@@ -58,7 +58,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public bool enablePlayerAnnulusCandidates = false;
 	public bool drawTacticalQueryGizmos = true;
 	// ------------------****DEBUG****---------------------
-	public bool spawnTacticalQueryDebugObjects = true;
+	public bool spawnTacticalQueryDebugObjects = false;
 	public bool logTacticalQuerySelections = true;
 	// ------------------****DEBUG****---------------------
 
@@ -294,15 +294,20 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			float distanceToPlayer = Vector3.Distance(agent.transform.position, targetPosition);
 			float inRangeDistance = bodyState.desiredGunToUse == null ? 10 : bodyState.desiredGunToUse.gunData.shootConfig.maxRange;
 
-				if (seeTarget && distanceToPlayer <= inRangeDistance)
+			if (seeTarget && TryHoldStableVisiblePosition(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out int stableSectorIndex))
+			{
+				result = agent.transform.position;
+				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), stableSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
+			}
+			else if (seeTarget && distanceToPlayer <= inRangeDistance)
+			{
+				result = agent.transform.position;
+				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), GetSectorIndex(targetPosition, agent.transform.position), result, agent.transform.position, targetPosition, runtimeState);
+			}
+			else if (seeTarget)
+			{
+				if (TryGetBestRadialPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 bestPoint))
 				{
-					result = agent.transform.position;
-					UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), GetSectorIndex(targetPosition, agent.transform.position), result, agent.transform.position, targetPosition, runtimeState);
-				}
-				else if (seeTarget)
-				{
-					if (TryGetBestRadialPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 bestPoint))
-					{
 					result = bestPoint;
 				}
 				else if (TryGetBestPointOnCircle(targetPosition, inRangeDistance / 2f, agent, runtimeState, true, distanceToPlayer, out bestPoint))
@@ -508,6 +513,47 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		bestPoint = hit.position;
+		return true;
+	}
+
+	private bool TryHoldStableVisiblePosition(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out int sectorIndex)
+	{
+		sectorIndex = -1;
+		if (agent == null || bodyState == null || targetTransform == null)
+		{
+			return false;
+		}
+
+		if (!SharedAngleClaims.TryGetClaim(targetTransform, agent.transform.GetInstanceID(), out AngleClaim claim)
+			|| claim == null
+			|| claim.SectorIndex < 0)
+		{
+			return false;
+		}
+
+		if (Vector3.Distance(agent.transform.position, targetPosition) > weaponRange)
+		{
+			return false;
+		}
+
+		float targetShiftThresholdSqr = radialClaimReuseTargetMoveThreshold * radialClaimReuseTargetMoveThreshold;
+		if ((targetPosition - claim.LastKnownTargetPosition).sqrMagnitude > targetShiftThresholdSqr)
+		{
+			return false;
+		}
+
+		float destinationReachedDistanceSqr = radialDestinationReachedDistance * radialDestinationReachedDistance;
+		if ((agent.transform.position - claim.ClaimedPosition).sqrMagnitude > destinationReachedDistanceSqr)
+		{
+			return false;
+		}
+
+		if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, agent.transform.position), targetAimPosition))
+		{
+			return false;
+		}
+
+		sectorIndex = claim.SectorIndex;
 		return true;
 	}
 
@@ -928,7 +974,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			{
 				HasLastLoggedTacticalSelection = true;
 				LastLoggedTacticalSelectionPoint = bestPoint;
-				Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
+				float distanceToTarget = Vector3.Distance(bestPoint, targetPosition);
+				Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} (distance {distanceToTarget:F2}) from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
 			}
 		}
 
@@ -1048,7 +1095,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return;
 		}
 
-		Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} toward target {targetPosition}.");
+		float distanceToTarget = Vector3.Distance(point, targetPosition);
+		Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} (distance {distanceToTarget:F2}) toward target {targetPosition}.");
 	}
 
 	private void UpdateRuntimeTacticalDebugObjects()
