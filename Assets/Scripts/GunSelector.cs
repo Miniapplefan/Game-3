@@ -1,11 +1,14 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using TMPro;
 
 [DisallowMultipleComponent]
 public class GunSelector : MonoBehaviour
 {
+	private const int ReloadBarWidth = 6;
+	private static readonly Quaternion AmmoIndicatorFacingOffset = Quaternion.Euler(0f, 180f, 0f);
+	private static readonly string[] ReloadIndicatorTexts = BuildReloadIndicatorTexts();
+
 	[SerializeField]
 	private GunType Gun1;
 	[SerializeField]
@@ -26,6 +29,12 @@ public class GunSelector : MonoBehaviour
 	public TMP_Text ammoIndicator;
 	private Vector3 raycastPoint;
 	private Quaternion initialLocalRotation;
+	private BodyController bodyController;
+	private Transform ammoIndicatorHeadTarget;
+	private bool hasAmmoIndicatorState;
+	private bool lastAmmoIndicatorReloading;
+	private int lastDisplayedAmmoCount;
+	private int lastDisplayedReloadBarCount = -1;
 
 	[Space]
 	[Header("Runtime Filled")]
@@ -48,6 +57,8 @@ public class GunSelector : MonoBehaviour
 		Debug.Log("created guns");
 		laser = GetComponent<LineRenderer>();
 		isAI = GetComponentInParent<AIController>() != null ? true : false;
+		bodyController = GetComponentInParent<BodyController>();
+		ammoIndicatorHeadTarget = ResolveAmmoIndicatorHeadTarget();
 	}
 
 	void Update()
@@ -55,6 +66,7 @@ public class GunSelector : MonoBehaviour
 		if (Time.time - lastRaycastTime >= raycastInterval)
 		{
 			PerformRaycast();
+			RotateAmmoIndicatorTowardHead();
 			lastRaycastTime = Time.time;
 		}
 	}
@@ -67,6 +79,10 @@ public class GunSelector : MonoBehaviour
 			DrawLaser(transform.position + transform.forward * dist / 1.5f, transform.position + transform.forward * dist);
 		}
 		UpdateAmmoIndicator();
+	}
+
+	private void LateUpdate()
+	{
 	}
 
 	void PerformRaycast()
@@ -158,7 +174,7 @@ public class GunSelector : MonoBehaviour
 
 	private void UpdateAmmoIndicator()
 	{
-		if (ammoIndicator == null) return;
+		if (ammoIndicator == null || ActiveGun1 == null) return;
 
 		if (ActiveGun1.isReloading)
 		{
@@ -171,22 +187,91 @@ public class GunSelector : MonoBehaviour
 			// 0..1 where 0 = just started, 1 = finished
 			float progress01 = 1f - Mathf.Clamp01(remaining / full);
 
-			int barWidth = 6; // tweak to taste (8-14 usually reads well)
-			int filled = Mathf.RoundToInt(progress01 * barWidth);
-			filled = Mathf.Clamp(filled, 0, barWidth);
+			int filled = Mathf.RoundToInt(progress01 * ReloadBarWidth);
+			filled = Mathf.Clamp(filled, 0, ReloadBarWidth);
 
-			string bar = "[" + new string('█', filled) + new string('░', barWidth - filled) + "]";
-
-			// Optional: include percent (comment out if you want less cognitive load)
-			int pct = Mathf.RoundToInt(progress01 * 100f);
-
-			ammoIndicator.text = $"RLD {bar}";          // super minimal
-																									// ammoIndicator.text = $"RLD {bar} {pct}%"; // optional
+			if (!hasAmmoIndicatorState || !lastAmmoIndicatorReloading || lastDisplayedReloadBarCount != filled)
+			{
+				ammoIndicator.text = ReloadIndicatorTexts[filled];
+				hasAmmoIndicatorState = true;
+				lastAmmoIndicatorReloading = true;
+				lastDisplayedReloadBarCount = filled;
+			}
 		}
 		else
 		{
-			ammoIndicator.text = ActiveGun1.currentShotsInMag.ToString();
+			int currentAmmo = ActiveGun1.currentShotsInMag;
+			if (!hasAmmoIndicatorState || lastAmmoIndicatorReloading || lastDisplayedAmmoCount != currentAmmo)
+			{
+				ammoIndicator.text = currentAmmo.ToString();
+				hasAmmoIndicatorState = true;
+				lastAmmoIndicatorReloading = false;
+				lastDisplayedAmmoCount = currentAmmo;
+			}
 		}
+	}
+
+	private static string[] BuildReloadIndicatorTexts()
+	{
+		string[] texts = new string[ReloadBarWidth + 1];
+		for (int i = 0; i <= ReloadBarWidth; i++)
+		{
+			string bar = "[" + new string('█', i) + new string('░', ReloadBarWidth - i) + "]";
+			texts[i] = $"RLD {bar}";
+		}
+
+		return texts;
+	}
+
+	private Transform ResolveAmmoIndicatorHeadTarget()
+	{
+		if (bodyController == null)
+		{
+			return null;
+		}
+
+		if (bodyController.headObjectTransformCache != null)
+		{
+			return bodyController.headObjectTransformCache;
+		}
+
+		if (bodyController.headObject != null)
+		{
+			return bodyController.headObject.transform;
+		}
+
+		if (bodyController.headObjectL != null)
+		{
+			return bodyController.headObjectL.transform;
+		}
+
+		return bodyController.transform;
+	}
+
+	private void RotateAmmoIndicatorTowardHead()
+	{
+		if (ammoIndicator == null)
+		{
+			return;
+		}
+
+		if (ammoIndicatorHeadTarget == null)
+		{
+			ammoIndicatorHeadTarget = ResolveAmmoIndicatorHeadTarget();
+			if (ammoIndicatorHeadTarget == null)
+			{
+				return;
+			}
+		}
+
+		Vector3 toHead = ammoIndicatorHeadTarget.position - ammoIndicator.transform.position;
+		if (toHead.sqrMagnitude <= 0.0001f)
+		{
+			return;
+		}
+
+		Quaternion lookRotation = Quaternion.LookRotation(toHead.normalized, ammoIndicatorHeadTarget.up);
+		ammoIndicator.transform.rotation = lookRotation * AmmoIndicatorFacingOffset;
 	}
 
 	private Gun CreateGun(GunType type, GameObject slot)

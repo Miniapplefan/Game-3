@@ -17,14 +17,17 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4672
   Spread: {x: 0.03, y: 0.03, z: 0}
+  rawDamage: 1
   maxRange: 100
   isBurst: 1
   burst_numShots: 6
   burst_delayBetweenShots: 0.2
   bulletsPerShot: 1
+  magSize: 8
+  reloadTime: 3
   prepTime: 0
   prepIndicator: {fileID: 0}
-  fireRate: 6
+  fireRate: 1
   recoil: 30
   impactForce: 100
   marchingCubesDamage: 1

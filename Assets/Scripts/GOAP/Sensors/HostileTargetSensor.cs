@@ -14,13 +14,19 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private const int MaxFallbackPointSamples = 8;
 	private const int MaxStrafePointSamples = 12;
 	private const int RadialSectorCount = 9;
-	private const int MaxRadialDistanceSamples = 8;
+	private const int TacticalSectorBandSamples = 6;
+	private const int TacticalLocalAgentSamples = 6;
+	private const int TacticalPlayerAnnulusSamples = 6;
+	private const int TacticalAllowedSectorOffset = 1;
 	private const int CirclePointsPerSense = 4;
 	private const int FallbackPointsPerSense = 4;
 	private const int StrafePointsPerSense = 4;
 	private const int MaxRandomCircleAttempts = 6;
 
 	private AttackConfigSO AttackConfig;
+	private static readonly float[] TacticalAnnulusRadiusFractions = { 0.2f, 0.5f, 0.8f, 0.35f, 0.65f, 0.9f };
+	private static readonly int[] TacticalAnnulusSectorOffsets = { 0, 0, 0, -1, 1, 0 };
+	private static readonly float[] TacticalAnnulusSectorFractions = { -0.35f, 0.35f, 0f, 0f, 0f, 0.18f };
 
 	public float circleRadius = 5f;
 	public int numberOfPoints = 36;
@@ -28,11 +34,11 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float allySeparationWeight = 12f;
 	public float distancePenaltyWeight = 0.5f;
 	public float allySearchRadiusMultiplier = 1.25f;
-	public float navMeshSampleRadius = 1f;
+	public float navMeshSampleRadius = 2.5f;
 	public float agentFallbackRadius = 6f;
 	public int agentFallbackPoints = 16;
 	public float agentFallbackPlayerWeight = 1f;
-	public float radialMinDistanceMultiplier = 0.35f;
+	public float radialMinDistanceMultiplier = 0.02f;
 	public float radialMaxDistanceMultiplier = 0.75f;
 	public float radialDistanceStep = 1.5f;
 	public float radialClaimDuration = 0.5f;
@@ -43,13 +49,48 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float radialSectorSwitchCooldown = 0.75f;
 	public int radialSectorFailureThreshold = 3;
 	public int radialClaimSectorExclusionRadius = 1;
-	public float radialRecoveryMinDistanceMultiplier = 0.2f;
+	public float radialRecoveryMinDistanceMultiplier = 0.02f;
 	public float radialRecoveryMaxDistanceMultiplier = 1f;
+	public float tacticalClaimedPositionSeparation = 2f;
+	public float tacticalLocalSampleInnerRadius = 2f;
+	public float tacticalLocalSampleOuterRadius = 5f;
+	public float tacticalNearbyPositionPenaltyWeight = 0.15f;
+	public bool drawTacticalQueryGizmos = true;
+	// ------------------********---------------------
+	public bool spawnTacticalQueryDebugObjects = true;
+	public bool logTacticalQuerySelections = true;
+	// ------------------********---------------------
+
+	public bool logFallbackSelections = true;
+	public string tacticalDebugAgentName = "NPC_total new";
+	public string tacticalDebugTargetName = "Body_total new";
+	public float tacticalDebugCandidateMarkerScale = 0.35f;
+	public float tacticalDebugRingMarkerScale = 0.12f;
+	public int tacticalDebugRingMarkerCount = 24;
 	private Collider[] AllyColliders = new Collider[32];
 	private List<Vector3> AllyPositions = new List<Vector3>(32);
 	private List<Transform> AllyRoots = new List<Transform>(32);
+	private readonly List<TacticalCandidate> TacticalCandidates = new List<TacticalCandidate>(TacticalSectorBandSamples + TacticalLocalAgentSamples + TacticalPlayerAnnulusSamples);
+	private readonly List<TacticalCandidateDebugSnapshot> TacticalCandidateDebugSnapshots = new List<TacticalCandidateDebugSnapshot>(TacticalSectorBandSamples + TacticalLocalAgentSamples + TacticalPlayerAnnulusSamples);
+	private readonly List<TacticalProbeDebugSnapshot> TacticalProbeDebugSnapshots = new List<TacticalProbeDebugSnapshot>(TacticalSectorBandSamples + TacticalLocalAgentSamples + TacticalPlayerAnnulusSamples);
+	private readonly List<GameObject> TacticalDebugCandidateObjects = new List<GameObject>(TacticalSectorBandSamples + TacticalLocalAgentSamples + TacticalPlayerAnnulusSamples);
+	private readonly List<GameObject> TacticalDebugProbeObjects = new List<GameObject>(TacticalSectorBandSamples + TacticalLocalAgentSamples + TacticalPlayerAnnulusSamples);
+	private readonly List<GameObject> TacticalDebugInnerRingObjects = new List<GameObject>(24);
+	private readonly List<GameObject> TacticalDebugOuterRingObjects = new List<GameObject>(24);
 	private readonly List<int> ClaimCleanupAgentIds = new List<int>(16);
 	private readonly Dictionary<int, AgentRuntimeState> AgentStates = new Dictionary<int, AgentRuntimeState>();
+	private Transform LastTacticalDebugAgent;
+	private Transform LastTacticalDebugTarget;
+	private Vector3 LastTacticalDebugTargetPosition;
+	private int LastTacticalDebugDesiredSector = -1;
+	private float LastTacticalDebugMinDistance;
+	private float LastTacticalDebugMaxDistance;
+	private Vector3 LastTacticalDebugBestPoint;
+	private bool HasLastTacticalDebugBestPoint;
+	private GameObject TacticalDebugRoot;
+	private bool HasLoggedTacticalDebugCapture;
+	private bool HasLastLoggedTacticalSelection;
+	private Vector3 LastLoggedTacticalSelectionPoint;
 
 	private sealed class AgentRuntimeState
 	{
@@ -77,6 +118,43 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public Vector3 LastKnownAgentPosition;
 		public Vector3 LastKnownTargetPosition;
 		public Vector3 ClaimedPosition;
+	}
+
+	private struct TacticalCandidate
+	{
+		public Vector3 Position;
+		public int SectorIndex;
+		public int SectorDistanceFromDesired;
+		public int GapScore;
+		public int GapCenterOffset;
+		public float DistanceToAgentSqr;
+		public float MinClaimedDistanceSqr;
+		public int SourcePriority;
+	}
+
+	private struct TacticalCandidateDebugSnapshot
+	{
+		public Vector3 Position;
+		public int SourcePriority;
+		public bool IsSelected;
+	}
+
+	private enum TacticalProbeDebugResult
+	{
+		Accepted,
+		NavMeshRejected,
+		DistanceRejected,
+		SectorRejected,
+		OwnershipRejected,
+		LineOfSightRejected,
+		ClaimSeparationRejected,
+		DedupedRejected,
+	}
+
+	private struct TacticalProbeDebugSnapshot
+	{
+		public Vector3 Position;
+		public TacticalProbeDebugResult Result;
 	}
 
 	private sealed class TargetAngleClaimState
@@ -173,6 +251,11 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	public override void Created()
 	{
+		if (spawnTacticalQueryDebugObjects && Application.isPlaying)
+		{
+			EnsureRuntimeDebugRoot();
+			Debug.Log("HostileTargetSensor: TacticalQueryDebug root created.");
+		}
 	}
 
 	public override void Update()
@@ -210,7 +293,6 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			float distanceToPlayer = Vector3.Distance(agent.transform.position, targetPosition);
 			float inRangeDistance = bodyState.desiredGunToUse == null ? 10 : bodyState.desiredGunToUse.gunData.shootConfig.maxRange;
 
-
 			if (seeTarget && distanceToPlayer <= inRangeDistance / 1.5f)
 			{
 				result = agent.transform.position;
@@ -240,10 +322,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				}
 				else if (TryGetClosestStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
 				{
+					LogFallbackSelection(agent.transform, "StrafeFallback", closestPoint, targetPosition);
 					result = closestPoint;
 				}
 				else if (TryGetBestPointOnCircle(targetPosition, distanceToPlayer, agent, runtimeState, false, float.PositiveInfinity, out Vector3 bestFallback))
 				{
+					LogFallbackSelection(agent.transform, "CircleFallback", bestFallback, targetPosition);
 					result = bestFallback;
 				}
 				else if (runtimeState.HasCachedPosition)
@@ -552,7 +636,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		attemptedMask |= sectorMask;
 
-		if (!TrySampleRadialPoint(agent, targetPosition, sectorIndex, weaponRange, minDistanceMultiplier, maxDistanceMultiplier, out bestPoint))
+		if (!TryGetBestTacticalPoint(agent, targetState, targetTransform, targetPosition, sectorIndex, agentId, weaponRange, minDistanceMultiplier, maxDistanceMultiplier, out bestPoint))
 		{
 			return false;
 		}
@@ -561,41 +645,530 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return true;
 	}
 
-	private bool TrySampleRadialPoint(IMonoAgent agent, Vector3 targetPosition, int sectorIndex, float weaponRange, float minDistanceMultiplier, float maxDistanceMultiplier, out Vector3 bestPoint)
+	private bool TryGetBestTacticalPoint(IMonoAgent agent, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, int desiredSector, int agentId, float weaponRange, float minDistanceMultiplier, float maxDistanceMultiplier, out Vector3 bestPoint)
 	{
 		bestPoint = agent.transform.position;
-		Vector3 direction = GetSectorDirection(sectorIndex);
-		if (direction.sqrMagnitude < 0.0001f)
+		float minDistance = Mathf.Max(1f, weaponRange * minDistanceMultiplier);
+		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * maxDistanceMultiplier);
+		TacticalCandidates.Clear();
+		TacticalProbeDebugSnapshots.Clear();
+		CollectSectorBandCandidates(agent, targetState, targetPosition, desiredSector, agentId, minDistance, maxDistance);
+		CollectLocalAgentCandidates(agent, targetState, targetPosition, desiredSector, agentId, minDistance, maxDistance);
+		CollectPlayerAnnulusCandidates(agent, targetState, targetPosition, desiredSector, agentId, minDistance, maxDistance);
+
+		if (TacticalCandidates.Count == 0)
 		{
+			CaptureTacticalCandidateDebug(agent.transform, targetTransform, targetPosition, desiredSector, minDistance, maxDistance, -1, agent.transform.position, false);
 			return false;
 		}
 
-		float minDistance = Mathf.Max(1f, weaponRange * minDistanceMultiplier);
-		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * maxDistanceMultiplier);
-		float distanceStep = Mathf.Max(0.25f, radialDistanceStep);
-		int sampleCount = Mathf.Clamp(Mathf.CeilToInt((maxDistance - minDistance) / distanceStep) + 1, 1, MaxRadialDistanceSamples);
+		float bestScore = float.NegativeInfinity;
+		bool found = false;
+		int bestCandidateIndex = -1;
 
-		for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+		for (int i = 0; i < TacticalCandidates.Count; i++)
 		{
-			float t = sampleCount <= 1 ? 0f : (float)sampleIndex / (sampleCount - 1);
-			float radialDistance = Mathf.Lerp(minDistance, maxDistance, t);
-			Vector3 rawPoint = targetPosition + direction * radialDistance;
+			TacticalCandidate candidate = TacticalCandidates[i];
+			float score = ScoreTacticalCandidate(candidate);
+			if (score > bestScore)
+			{
+				bestScore = score;
+				bestPoint = candidate.Position;
+				found = true;
+				bestCandidateIndex = i;
+			}
+		}
 
-			if (!NavMesh.SamplePosition(rawPoint, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+		CaptureTacticalCandidateDebug(agent.transform, targetTransform, targetPosition, desiredSector, minDistance, maxDistance, bestCandidateIndex, bestPoint, found);
+		return found;
+	}
+
+	private void CollectSectorBandCandidates(IMonoAgent agent, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, float minDistance, float maxDistance)
+	{
+		float midDistance = Mathf.Lerp(minDistance, maxDistance, 0.55f);
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, desiredSector, 0f, minDistance, minDistance, maxDistance, 3);
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, desiredSector, -0.22f, midDistance, minDistance, maxDistance, 3);
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, desiredSector, 0.22f, midDistance, minDistance, maxDistance, 3);
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, desiredSector, 0f, maxDistance, minDistance, maxDistance, 3);
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, WrapSectorIndex(desiredSector - 1), 0f, midDistance, minDistance, maxDistance, 2);
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, WrapSectorIndex(desiredSector + 1), 0f, midDistance, minDistance, maxDistance, 2);
+	}
+
+	private void CollectLocalAgentCandidates(IMonoAgent agent, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, float minDistance, float maxDistance)
+	{
+		Vector3 desiredWorldPoint = targetPosition + GetSectorDirection(desiredSector) * Mathf.Lerp(minDistance, maxDistance, 0.5f);
+		Vector3 moveDirection = desiredWorldPoint - agent.transform.position;
+		if (moveDirection.sqrMagnitude < 0.0001f)
+		{
+			moveDirection = GetSectorDirection(desiredSector);
+		}
+
+		moveDirection.y = 0f;
+		moveDirection.Normalize();
+		Vector3 perpendicular = Vector3.Cross(Vector3.up, moveDirection);
+		float innerRadius = Mathf.Max(0.5f, tacticalLocalSampleInnerRadius);
+		float outerRadius = Mathf.Max(innerRadius + 0.5f, tacticalLocalSampleOuterRadius);
+		float middleRadius = Mathf.Lerp(innerRadius, outerRadius, 0.55f);
+
+		TryAddLocalTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, moveDirection, innerRadius, minDistance, maxDistance, 1);
+		TryAddLocalTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, moveDirection, outerRadius, minDistance, maxDistance, 1);
+		TryAddLocalTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, (moveDirection + perpendicular * 0.55f).normalized, middleRadius, minDistance, maxDistance, 1);
+		TryAddLocalTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, (moveDirection - perpendicular * 0.55f).normalized, middleRadius, minDistance, maxDistance, 1);
+		TryAddLocalTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, (moveDirection * 0.6f + perpendicular).normalized, outerRadius, minDistance, maxDistance, 0);
+		TryAddLocalTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, (moveDirection * 0.6f - perpendicular).normalized, outerRadius, minDistance, maxDistance, 0);
+	}
+
+	private void CollectPlayerAnnulusCandidates(IMonoAgent agent, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, float minDistance, float maxDistance)
+	{
+		for (int i = 0; i < TacticalPlayerAnnulusSamples; i++)
+		{
+			int candidateSector = WrapSectorIndex(desiredSector + TacticalAnnulusSectorOffsets[i]);
+			float radius = Mathf.Lerp(minDistance, maxDistance, TacticalAnnulusRadiusFractions[i]);
+			float stableJitter = GetStableSigned(agentId, i, 11) * 0.08f;
+			TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, candidateSector, TacticalAnnulusSectorFractions[i] + stableJitter, radius, minDistance, maxDistance, 2);
+		}
+	}
+
+	private void TryAddLocalTacticalCandidate(IMonoAgent agent, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, Vector3 direction, float distance, float minDistance, float maxDistance, int sourcePriority)
+	{
+		if (direction.sqrMagnitude < 0.0001f)
+		{
+			return;
+		}
+
+		Vector3 rawPoint = agent.transform.position + direction.normalized * distance;
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, rawPoint, minDistance, maxDistance, sourcePriority);
+	}
+
+	private void TryAddTacticalCandidate(IMonoAgent agent, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, int sectorIndex, float sectorOffsetFraction, float radialDistance, float minDistance, float maxDistance, int sourcePriority)
+	{
+		Vector3 rawPoint = targetPosition + GetSectorDirection(sectorIndex, sectorOffsetFraction) * radialDistance;
+		TryAddTacticalCandidate(agent, targetState, targetPosition, desiredSector, agentId, rawPoint, minDistance, maxDistance, sourcePriority);
+	}
+
+	private void TryAddTacticalCandidate(IMonoAgent agent, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, Vector3 rawPoint, float minDistance, float maxDistance, int sourcePriority)
+	{
+		if (!NavMesh.SamplePosition(rawPoint, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+		{
+			RecordTacticalProbeDebug(rawPoint, TacticalProbeDebugResult.NavMeshRejected);
+			return;
+		}
+
+		Vector3 probePoint = hit.position;
+		float distanceToTarget = Vector3.Distance(hit.position, targetPosition);
+		if (distanceToTarget < minDistance || distanceToTarget > maxDistance)
+		{
+			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.DistanceRejected);
+			return;
+		}
+
+		int candidateSector = GetSectorIndex(targetPosition, hit.position);
+		int sectorDistance = GetWrappedSectorDistance(desiredSector, candidateSector);
+		if (sectorDistance > TacticalAllowedSectorOffset)
+		{
+			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.SectorRejected);
+			return;
+		}
+
+		if (TryGetSectorOwnerClaim(targetState, candidateSector, out AngleClaim sectorOwner) && sectorOwner.AgentId != agentId)
+		{
+			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.OwnershipRejected);
+			return;
+		}
+
+		if (!HasLineOfSight(hit.position, targetPosition))
+		{
+			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.LineOfSightRejected);
+			return;
+		}
+
+		float minClaimedDistanceSqr = GetNearestClaimedPositionDistanceSqr(targetState, agentId, hit.position);
+		float minAllowedClaimDistanceSqr = tacticalClaimedPositionSeparation * tacticalClaimedPositionSeparation;
+		if (minClaimedDistanceSqr < minAllowedClaimDistanceSqr)
+		{
+			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.ClaimSeparationRejected);
+			return;
+		}
+
+		for (int i = 0; i < TacticalCandidates.Count; i++)
+		{
+			if ((TacticalCandidates[i].Position - hit.position).sqrMagnitude < 0.25f)
+			{
+				RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.DedupedRejected);
+				return;
+			}
+		}
+
+		RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.Accepted);
+
+		GetSectorGapMetrics(targetState, candidateSector, out int gapScore, out int gapCenterOffset);
+		TacticalCandidates.Add(new TacticalCandidate
+		{
+			Position = hit.position,
+			SectorIndex = candidateSector,
+			SectorDistanceFromDesired = sectorDistance,
+			GapScore = gapScore,
+			GapCenterOffset = gapCenterOffset,
+			DistanceToAgentSqr = (hit.position - agent.transform.position).sqrMagnitude,
+			MinClaimedDistanceSqr = minClaimedDistanceSqr,
+			SourcePriority = sourcePriority,
+		});
+	}
+
+	private float GetNearestClaimedPositionDistanceSqr(TargetAngleClaimState targetState, int agentId, Vector3 position)
+	{
+		if (targetState == null || targetState.ClaimsByAgent.Count == 0)
+		{
+			return float.PositiveInfinity;
+		}
+
+		float nearestDistanceSqr = float.PositiveInfinity;
+
+		foreach (AngleClaim claim in targetState.ClaimsByAgent.Values)
+		{
+			if (claim == null || claim.AgentId == agentId)
 			{
 				continue;
 			}
 
-			if (!HasLineOfSight(hit.position, targetPosition))
+			float distanceSqr = (claim.ClaimedPosition - position).sqrMagnitude;
+			if (distanceSqr < nearestDistanceSqr)
 			{
-				continue;
+				nearestDistanceSqr = distanceSqr;
 			}
+		}
 
-			bestPoint = hit.position;
+		return nearestDistanceSqr;
+	}
+
+	private float ScoreTacticalCandidate(TacticalCandidate candidate)
+	{
+		float score = candidate.SectorDistanceFromDesired == 0 ? 400f : 220f;
+		score += candidate.GapScore * 55f;
+		score -= candidate.GapCenterOffset * 18f;
+		score += candidate.SourcePriority * 12f;
+		score += float.IsPositiveInfinity(candidate.MinClaimedDistanceSqr)
+			? 80f
+			: Mathf.Min(Mathf.Sqrt(candidate.MinClaimedDistanceSqr), 12f) * 10f;
+		score -= Mathf.Sqrt(candidate.DistanceToAgentSqr) * tacticalNearbyPositionPenaltyWeight;
+		return score;
+	}
+
+	private void RecordTacticalProbeDebug(Vector3 position, TacticalProbeDebugResult result)
+	{
+		TacticalProbeDebugSnapshots.Add(new TacticalProbeDebugSnapshot
+		{
+			Position = position,
+			Result = result,
+		});
+	}
+
+	private void CaptureTacticalCandidateDebug(Transform agentTransform, Transform targetTransform, Vector3 targetPosition, int desiredSector, float minDistance, float maxDistance, int selectedCandidateIndex, Vector3 bestPoint, bool foundBestPoint)
+	{
+		if (!drawTacticalQueryGizmos && !spawnTacticalQueryDebugObjects)
+		{
+			TacticalCandidateDebugSnapshots.Clear();
+			HasLastTacticalDebugBestPoint = false;
+			UpdateRuntimeTacticalDebugObjects();
+			return;
+		}
+
+		if (!ShouldCaptureTacticalDebug(agentTransform))
+		{
+			return;
+		}
+
+		LastTacticalDebugAgent = agentTransform;
+		LastTacticalDebugTarget = targetTransform;
+		LastTacticalDebugTargetPosition = targetPosition;
+		LastTacticalDebugDesiredSector = desiredSector;
+		LastTacticalDebugMinDistance = minDistance;
+		LastTacticalDebugMaxDistance = maxDistance;
+		LastTacticalDebugBestPoint = bestPoint;
+		HasLastTacticalDebugBestPoint = foundBestPoint;
+		TacticalCandidateDebugSnapshots.Clear();
+
+		for (int i = 0; i < TacticalCandidates.Count; i++)
+		{
+			TacticalCandidate candidate = TacticalCandidates[i];
+			TacticalCandidateDebugSnapshots.Add(new TacticalCandidateDebugSnapshot
+			{
+				Position = candidate.Position,
+				SourcePriority = candidate.SourcePriority,
+				IsSelected = i == selectedCandidateIndex,
+			});
+		}
+
+		if (!HasLoggedTacticalDebugCapture)
+		{
+			HasLoggedTacticalDebugCapture = true;
+			Debug.Log($"HostileTargetSensor: captured tactical query for '{agentTransform?.name}' with {TacticalCandidateDebugSnapshots.Count} candidates from {TacticalProbeDebugSnapshots.Count} probes.");
+		}
+
+		if (logTacticalQuerySelections && foundBestPoint)
+		{
+			bool selectionChanged = !HasLastLoggedTacticalSelection
+				|| (LastLoggedTacticalSelectionPoint - bestPoint).sqrMagnitude > 0.01f;
+			if (selectionChanged)
+			{
+				HasLastLoggedTacticalSelection = true;
+				LastLoggedTacticalSelectionPoint = bestPoint;
+				Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
+			}
+		}
+
+		UpdateRuntimeTacticalDebugObjects();
+	}
+
+	private Color GetTacticalCandidateGizmoColor(TacticalCandidateDebugSnapshot snapshot)
+	{
+		if (snapshot.IsSelected)
+		{
+			return Color.green;
+		}
+
+		switch (snapshot.SourcePriority)
+		{
+			case 3:
+				return new Color(1f, 0.8f, 0.2f);
+			case 2:
+				return new Color(1f, 0.25f, 0.85f);
+			case 1:
+				return Color.cyan;
+			default:
+				return new Color(0.5f, 0.7f, 1f);
+		}
+	}
+
+	private Color GetTacticalProbeDebugColor(TacticalProbeDebugResult result)
+	{
+		switch (result)
+		{
+			case TacticalProbeDebugResult.Accepted:
+				return new Color(0.2f, 1f, 0.35f, 1f);
+			case TacticalProbeDebugResult.NavMeshRejected:
+				return Color.gray;
+			case TacticalProbeDebugResult.DistanceRejected:
+				return new Color(1f, 0.55f, 0.15f, 1f);
+			case TacticalProbeDebugResult.SectorRejected:
+				return new Color(1f, 0.8f, 0.1f, 1f);
+			case TacticalProbeDebugResult.OwnershipRejected:
+				return new Color(0.8f, 0.2f, 1f, 1f);
+			case TacticalProbeDebugResult.LineOfSightRejected:
+				return Color.red;
+			case TacticalProbeDebugResult.ClaimSeparationRejected:
+				return new Color(0.15f, 0.5f, 1f, 1f);
+			case TacticalProbeDebugResult.DedupedRejected:
+				return new Color(1f, 0.4f, 0.7f, 1f);
+			default:
+				return Color.white;
+		}
+	}
+
+	private string GetTacticalProbeDebugLabel(TacticalProbeDebugResult result, bool isChosen)
+	{
+		if (isChosen)
+		{
+			return "ChosenCandidate";
+		}
+
+		switch (result)
+		{
+			case TacticalProbeDebugResult.Accepted:
+				return "Accepted";
+			case TacticalProbeDebugResult.NavMeshRejected:
+				return "Rejected_NavMesh";
+			case TacticalProbeDebugResult.DistanceRejected:
+				return "Rejected_Distance";
+			case TacticalProbeDebugResult.SectorRejected:
+				return "Rejected_Sector";
+			case TacticalProbeDebugResult.OwnershipRejected:
+				return "Rejected_Ownership";
+			case TacticalProbeDebugResult.LineOfSightRejected:
+				return "Rejected_LineOfSight";
+			case TacticalProbeDebugResult.ClaimSeparationRejected:
+				return "Rejected_ClaimSeparation";
+			case TacticalProbeDebugResult.DedupedRejected:
+				return "Rejected_Deduped";
+			default:
+				return "Rejected_Unknown";
+		}
+	}
+
+	private string GetTacticalCandidateDebugLabel(TacticalCandidateDebugSnapshot snapshot)
+	{
+		if (snapshot.IsSelected)
+		{
+			return "SelectedCandidate";
+		}
+
+		switch (snapshot.SourcePriority)
+		{
+			case 3:
+				return "Candidate_SectorBand";
+			case 2:
+				return "Candidate_PlayerAnnulus";
+			case 1:
+				return "Candidate_LocalBiased";
+			default:
+				return "Candidate_LocalWide";
+		}
+	}
+
+	private bool ShouldCaptureTacticalDebug(Transform agentTransform)
+	{
+		if (agentTransform == null || string.IsNullOrEmpty(tacticalDebugAgentName))
+		{
 			return true;
 		}
 
-		return false;
+		return agentTransform.name == tacticalDebugAgentName
+			|| agentTransform.name.IndexOf(tacticalDebugAgentName, System.StringComparison.OrdinalIgnoreCase) >= 0;
+	}
+
+	private void LogFallbackSelection(Transform agentTransform, string fallbackName, Vector3 point, Vector3 targetPosition)
+	{
+		if (!logFallbackSelections || !ShouldCaptureTacticalDebug(agentTransform))
+		{
+			return;
+		}
+
+		Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} toward target {targetPosition}.");
+	}
+
+	private void UpdateRuntimeTacticalDebugObjects()
+	{
+		if (!spawnTacticalQueryDebugObjects || !Application.isPlaying)
+		{
+			SetRuntimeDebugObjectsActive(false);
+			return;
+		}
+
+		Transform targetTransform = LastTacticalDebugTarget;
+		if (targetTransform == null && !string.IsNullOrEmpty(tacticalDebugTargetName))
+		{
+			GameObject targetObject = GameObject.Find(tacticalDebugTargetName);
+			if (targetObject != null)
+			{
+				targetTransform = targetObject.transform;
+			}
+		}
+
+		if (targetTransform == null)
+		{
+			SetRuntimeDebugObjectsActive(false);
+			return;
+		}
+
+		EnsureRuntimeDebugRoot();
+		TacticalDebugRoot.SetActive(true);
+		LastTacticalDebugTarget = targetTransform;
+		LastTacticalDebugTargetPosition = targetTransform.position;
+		UpdateRingDebugObjects(TacticalDebugInnerRingObjects, LastTacticalDebugMinDistance, new Color(1f, 0.55f, 0.15f, 1f));
+		UpdateRingDebugObjects(TacticalDebugOuterRingObjects, LastTacticalDebugMaxDistance, new Color(1f, 0.2f, 0.15f, 1f));
+		EnsureDebugObjectCount(TacticalDebugProbeObjects, TacticalProbeDebugSnapshots.Count, "Probe", PrimitiveType.Cube);
+		EnsureDebugObjectCount(TacticalDebugCandidateObjects, TacticalCandidateDebugSnapshots.Count, "Candidate", PrimitiveType.Sphere);
+
+		for (int i = 0; i < TacticalDebugProbeObjects.Count; i++)
+		{
+			GameObject marker = TacticalDebugProbeObjects[i];
+			if (i >= TacticalProbeDebugSnapshots.Count)
+			{
+				marker.SetActive(false);
+				continue;
+			}
+
+			TacticalProbeDebugSnapshot snapshot = TacticalProbeDebugSnapshots[i];
+			float scale = snapshot.Result == TacticalProbeDebugResult.Accepted
+				? tacticalDebugCandidateMarkerScale * 0.75f
+				: tacticalDebugCandidateMarkerScale * 0.5f;
+			bool isChosen = HasLastTacticalDebugBestPoint
+				&& snapshot.Result == TacticalProbeDebugResult.Accepted
+				&& (snapshot.Position - LastTacticalDebugBestPoint).sqrMagnitude < 0.01f;
+			marker.name = $"TacticalDebug_Probe_{i}_{GetTacticalProbeDebugLabel(snapshot.Result, isChosen)}";
+			ConfigureDebugObject(marker, snapshot.Position + Vector3.up * 0.15f, scale, GetTacticalProbeDebugColor(snapshot.Result));
+		}
+
+		for (int i = 0; i < TacticalDebugCandidateObjects.Count; i++)
+		{
+			GameObject marker = TacticalDebugCandidateObjects[i];
+			if (i >= TacticalCandidateDebugSnapshots.Count)
+			{
+				marker.SetActive(false);
+				continue;
+			}
+
+			TacticalCandidateDebugSnapshot snapshot = TacticalCandidateDebugSnapshots[i];
+			float scale = snapshot.IsSelected ? tacticalDebugCandidateMarkerScale * 1.5f : tacticalDebugCandidateMarkerScale;
+			marker.name = $"TacticalDebug_Candidate_{i}_{GetTacticalCandidateDebugLabel(snapshot)}";
+			ConfigureDebugObject(marker, snapshot.Position, scale, GetTacticalCandidateGizmoColor(snapshot));
+		}
+	}
+
+	private void UpdateRingDebugObjects(List<GameObject> ringObjects, float radius, Color color)
+	{
+		int markerCount = Mathf.Max(8, tacticalDebugRingMarkerCount);
+		EnsureDebugObjectCount(ringObjects, markerCount, "Ring", PrimitiveType.Sphere);
+
+		for (int i = 0; i < ringObjects.Count; i++)
+		{
+			GameObject marker = ringObjects[i];
+			float angle = i / (float)markerCount * Mathf.PI * 2f;
+			Vector3 position = LastTacticalDebugTargetPosition + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
+			ConfigureDebugObject(marker, position, tacticalDebugRingMarkerScale, color);
+		}
+	}
+
+	private void EnsureRuntimeDebugRoot()
+	{
+		if (TacticalDebugRoot != null)
+		{
+			return;
+		}
+
+		TacticalDebugRoot = new GameObject("TacticalQueryDebug");
+	}
+
+	private void EnsureDebugObjectCount(List<GameObject> pool, int desiredCount, string label, PrimitiveType primitiveType)
+	{
+		while (pool.Count < desiredCount)
+		{
+			GameObject marker = GameObject.CreatePrimitive(primitiveType);
+			marker.name = $"TacticalDebug_{label}_{pool.Count}";
+			marker.transform.SetParent(TacticalDebugRoot != null ? TacticalDebugRoot.transform : null, false);
+			Collider markerCollider = marker.GetComponent<Collider>();
+			if (markerCollider != null)
+			{
+				Object.Destroy(markerCollider);
+			}
+
+			pool.Add(marker);
+		}
+	}
+
+	private void ConfigureDebugObject(GameObject marker, Vector3 position, float scale, Color color)
+	{
+		if (marker == null)
+		{
+			return;
+		}
+
+		marker.SetActive(true);
+		marker.transform.position = position;
+		marker.transform.localScale = Vector3.one * scale;
+		Renderer renderer = marker.GetComponent<Renderer>();
+		if (renderer != null)
+		{
+			renderer.material.color = color;
+		}
+	}
+
+	private void SetRuntimeDebugObjectsActive(bool isActive)
+	{
+		if (TacticalDebugRoot != null)
+		{
+			TacticalDebugRoot.SetActive(isActive);
+		}
 	}
 
 	private bool TryGetSectorOwnerClaim(TargetAngleClaimState targetState, int sectorIndex, out AngleClaim ownerClaim)
@@ -693,6 +1266,13 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return WrapSectorIndex((int)(positiveHash % RadialSectorCount));
 	}
 
+	private float GetStableSigned(int agentId, int sampleIndex, int salt)
+	{
+		long hash = (long)agentId * 73856093L + (long)sampleIndex * 19349663L + salt * 83492791L;
+		long positiveHash = hash < 0 ? -hash : hash;
+		return (positiveHash % 1000L) / 999f * 2f - 1f;
+	}
+
 	private int GetSectorDirectionPriority(int currentSector, int sectorIndex, bool searchPositiveDirectionFirst)
 	{
 		if (sectorIndex == currentSector)
@@ -749,8 +1329,13 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private Vector3 GetSectorDirection(int sectorIndex)
 	{
+		return GetSectorDirection(sectorIndex, 0f);
+	}
+
+	private Vector3 GetSectorDirection(int sectorIndex, float sectorOffsetFraction)
+	{
 		float sectorSize = 360f / RadialSectorCount;
-		float angle = (WrapSectorIndex(sectorIndex) + 0.5f) * sectorSize * Mathf.Deg2Rad;
+		float angle = (WrapSectorIndex(sectorIndex) + 0.5f + sectorOffsetFraction) * sectorSize * Mathf.Deg2Rad;
 		return new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
 	}
 
@@ -1104,58 +1689,90 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return SharedAgentPerception.HasLineOfSight(start, end, AttackConfig);
 	}
 
-	private List<Vector3> SampleStrafingPointsForGizmos(Transform agent, Transform target)
-	{
-		List<Vector3> points = new List<Vector3>();
-
-		if (agent == null || target == null)
-			return points;
-
-		int num = 30;
-		float lineLength = 20f;
-
-		// perpendicular to agent→target direction
-		Vector3 dirToTarget = (target.position - agent.position).normalized;
-		Vector3 perpendicular = Vector3.Cross(Vector3.up, dirToTarget);
-
-		for (int i = 0; i < num; i++)
-		{
-			float t = (float)i / (num - 1);
-			float offset = t * lineLength - lineLength / 2f;
-			Vector3 point = agent.position + perpendicular * offset;
-			points.Add(point);
-		}
-
-		return points;
-	}
-
 	public void OnDrawGizmosSelected()
 	{
-		// find player only for gizmos (safe in editor; no need for Sensors)
-		PlayerController player = GameObject.Find("Body_total new").GetComponentInChildren<PlayerController>();
-		if (player == null)
-			return;
-
-		Transform agent = GameObject.Find("NPC_total new").transform;
-		Transform target = player.transform;
-
-		// sampling method specifically for Gizmos
-		List<Vector3> gizmoPoints = SampleStrafingPointsForGizmos(agent, target);
-
-		foreach (var p in gizmoPoints)
+		if (!drawTacticalQueryGizmos)
 		{
-			// draw spheres
-			Gizmos.color = Color.cyan;
-			Gizmos.DrawWireSphere(p, 0.25f);
-
-			// optional: draw line toward target
-			Gizmos.color = Color.white;
-			Gizmos.DrawLine(p, target.position);
+			return;
 		}
 
-		// draw perpendicular direction for clarity
-		Gizmos.color = Color.yellow;
-		Gizmos.DrawLine(agent.position, agent.position + (Vector3.Cross(Vector3.up, (target.position - agent.position).normalized) * 5));
+		Transform target = LastTacticalDebugTarget;
+		if (target == null && !string.IsNullOrEmpty(tacticalDebugTargetName))
+		{
+			GameObject targetObject = GameObject.Find(tacticalDebugTargetName);
+			if (targetObject != null)
+			{
+				target = targetObject.transform;
+			}
+		}
+
+		Transform agent = LastTacticalDebugAgent;
+		if (agent == null && !string.IsNullOrEmpty(tacticalDebugAgentName))
+		{
+			GameObject agentObject = GameObject.Find(tacticalDebugAgentName);
+			if (agentObject != null)
+			{
+				agent = agentObject.transform;
+			}
+		}
+
+		if (target == null)
+		{
+			return;
+		}
+
+		Vector3 targetPosition = LastTacticalDebugTarget == target ? LastTacticalDebugTargetPosition : target.position;
+		if (LastTacticalDebugDesiredSector >= 0)
+		{
+			Gizmos.color = new Color(1f, 0.55f, 0.15f, 1f);
+			DrawDebugRing(targetPosition, LastTacticalDebugMinDistance);
+			Gizmos.color = new Color(1f, 0.2f, 0.15f, 1f);
+			DrawDebugRing(targetPosition, LastTacticalDebugMaxDistance);
+			Gizmos.color = new Color(1f, 0.75f, 0.2f, 1f);
+			DrawSectorBoundary(targetPosition, LastTacticalDebugDesiredSector, -0.5f, LastTacticalDebugMaxDistance);
+			DrawSectorBoundary(targetPosition, LastTacticalDebugDesiredSector, 0.5f, LastTacticalDebugMaxDistance);
+		}
+
+		for (int i = 0; i < TacticalCandidateDebugSnapshots.Count; i++)
+		{
+			TacticalCandidateDebugSnapshot snapshot = TacticalCandidateDebugSnapshots[i];
+			Gizmos.color = GetTacticalCandidateGizmoColor(snapshot);
+			float radius = snapshot.IsSelected ? 0.4f : 0.22f;
+			Gizmos.DrawSphere(snapshot.Position, radius);
+			Gizmos.DrawLine(snapshot.Position, targetPosition);
+		}
+
+		if (HasLastTacticalDebugBestPoint)
+		{
+			Gizmos.color = Color.green;
+			Gizmos.DrawWireSphere(LastTacticalDebugBestPoint, 0.55f);
+		}
+
+		if (agent != null)
+		{
+			Gizmos.color = Color.white;
+			Gizmos.DrawLine(agent.position, targetPosition);
+		}
+	}
+
+	private void DrawDebugRing(Vector3 center, float radius)
+	{
+		const int segmentCount = 32;
+		Vector3 previousPoint = center + Vector3.right * radius;
+
+		for (int i = 1; i <= segmentCount; i++)
+		{
+			float angle = i / (float)segmentCount * Mathf.PI * 2f;
+			Vector3 nextPoint = center + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
+			Gizmos.DrawLine(previousPoint, nextPoint);
+			previousPoint = nextPoint;
+		}
+	}
+
+	private void DrawSectorBoundary(Vector3 center, int sectorIndex, float edgeOffset, float radius)
+	{
+		Vector3 direction = GetSectorDirection(sectorIndex, edgeOffset);
+		Gizmos.DrawLine(center, center + direction * radius);
 	}
 
 	public void Inject(DependencyInjector injector)
