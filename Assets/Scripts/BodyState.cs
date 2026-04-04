@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine.AI;
 
 public class BodyState : MonoBehaviour
 {
@@ -14,6 +15,7 @@ public class BodyState : MonoBehaviour
 	public WeaponsModel weapons;
 	public SiphonModel siphon;
 	public Rigidbody rb;
+	private NavMeshAgent navMeshAgent;
 
 	public float bodyHeat;
 	public bool bodyIsOverheated;
@@ -53,6 +55,7 @@ public class BodyState : MonoBehaviour
 	{
 		bodyController = bc;
 		heatContainer = heat;
+		navMeshAgent = GetComponentInParent<NavMeshAgent>();
 
 		cooling = systems.OfType<CoolingModel>().FirstOrDefault();
 		head = systems.OfType<HeadModel>().FirstOrDefault();
@@ -87,11 +90,32 @@ public class BodyState : MonoBehaviour
 
 	void UpdateAIState()
 	{
-		if (rb.velocity.magnitude > 0.0001f)
+		if (IsAIMoving())
 		{
-			TimeToAim = Mathf.Clamp(TimeToAim += Time.deltaTime * 3, 0, AttackConfig.TimeToAim);
+			TimeToAim = Mathf.Clamp(TimeToAim + Time.deltaTime * 3f, 0f, AttackConfig.TimeToAim);
 			isAimed = false;
 		}
+	}
+
+	public bool IsAIMoving()
+	{
+		const float moveThreshold = 0.05f;
+		float moveThresholdSqr = moveThreshold * moveThreshold;
+
+		if (navMeshAgent != null && navMeshAgent.enabled)
+		{
+			if (navMeshAgent.velocity.sqrMagnitude > moveThresholdSqr)
+			{
+				return true;
+			}
+
+			if (navMeshAgent.desiredVelocity.sqrMagnitude > moveThresholdSqr)
+			{
+				return true;
+			}
+		}
+
+		return rb != null && rb.velocity.sqrMagnitude > moveThresholdSqr;
 	}
 
 	public int Cooling_getSystemHealth()

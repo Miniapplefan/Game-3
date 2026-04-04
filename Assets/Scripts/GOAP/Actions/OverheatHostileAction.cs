@@ -173,10 +173,9 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		}
 		//Debug.Log(bodyState.rb.velocity.magnitude);
 
-		if (bodyState.rb.velocity.magnitude > 0.0001f)
+		if (bodyState.IsAIMoving())
 		{
 			bodyState.isAimed = false;
-			// bodyState.TimeToAim = Mathf.Clamp(bodyState.TimeToAim += context.DeltaTime * 3, 0, AttackConfig.TimeToAim);
 			return ActionRunState.Continue;
 		}
 
