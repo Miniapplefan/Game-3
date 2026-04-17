@@ -156,6 +156,12 @@ public class BodyController : MonoBehaviour
 	public Transform weaponAimPointL;
 	public Transform weaponStandbyPointR;
 	public Transform weaponStandbyPointL;
+	[Header("Standby Elbow Targets")]
+	public Transform elbowTargetR;
+	public Transform elbowTargetL;
+	public float standbyElbowDrop = 0.35f;
+	public float standbyElbowOut = 0.18f;
+	public float standbyElbowBack = 0.08f;
 	float leanSpeed = 0.04f;
 	float leanRecoverySpeed = 0.05f;
 
@@ -1076,6 +1082,7 @@ public class BodyController : MonoBehaviour
 				{
 					// Debug.Log("setting head to cache");
 					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+					headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 				}
 			}
 
@@ -2019,15 +2026,16 @@ public class BodyController : MonoBehaviour
 				UpdateAimSwapBlendAI();
 			}
 			else
-			{
-				ExecutePhysicsBasedInputs();
-				GetAimPoint();
-				DoRotation();
-				UpdatePendingMoveAimYaw();
-				UpdateAimSwapBlend();
-			}
-			doSiphoning();
-			doLimbRepairs();
+				{
+					ExecutePhysicsBasedInputs();
+					GetAimPoint();
+					DoRotation();
+					UpdatePendingMoveAimYaw();
+					UpdateAimSwapBlend();
+					UpdateStandbyElbowTargets();
+				}
+				doSiphoning();
+				doLimbRepairs();
 		}
 		legs.DoMoveDeacceleration();
 		legs.RecoverFromTagging(1);
@@ -2154,6 +2162,46 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 		weaponAimPointL.position = pos;
+	}
+
+	private void UpdateStandbyElbowTargets()
+	{
+		Vector3 bodyRight = Vector3.ProjectOnPlane(transform.right, Vector3.up);
+		if (bodyRight.sqrMagnitude < 0.0001f)
+		{
+			bodyRight = Vector3.right;
+		}
+		else
+		{
+			bodyRight.Normalize();
+		}
+
+		Vector3 bodyForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+		if (bodyForward.sqrMagnitude < 0.0001f)
+		{
+			bodyForward = Vector3.forward;
+		}
+		else
+		{
+			bodyForward.Normalize();
+		}
+
+		UpdateStandbyElbowTarget(elbowTargetR, weaponStandbyPointR, 1f, bodyRight, bodyForward);
+		UpdateStandbyElbowTarget(elbowTargetL, weaponStandbyPointL, -1f, bodyRight, bodyForward);
+	}
+
+	private void UpdateStandbyElbowTarget(Transform elbowTarget, Transform standbyTarget, float sideSign, Vector3 bodyRight, Vector3 bodyForward)
+	{
+		if (elbowTarget == null || standbyTarget == null)
+		{
+			return;
+		}
+
+		Vector3 targetPos = standbyTarget.position;
+		targetPos += Vector3.down * standbyElbowDrop;
+		targetPos += bodyRight * (standbyElbowOut * sideSign);
+		targetPos -= bodyForward * standbyElbowBack;
+		elbowTarget.position = targetPos;
 	}
 
 	private Vector3 GetTorsoForwardWithPitch()
