@@ -109,7 +109,9 @@ public class BodyState : MonoBehaviour
 				return true;
 			}
 
-			if (navMeshAgent.desiredVelocity.sqrMagnitude > moveThresholdSqr)
+			bool hasMeaningfulPath = navMeshAgent.pathPending
+				|| (navMeshAgent.hasPath && navMeshAgent.remainingDistance > navMeshAgent.stoppingDistance + 0.1f);
+			if (hasMeaningfulPath && navMeshAgent.desiredVelocity.sqrMagnitude > moveThresholdSqr)
 			{
 				return true;
 			}

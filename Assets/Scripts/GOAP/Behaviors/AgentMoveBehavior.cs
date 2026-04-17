@@ -47,6 +47,17 @@ public class AgentMoveBehavior : MonoBehaviour
 
 	private void EventsOnTargetChanged(ITarget target, bool inRange)
 	{
+		if (target == null)
+		{
+			return;
+		}
+
+		if (CurrentTarget != null && Vector3.Distance(CurrentTarget.Position, target.Position) < MinMoveDistance)
+		{
+			CurrentTarget = target;
+			return;
+		}
+
 		CurrentTarget = target;
 		LastPosition = CurrentTarget.Position;
 		if (NavMeshAgent.enabled)
@@ -80,6 +91,16 @@ public class AgentMoveBehavior : MonoBehaviour
 		{
 			return;
 		}
+
+		float distanceToTarget = Vector3.Distance(transform.position, CurrentTarget.Position);
+		if (NavMeshAgent.enabled && !NavMeshAgent.pathPending && distanceToTarget <= MinMoveDistance)
+		{
+			if (NavMeshAgent.hasPath || NavMeshAgent.desiredVelocity.sqrMagnitude > 0.0001f)
+			{
+				NavMeshAgent.ResetPath();
+			}
+		}
+
 		bodyState.positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.white;
 		bodyState.positionTracker.transform.position = NavMeshAgent.destination;
 		bodyState.positionTracker2.gameObject.GetComponent<MeshRenderer>().material.color = Color.green;
