@@ -299,10 +299,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				result = agent.transform.position;
 				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), stableSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
 			}
-			else if (seeTarget && distanceToPlayer <= inRangeDistance)
+			else if (seeTarget && TryHoldAcceptableVisiblePosition(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, out int visibleHoldSectorIndex))
 			{
 				result = agent.transform.position;
-				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), GetSectorIndex(targetPosition, agent.transform.position), result, agent.transform.position, targetPosition, runtimeState);
+				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), visibleHoldSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
 			}
 			else if (seeTarget)
 			{
@@ -554,6 +554,43 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		sectorIndex = claim.SectorIndex;
+		return true;
+	}
+
+	private bool TryHoldAcceptableVisiblePosition(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, out int sectorIndex)
+	{
+		sectorIndex = -1;
+		if (agent == null || bodyState == null || targetTransform == null)
+		{
+			return false;
+		}
+
+		if (Vector3.Distance(agent.transform.position, targetPosition) > weaponRange)
+		{
+			return false;
+		}
+
+		if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, agent.transform.position), targetAimPosition))
+		{
+			return false;
+		}
+
+		CleanupClaimsForTarget(targetTransform, targetPosition, weaponRange);
+		SharedAngleClaims.TryGetTargetState(targetTransform, out TargetAngleClaimState targetState);
+
+		sectorIndex = GetSectorIndex(targetPosition, agent.transform.position);
+		if (TryGetSectorOwnerClaim(targetState, sectorIndex, out AngleClaim sectorOwner) && sectorOwner.AgentId != agent.transform.GetInstanceID())
+		{
+			return false;
+		}
+
+		float minClaimedDistanceSqr = GetNearestClaimedPositionDistanceSqr(targetState, agent.transform.GetInstanceID(), agent.transform.position);
+		float minAllowedClaimDistanceSqr = tacticalClaimedPositionSeparation * tacticalClaimedPositionSeparation;
+		if (minClaimedDistanceSqr < minAllowedClaimDistanceSqr)
+		{
+			return false;
+		}
+
 		return true;
 	}
 
