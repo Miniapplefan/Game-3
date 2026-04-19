@@ -176,9 +176,16 @@ public static class SharedAgentPerception
 
 		if (Physics.OverlapSphereNonAlloc(agentPosition, attackConfig.SensorRadius, state.TargetColliders, attackConfig.AttackableLayerMask) > 0 && state.TargetColliders[0] != null)
 		{
-			state.TargetTransform = state.TargetColliders[0].transform;
-			state.TargetBodyState = state.TargetTransform.GetComponentInParent<BodyState>();
-			state.TargetPosition = state.TargetTransform.position;
+			Transform hitTransform = state.TargetColliders[0].transform;
+			state.TargetBodyState = hitTransform.GetComponentInParent<BodyState>();
+			state.TargetTransform = state.TargetBodyState != null
+				? state.TargetBodyState.transform
+				: hitTransform.root != null
+					? hitTransform.root
+					: hitTransform;
+			state.TargetPosition = state.TargetBodyState != null
+				? state.TargetBodyState.transform.position
+				: state.TargetTransform.position;
 			state.LastTargetPosition = state.TargetPosition;
 			state.TargetHeadPosition = state.TargetBodyState != null && state.TargetBodyState.headCollider != null
 				? state.TargetBodyState.headCollider.transform.position

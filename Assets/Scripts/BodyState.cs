@@ -115,6 +115,13 @@ public class BodyState : MonoBehaviour
 			{
 				return true;
 			}
+
+			// AI bodies can retain a little rigidbody drift after the NavMeshAgent has
+			// effectively arrived. That should not keep resetting aim forever.
+			if (bodyController != null && bodyController.isAI && !hasMeaningfulPath)
+			{
+				return bodyController.isKnockbacked;
+			}
 		}
 
 		return rb != null && rb.velocity.sqrMagnitude > moveThresholdSqr;

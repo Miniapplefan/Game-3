@@ -55,6 +55,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float tacticalLocalSampleInnerRadius = 2f;
 	public float tacticalLocalSampleOuterRadius = 5f;
 	public float tacticalNearbyPositionPenaltyWeight = 0.15f;
+	public float tacticalCurrentPositionStickinessBonus = 140f;
+	public float tacticalSwitchScoreMargin = 80f;
+	public float visiblePositionDwellDuration = 1.5f;
+	public int visibleHoldFailureThreshold = 3;
 	public bool enablePlayerAnnulusCandidates = false;
 	public bool drawTacticalQueryGizmos = true;
 	// ------------------****DEBUG****---------------------
@@ -80,6 +84,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private readonly List<GameObject> TacticalDebugOuterRingObjects = new List<GameObject>(24);
 	private readonly List<int> ClaimCleanupAgentIds = new List<int>(16);
 	private readonly Dictionary<int, AgentRuntimeState> AgentStates = new Dictionary<int, AgentRuntimeState>();
+	private readonly NavMeshPath SharedNavMeshPath = new NavMeshPath();
 	private Transform LastTacticalDebugAgent;
 	private Transform LastTacticalDebugTarget;
 	private Vector3 LastTacticalDebugTargetPosition;
@@ -107,6 +112,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public int LastClaimedSectorIndex = -1;
 		public float NextAllowedSectorSwitchTime;
 		public int ConsecutiveClaimedSectorFailures;
+		public float VisibleHoldUntilTime;
+		public int ConsecutiveVisibleHoldFailures;
+		public bool HasVisibleHoldAnchor;
+		public Vector3 VisibleHoldAnchorTargetPosition;
 	}
 
 	private sealed class AngleClaim
@@ -131,6 +140,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public float DistanceToAgentSqr;
 		public float MinClaimedDistanceSqr;
 		public int SourcePriority;
+		public bool IsIncumbent;
 	}
 
 	private struct TacticalCandidateDebugSnapshot
@@ -294,21 +304,21 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			float distanceToPlayer = Vector3.Distance(agent.transform.position, targetPosition);
 			float inRangeDistance = bodyState.desiredGunToUse == null ? 10 : bodyState.desiredGunToUse.gunData.shootConfig.maxRange;
 
-			if (seeTarget && TryHoldStableVisiblePosition(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out int stableSectorIndex))
-			{
-				result = agent.transform.position;
-				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), stableSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
-			}
-			else if (seeTarget && TryHoldAcceptableVisiblePosition(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, out int visibleHoldSectorIndex))
-			{
-				result = agent.transform.position;
-				UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), visibleHoldSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
-			}
-			else if (seeTarget)
-			{
-				if (TryGetBestRadialPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 bestPoint))
-				{
-					result = bestPoint;
+					if (seeTarget && distanceToPlayer <= inRangeDistance && !ShouldBreakVisibleHoldFromTargetShift(runtimeState, targetPosition))
+					{
+						result = agent.transform.position;
+						RegisterVisibleHoldSuccess(runtimeState);
+						EnsureVisibleHoldAnchor(runtimeState, targetPosition);
+						int holdSectorIndex = GetSectorIndex(targetPosition, agent.transform.position);
+						UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), holdSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
+					}
+					else if (seeTarget)
+					{
+						ResetVisibleHoldFailures(runtimeState);
+						ClearVisibleHoldAnchor(runtimeState);
+						if (TryGetBestRadialPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 bestPoint))
+						{
+							result = bestPoint;
 				}
 				else if (TryGetBestPointOnCircle(targetPosition, inRangeDistance / 2f, agent, runtimeState, true, distanceToPlayer, out bestPoint))
 				{
@@ -320,11 +330,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				}
 			}
 
-			else if (!seeTarget)//&& distanceToPlayer <= inRangeDistance / 2
-			{
-				if (TryGetBestRadialRecoveryPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 recoveryPoint))
+				else if (!seeTarget)//&& distanceToPlayer <= inRangeDistance / 2
 				{
-					result = recoveryPoint;
+					ClearVisibleHoldAnchor(runtimeState);
+					if (TryGetBestRadialRecoveryPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 recoveryPoint))
+					{
+						result = recoveryPoint;
 				}
 				else if (TryGetClosestStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
 				{
@@ -502,17 +513,17 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return false;
 		}
 
-		if (!NavMesh.SamplePosition(claim.ClaimedPosition, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+		if (!TryResolveReachablePoint(agent, claim.ClaimedPosition, out Vector3 resolvedPoint))
 		{
 			return false;
 		}
 
-		if (!HasLineOfSight(hit.position, targetPosition))
+		if (!HasLineOfSight(resolvedPoint, targetPosition))
 		{
 			return false;
 		}
 
-		bestPoint = hit.position;
+		bestPoint = resolvedPoint;
 		return true;
 	}
 
@@ -557,8 +568,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		return true;
 	}
 
-	private bool TryHoldAcceptableVisiblePosition(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, out int sectorIndex)
-	{
+		private bool TryHoldAcceptableVisiblePosition(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, out int sectorIndex)
+		{
 		sectorIndex = -1;
 		if (agent == null || bodyState == null || targetTransform == null)
 		{
@@ -591,21 +602,110 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return false;
 		}
 
-		return true;
-	}
+			return true;
+		}
 
-	private void RegisterClaimedSectorFailure(AgentRuntimeState runtimeState)
-	{
-		runtimeState.ConsecutiveClaimedSectorFailures++;
-	}
+		private bool TryHoldVisiblePositionWithGrace(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out int sectorIndex)
+		{
+			sectorIndex = -1;
+			if (agent == null || bodyState == null || targetTransform == null)
+			{
+				return false;
+			}
 
-	private void ResetClaimedSectorFailures(AgentRuntimeState runtimeState)
-	{
-		runtimeState.ConsecutiveClaimedSectorFailures = 0;
-	}
+			if (runtimeState.LastTargetTransform != targetTransform)
+			{
+				return false;
+			}
 
-	private bool ShouldDelaySectorSwitch(AgentRuntimeState runtimeState)
-	{
+			if (Vector3.Distance(agent.transform.position, targetPosition) > weaponRange)
+			{
+				return false;
+			}
+
+			if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, agent.transform.position), targetAimPosition))
+			{
+				return false;
+			}
+
+			if (SharedAngleClaims.TryGetClaim(targetTransform, agent.transform.GetInstanceID(), out AngleClaim claim)
+				&& claim != null)
+			{
+				float targetShiftThresholdSqr = radialClaimReuseTargetMoveThreshold * radialClaimReuseTargetMoveThreshold;
+				if ((targetPosition - claim.LastKnownTargetPosition).sqrMagnitude > targetShiftThresholdSqr)
+				{
+					return false;
+				}
+			}
+
+			sectorIndex = GetSectorIndex(targetPosition, agent.transform.position);
+
+			if (Time.time < runtimeState.VisibleHoldUntilTime)
+			{
+				return true;
+			}
+
+			RegisterVisibleHoldFailure(runtimeState);
+			return runtimeState.ConsecutiveVisibleHoldFailures < Mathf.Max(1, visibleHoldFailureThreshold);
+		}
+
+		private void RegisterClaimedSectorFailure(AgentRuntimeState runtimeState)
+		{
+			runtimeState.ConsecutiveClaimedSectorFailures++;
+		}
+
+		private void ResetClaimedSectorFailures(AgentRuntimeState runtimeState)
+		{
+			runtimeState.ConsecutiveClaimedSectorFailures = 0;
+		}
+
+		private void RegisterVisibleHoldSuccess(AgentRuntimeState runtimeState)
+		{
+			runtimeState.VisibleHoldUntilTime = Time.time + visiblePositionDwellDuration;
+			runtimeState.ConsecutiveVisibleHoldFailures = 0;
+		}
+
+		private void RegisterVisibleHoldFailure(AgentRuntimeState runtimeState)
+		{
+			runtimeState.ConsecutiveVisibleHoldFailures++;
+		}
+
+		private void ResetVisibleHoldFailures(AgentRuntimeState runtimeState)
+		{
+			runtimeState.ConsecutiveVisibleHoldFailures = 0;
+			runtimeState.VisibleHoldUntilTime = 0f;
+		}
+
+		private bool ShouldBreakVisibleHoldFromTargetShift(AgentRuntimeState runtimeState, Vector3 targetPosition)
+		{
+			if (!runtimeState.HasVisibleHoldAnchor)
+			{
+				return false;
+			}
+
+			float targetShiftThresholdSqr = radialClaimReuseTargetMoveThreshold * radialClaimReuseTargetMoveThreshold;
+			return (targetPosition - runtimeState.VisibleHoldAnchorTargetPosition).sqrMagnitude > targetShiftThresholdSqr;
+		}
+
+		private void EnsureVisibleHoldAnchor(AgentRuntimeState runtimeState, Vector3 targetPosition)
+		{
+			if (runtimeState.HasVisibleHoldAnchor)
+			{
+				return;
+			}
+
+			runtimeState.HasVisibleHoldAnchor = true;
+			runtimeState.VisibleHoldAnchorTargetPosition = targetPosition;
+		}
+
+		private void ClearVisibleHoldAnchor(AgentRuntimeState runtimeState)
+		{
+			runtimeState.HasVisibleHoldAnchor = false;
+			runtimeState.VisibleHoldAnchorTargetPosition = Vector3.zero;
+		}
+
+		private bool ShouldDelaySectorSwitch(AgentRuntimeState runtimeState)
+		{
 		if (Time.time < runtimeState.NextAllowedSectorSwitchTime)
 		{
 			return true;
@@ -742,6 +842,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		{
 			CollectPlayerAnnulusCandidates(agent, bodyState, targetAimPosition, targetState, targetPosition, desiredSector, agentId, minDistance, maxDistance);
 		}
+		TryAddIncumbentTacticalCandidate(agent, bodyState, targetAimPosition, targetState, targetPosition, desiredSector, agentId, minDistance, maxDistance);
 
 		if (TacticalCandidates.Count == 0)
 		{
@@ -752,11 +853,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		float bestScore = float.NegativeInfinity;
 		bool found = false;
 		int bestCandidateIndex = -1;
+		float incumbentScore = float.NegativeInfinity;
+		int incumbentCandidateIndex = -1;
 
 		for (int i = 0; i < TacticalCandidates.Count; i++)
 		{
 			TacticalCandidate candidate = TacticalCandidates[i];
 			float score = ScoreTacticalCandidate(candidate);
+			if (candidate.IsIncumbent)
+			{
+				incumbentScore = score;
+				incumbentCandidateIndex = i;
+			}
 			if (score > bestScore)
 			{
 				bestScore = score;
@@ -764,6 +872,15 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				found = true;
 				bestCandidateIndex = i;
 			}
+		}
+
+		if (incumbentCandidateIndex >= 0
+			&& bestCandidateIndex >= 0
+			&& bestCandidateIndex != incumbentCandidateIndex
+			&& bestScore < incumbentScore + tacticalSwitchScoreMargin)
+		{
+			bestCandidateIndex = incumbentCandidateIndex;
+			bestPoint = TacticalCandidates[incumbentCandidateIndex].Position;
 		}
 
 		CaptureTacticalCandidateDebug(agent.transform, targetTransform, targetPosition, desiredSector, minDistance, maxDistance, bestCandidateIndex, bestPoint, found);
@@ -835,21 +952,21 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private void TryAddTacticalCandidate(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, Vector3 rawPoint, float minDistance, float maxDistance, int sourcePriority)
 	{
-		if (!NavMesh.SamplePosition(rawPoint, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+		if (!TryResolveReachablePoint(agent, rawPoint, out Vector3 resolvedPoint))
 		{
 			RecordTacticalProbeDebug(rawPoint, TacticalProbeDebugResult.NavMeshRejected);
 			return;
 		}
 
-		Vector3 probePoint = hit.position;
-		float distanceToTarget = Vector3.Distance(hit.position, targetPosition);
+		Vector3 probePoint = resolvedPoint;
+		float distanceToTarget = Vector3.Distance(resolvedPoint, targetPosition);
 		if (distanceToTarget < minDistance || distanceToTarget > maxDistance)
 		{
 			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.DistanceRejected);
 			return;
 		}
 
-		int candidateSector = GetSectorIndex(targetPosition, hit.position);
+		int candidateSector = GetSectorIndex(targetPosition, resolvedPoint);
 		int sectorDistance = GetWrappedSectorDistance(desiredSector, candidateSector);
 		if (sectorDistance > TacticalAllowedSectorOffset)
 		{
@@ -863,13 +980,13 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return;
 		}
 
-		if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, hit.position), targetAimPosition))
+		if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, resolvedPoint), targetAimPosition))
 		{
 			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.LineOfSightRejected);
 			return;
 		}
 
-		float minClaimedDistanceSqr = GetNearestClaimedPositionDistanceSqr(targetState, agentId, hit.position);
+		float minClaimedDistanceSqr = GetNearestClaimedPositionDistanceSqr(targetState, agentId, resolvedPoint);
 		float minAllowedClaimDistanceSqr = tacticalClaimedPositionSeparation * tacticalClaimedPositionSeparation;
 		if (minClaimedDistanceSqr < minAllowedClaimDistanceSqr)
 		{
@@ -879,11 +996,11 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		for (int i = 0; i < TacticalCandidates.Count; i++)
 		{
-			if ((TacticalCandidates[i].Position - hit.position).sqrMagnitude < 0.25f)
-			{
-				RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.DedupedRejected);
-				return;
-			}
+				if ((TacticalCandidates[i].Position - resolvedPoint).sqrMagnitude < 0.25f)
+				{
+					RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.DedupedRejected);
+					return;
+				}
 		}
 
 		RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.Accepted);
@@ -891,14 +1008,78 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		GetSectorGapMetrics(targetState, candidateSector, out int gapScore, out int gapCenterOffset);
 		TacticalCandidates.Add(new TacticalCandidate
 		{
-			Position = hit.position,
+			Position = resolvedPoint,
 			SectorIndex = candidateSector,
 			SectorDistanceFromDesired = sectorDistance,
 			GapScore = gapScore,
 			GapCenterOffset = gapCenterOffset,
-			DistanceToAgentSqr = (hit.position - agent.transform.position).sqrMagnitude,
+			DistanceToAgentSqr = (resolvedPoint - agent.transform.position).sqrMagnitude,
 			MinClaimedDistanceSqr = minClaimedDistanceSqr,
 			SourcePriority = sourcePriority,
+			IsIncumbent = false,
+		});
+	}
+
+	private void TryAddIncumbentTacticalCandidate(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, float minDistance, float maxDistance)
+	{
+		if (!TryResolveReachablePoint(agent, agent.transform.position, out Vector3 resolvedPoint))
+		{
+			return;
+		}
+
+		float distanceToTarget = Vector3.Distance(resolvedPoint, targetPosition);
+		if (distanceToTarget < minDistance || distanceToTarget > maxDistance)
+		{
+			return;
+		}
+
+		int candidateSector = GetSectorIndex(targetPosition, resolvedPoint);
+		int sectorDistance = GetWrappedSectorDistance(desiredSector, candidateSector);
+		if (sectorDistance > TacticalAllowedSectorOffset)
+		{
+			return;
+		}
+
+		if (TryGetSectorOwnerClaim(targetState, candidateSector, out AngleClaim sectorOwner) && sectorOwner.AgentId != agentId)
+		{
+			return;
+		}
+
+		if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, resolvedPoint), targetAimPosition))
+		{
+			return;
+		}
+
+		float minClaimedDistanceSqr = GetNearestClaimedPositionDistanceSqr(targetState, agentId, resolvedPoint);
+		float minAllowedClaimDistanceSqr = tacticalClaimedPositionSeparation * tacticalClaimedPositionSeparation;
+		if (minClaimedDistanceSqr < minAllowedClaimDistanceSqr)
+		{
+			return;
+		}
+
+		for (int i = 0; i < TacticalCandidates.Count; i++)
+		{
+			if ((TacticalCandidates[i].Position - resolvedPoint).sqrMagnitude < 0.25f)
+			{
+				TacticalCandidate candidate = TacticalCandidates[i];
+				candidate.IsIncumbent = true;
+				TacticalCandidates[i] = candidate;
+				return;
+			}
+		}
+
+		GetSectorGapMetrics(targetState, candidateSector, out int gapScore, out int gapCenterOffset);
+		TacticalCandidates.Add(new TacticalCandidate
+		{
+			Position = resolvedPoint,
+			SectorIndex = candidateSector,
+			SectorDistanceFromDesired = sectorDistance,
+			GapScore = gapScore,
+			GapCenterOffset = gapCenterOffset,
+			DistanceToAgentSqr = 0f,
+			MinClaimedDistanceSqr = minClaimedDistanceSqr,
+			SourcePriority = 4,
+			IsIncumbent = true,
 		});
 	}
 
@@ -949,6 +1130,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			? 80f
 			: Mathf.Min(Mathf.Sqrt(candidate.MinClaimedDistanceSqr), 12f) * 10f;
 		score -= Mathf.Sqrt(candidate.DistanceToAgentSqr) * tacticalNearbyPositionPenaltyWeight;
+		if (candidate.IsIncumbent)
+		{
+			score += tacticalCurrentPositionStickinessBonus;
+		}
 		return score;
 	}
 
@@ -1478,10 +1663,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			float angle = angleOffset + index * angleStep;
 			Vector3 raw = center + new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad)) * radius;
 
-			if (!NavMesh.SamplePosition(raw, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+			if (!TryResolveReachablePoint(agent, raw, out Vector3 candidate))
 				continue;
-
-			Vector3 candidate = hit.position;
 			float distanceToAgent = Vector3.Distance(agent.transform.position, candidate);
 			if (distanceToAgent > maxDistanceFromAgent)
 				continue;
@@ -1528,10 +1711,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			float angle = angleOffset + index * angleStep;
 			Vector3 raw = agent.transform.position + new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0f, Mathf.Sin(angle * Mathf.Deg2Rad)) * agentFallbackRadius;
 
-			if (!NavMesh.SamplePosition(raw, out NavMeshHit hit, navMeshSampleRadius, NavMesh.AllAreas))
+			if (!TryResolveReachablePoint(agent, raw, out Vector3 candidate))
 				continue;
-
-			Vector3 candidate = hit.position;
 			float distanceToAgent = Vector3.Distance(agent.transform.position, candidate);
 			if (distanceToAgent > maxDistanceFromAgent)
 				continue;
@@ -1572,9 +1753,15 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			int index = (startIndex + sampleOffset + totalPoints) % totalPoints;
 			float t = totalPoints <= 1 ? 0.5f : (float)index / (totalPoints - 1);
 			Vector3 point = agent.transform.position + new Vector3(0f, 2f, 0f) + direction * (t * lineLength - lineLength / 2f);
-			float distanceToAgent = Vector3.Distance(point, agent.transform.position);
+			if (!TryResolveReachablePoint(agent, point, out Vector3 resolvedPoint))
+			{
+				continue;
+			}
 
-			if (!HasLineOfSight(point, targetPosition))
+			float distanceToAgent = Vector3.Distance(resolvedPoint, agent.transform.position);
+
+			BodyState bodyState = agent.GetComponentInChildren<BodyState>();
+			if (!HasLineOfSight(GetCandidateLineOfSightOrigin(bodyState, resolvedPoint), targetPosition))
 			{
 				continue;
 			}
@@ -1582,7 +1769,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			if (distanceToAgent < closestDistance)
 			{
 				closestDistance = distanceToAgent;
-				closestPoint = point;
+				closestPoint = resolvedPoint;
 			}
 		}
 
@@ -1719,15 +1906,46 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 			Vector3 position = new Vector3(x, y, z);
 
-			if (NavMesh.SamplePosition(position, out NavMeshHit hit, 1, NavMesh.AllAreas))
+			if (TryResolveReachablePoint(agent, position, out Vector3 reachablePoint))
 			{
-				return hit.position;
+				return reachablePoint;
 			}
 
 			count++;
 		}
 
 		return agent.transform.position;
+	}
+
+	private bool TryResolveReachablePoint(IMonoAgent agent, Vector3 rawPoint, out Vector3 reachablePoint)
+	{
+		reachablePoint = agent.transform.position;
+		NavMeshAgent navMeshAgent = agent.GetComponent<NavMeshAgent>();
+		int areaMask = navMeshAgent != null ? navMeshAgent.areaMask : NavMesh.AllAreas;
+
+		if (!NavMesh.SamplePosition(rawPoint, out NavMeshHit hit, navMeshSampleRadius, areaMask))
+		{
+			return false;
+		}
+
+		reachablePoint = hit.position;
+		if (navMeshAgent == null || !navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
+		{
+			return true;
+		}
+
+		float closeEnoughSqr = radialDestinationReachedDistance * radialDestinationReachedDistance;
+		if ((reachablePoint - agent.transform.position).sqrMagnitude <= closeEnoughSqr)
+		{
+			return true;
+		}
+
+		if (!NavMesh.CalculatePath(agent.transform.position, reachablePoint, areaMask, SharedNavMeshPath))
+		{
+			return false;
+		}
+
+		return SharedNavMeshPath.status == NavMeshPathStatus.PathComplete;
 	}
 
 	private AgentRuntimeState GetRuntimeState(IMonoAgent agent)

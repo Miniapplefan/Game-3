@@ -1190,6 +1190,10 @@ PrefabInstance:
       propertyPath: GoapRunner
       value: 
       objectReference: {fileID: 950577121}
+    - target: {fileID: 5213789400962369192, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: MinMoveDistance
+      value: 0.1
+      objectReference: {fileID: 0}
     - target: {fileID: 7297568327751248117, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_StoppingDistance
       value: 0.1
@@ -1789,13 +1793,21 @@ PrefabInstance:
       propertyPath: m_Name
       value: Npc_total new
       objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
       value: 
       objectReference: {fileID: 950577121}
+    - target: {fileID: 5213789400962369192, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: MinMoveDistance
+      value: 0.1
+      objectReference: {fileID: 0}
     - target: {fileID: 7297568327751248117, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      propertyPath: m_Radius
-      value: 0.8
+      propertyPath: m_StoppingDistance
+      value: 0.1
       objectReference: {fileID: 0}
     - target: {fileID: 7805835623842404600, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_LocalPosition.x
@@ -3021,6 +3033,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 5213789400962369192, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: MinMoveDistance
+      value: 0.1
+      objectReference: {fileID: 0}
     - target: {fileID: 5800160501611215795, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
       value: 1
@@ -3591,6 +3607,10 @@ PrefabInstance:
       propertyPath: GoapRunner
       value: 
       objectReference: {fileID: 950577121}
+    - target: {fileID: 5213789400962369192, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: MinMoveDistance
+      value: 0.1
+      objectReference: {fileID: 0}
     - target: {fileID: 7297568327751248117, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_StoppingDistance
       value: 0.1
@@ -14829,7 +14849,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 143.20163
+      value: 143.19066
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture

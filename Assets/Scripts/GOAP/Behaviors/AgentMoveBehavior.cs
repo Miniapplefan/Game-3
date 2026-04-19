@@ -52,12 +52,6 @@ public class AgentMoveBehavior : MonoBehaviour
 			return;
 		}
 
-		if (CurrentTarget != null && Vector3.Distance(CurrentTarget.Position, target.Position) < MinMoveDistance)
-		{
-			CurrentTarget = target;
-			return;
-		}
-
 		CurrentTarget = target;
 		LastPosition = CurrentTarget.Position;
 		if (NavMeshAgent.enabled)
