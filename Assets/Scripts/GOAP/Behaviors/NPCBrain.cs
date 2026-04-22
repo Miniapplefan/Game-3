@@ -42,10 +42,18 @@ public class NPCBrain : MonoBehaviour
 
 	private void FixedUpdate()
 	{
-		if (bodyState.hitStunAmount > 0.001f)
+		if (bodyState.hitStunAmount > 0f)
 		{
-			Mathf.Clamp01(bodyState.hitStunAmount -= 0.015f);
-			return;
+			bodyState.hitStunAmount = Mathf.Max(0f, bodyState.hitStunAmount - 0.015f);
+			if (bodyState.hitStunAmount <= 0.001f)
+			{
+				bodyState.hitStunAmount = 0f;
+			}
+
+			if (bodyState.hitStunAmount > 0f)
+			{
+				return;
+			}
 		}
 
 		//ConsiderCooldownVal = ConsiderCooldownGoal();

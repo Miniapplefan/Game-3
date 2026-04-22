@@ -180,7 +180,7 @@ MonoBehaviour:
   MinMoveDistance: 0.1
   ArrivalDistanceTolerance: 0.15
   ArrivalStallDuration: 0.2
-  ArrivalVelocityThreshold: 0.05
+  ArrivalVelocityThreshold: 1
   ArrivalProgressEpsilon: 0.02
 --- !u!114 &3911377827084599671
 MonoBehaviour:

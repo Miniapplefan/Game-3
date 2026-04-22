@@ -35,6 +35,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public float distancePenaltyWeight = 0.5f;
 	public float allySearchRadiusMultiplier = 1.25f;
 	public float navMeshSampleRadius = 2.5f;
+	public float navMeshEdgeClearance = 0.6f;
 	public float agentFallbackRadius = 6f;
 	public int agentFallbackPoints = 16;
 	public float agentFallbackPlayerWeight = 1f;
@@ -1929,6 +1930,19 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		reachablePoint = hit.position;
+		float edgeClearance = navMeshEdgeClearance;
+		if (navMeshAgent != null)
+		{
+			edgeClearance = Mathf.Max(edgeClearance, navMeshAgent.radius);
+		}
+
+		if (edgeClearance > 0f
+			&& NavMesh.FindClosestEdge(reachablePoint, out NavMeshHit edgeHit, areaMask)
+			&& edgeHit.distance < edgeClearance)
+		{
+			return false;
+		}
+
 		if (navMeshAgent == null || !navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
 		{
 			return true;
