@@ -15,8 +15,14 @@ public class AgentMoveBehavior : MonoBehaviour
 	private AgentBehaviour AgentBehaviour;
 	private ITarget CurrentTarget;
 	[SerializeField] private float MinMoveDistance = 0.25f;
+	[SerializeField] private float ArrivalDistanceTolerance = 0.15f;
+	[SerializeField] private float ArrivalStallDuration = 0.2f;
+	[SerializeField] private float ArrivalVelocityThreshold = 0.05f;
+	[SerializeField] private float ArrivalProgressEpsilon = 0.02f;
 	private Vector3 EyeLevel = new Vector3(0, 2.33f, 0);
 	private Vector3 LastPosition;
+	private float ArrivalStallTimer;
+	private float LastRemainingDistance = float.PositiveInfinity;
 
 	private void Awake()
 	{
@@ -54,6 +60,8 @@ public class AgentMoveBehavior : MonoBehaviour
 
 		CurrentTarget = target;
 		LastPosition = CurrentTarget.Position;
+		ArrivalStallTimer = 0f;
+		LastRemainingDistance = float.PositiveInfinity;
 		if (NavMeshAgent.enabled)
 		{
 			NavMeshAgent.ResetPath();
@@ -83,16 +91,19 @@ public class AgentMoveBehavior : MonoBehaviour
 
 		if (CurrentTarget == null)
 		{
+			ArrivalStallTimer = 0f;
+			LastRemainingDistance = float.PositiveInfinity;
 			return;
 		}
 
-		float distanceToTarget = Vector3.Distance(transform.position, CurrentTarget.Position);
-		if (NavMeshAgent.enabled && !NavMeshAgent.pathPending && distanceToTarget <= MinMoveDistance)
+		if (NavMeshAgent.enabled && HasEffectivelyArrived())
 		{
 			if (NavMeshAgent.hasPath || NavMeshAgent.desiredVelocity.sqrMagnitude > 0.0001f)
 			{
 				NavMeshAgent.ResetPath();
 			}
+			ArrivalStallTimer = 0f;
+			LastRemainingDistance = float.PositiveInfinity;
 		}
 
 		bodyState.positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.white;
@@ -104,8 +115,71 @@ public class AgentMoveBehavior : MonoBehaviour
 		{
 			LastPosition = CurrentTarget.Position;
 			NavMeshAgent.SetDestination(CurrentTarget.Position);
+			ArrivalStallTimer = 0f;
+			LastRemainingDistance = float.PositiveInfinity;
 			//AIController.SetAimTarget(CurrentTarget.Position + EyeLevel);
 		}
+	}
+
+	public void RefreshCurrentDestination()
+	{
+		if (CurrentTarget == null || !NavMeshAgent.enabled)
+		{
+			return;
+		}
+
+		LastPosition = CurrentTarget.Position;
+		ArrivalStallTimer = 0f;
+		LastRemainingDistance = float.PositiveInfinity;
+		NavMeshAgent.ResetPath();
+		NavMeshAgent.SetDestination(CurrentTarget.Position);
+	}
+
+	private bool HasEffectivelyArrived()
+	{
+		if (CurrentTarget == null || !NavMeshAgent.enabled)
+		{
+			return false;
+		}
+
+		if (NavMeshAgent.pathPending)
+		{
+			ArrivalStallTimer = 0f;
+			LastRemainingDistance = float.PositiveInfinity;
+			return false;
+		}
+
+		float directDistance = Vector3.Distance(transform.position, CurrentTarget.Position);
+		float distanceTolerance = Mathf.Max(MinMoveDistance, NavMeshAgent.stoppingDistance + ArrivalDistanceTolerance);
+		float remainingDistance = NavMeshAgent.hasPath ? NavMeshAgent.remainingDistance : directDistance;
+		bool hasFiniteRemainingDistance = !float.IsInfinity(remainingDistance) && !float.IsNaN(remainingDistance);
+
+		if (NavMeshAgent.hasPath
+			&& hasFiniteRemainingDistance
+			&& remainingDistance <= NavMeshAgent.stoppingDistance + ArrivalDistanceTolerance)
+		{
+			LastRemainingDistance = remainingDistance;
+			ArrivalStallTimer = 0f;
+			return true;
+		}
+
+		bool closeEnough = directDistance <= distanceTolerance;
+		float velocityThresholdSqr = ArrivalVelocityThreshold * ArrivalVelocityThreshold;
+		bool nearlyStill = NavMeshAgent.velocity.sqrMagnitude <= velocityThresholdSqr;
+		bool noProgress = hasFiniteRemainingDistance
+			&& !float.IsInfinity(LastRemainingDistance)
+			&& LastRemainingDistance - remainingDistance <= ArrivalProgressEpsilon;
+
+		if (closeEnough && nearlyStill && (!NavMeshAgent.hasPath || noProgress))
+		{
+			ArrivalStallTimer += Time.deltaTime;
+			LastRemainingDistance = remainingDistance;
+			return ArrivalStallTimer >= ArrivalStallDuration;
+		}
+
+		ArrivalStallTimer = 0f;
+		LastRemainingDistance = remainingDistance;
+		return false;
 	}
 
 }

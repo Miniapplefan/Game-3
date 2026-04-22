@@ -50,6 +50,14 @@ public class BodyState : MonoBehaviour
 
 	public LayerMask AttackableLayerMask;
 
+	[SerializeField] private float AIMovingVelocityThreshold = 0.05f;
+	[SerializeField] private float AIMovingRootVelocityThreshold = 0.05f;
+	private Transform AIMovingRoot;
+	private Vector3 AIMovingLastRootPosition;
+	private bool AIMovingHasLastRootPosition;
+	private int AIMovingCachedFrame = -1;
+	private bool AIMovingCachedValue;
+
 
 	public void Init(List<SystemModel> systems, HeatContainer heat, BodyController bc)
 	{
@@ -99,32 +107,81 @@ public class BodyState : MonoBehaviour
 
 	public bool IsAIMoving()
 	{
-		const float moveThreshold = 0.05f;
-		float moveThresholdSqr = moveThreshold * moveThreshold;
-
-		if (navMeshAgent != null && navMeshAgent.enabled)
+		if (AIMovingCachedFrame == Time.frameCount)
 		{
-			if (navMeshAgent.velocity.sqrMagnitude > moveThresholdSqr)
-			{
-				return true;
-			}
-
-			bool hasMeaningfulPath = navMeshAgent.pathPending
-				|| (navMeshAgent.hasPath && navMeshAgent.remainingDistance > navMeshAgent.stoppingDistance + 0.1f);
-			if (hasMeaningfulPath && navMeshAgent.desiredVelocity.sqrMagnitude > moveThresholdSqr)
-			{
-				return true;
-			}
-
-			// AI bodies can retain a little rigidbody drift after the NavMeshAgent has
-			// effectively arrived. That should not keep resetting aim forever.
-			if (bodyController != null && bodyController.isAI && !hasMeaningfulPath)
-			{
-				return bodyController.isKnockbacked;
-			}
+			return AIMovingCachedValue;
 		}
 
-		return rb != null && rb.velocity.sqrMagnitude > moveThresholdSqr;
+		AIMovingCachedFrame = Time.frameCount;
+		AIMovingCachedValue = CalculateIsAIMoving();
+		return AIMovingCachedValue;
+	}
+
+	private bool CalculateIsAIMoving()
+	{
+		float moveThresholdSqr = AIMovingVelocityThreshold * AIMovingVelocityThreshold;
+		if (rb != null && rb.velocity.sqrMagnitude > moveThresholdSqr)
+		{
+			UpdateAIMovingRootPosition();
+			return true;
+		}
+
+		return IsAIMovingRootDisplaced();
+	}
+
+	private bool IsAIMovingRootDisplaced()
+	{
+		if (bodyController == null || !bodyController.isAI)
+		{
+			return false;
+		}
+
+		if (AIMovingRoot == null)
+		{
+			AIMovingRoot = transform.parent;
+		}
+
+		if (AIMovingRoot == null)
+		{
+			return false;
+		}
+
+		Vector3 currentRootPosition = AIMovingRoot.position;
+		if (!AIMovingHasLastRootPosition)
+		{
+			AIMovingLastRootPosition = currentRootPosition;
+			AIMovingHasLastRootPosition = true;
+			return false;
+		}
+
+		float deltaTime = Mathf.Max(Time.deltaTime, 0.0001f);
+		Vector3 displacement = currentRootPosition - AIMovingLastRootPosition;
+		displacement.y = 0f;
+		AIMovingLastRootPosition = currentRootPosition;
+
+		float rootVelocityThresholdSqr = AIMovingRootVelocityThreshold * AIMovingRootVelocityThreshold;
+		return displacement.sqrMagnitude / (deltaTime * deltaTime) > rootVelocityThresholdSqr;
+	}
+
+	private void UpdateAIMovingRootPosition()
+	{
+		if (bodyController == null || !bodyController.isAI)
+		{
+			return;
+		}
+
+		if (AIMovingRoot == null)
+		{
+			AIMovingRoot = transform.parent;
+		}
+
+		if (AIMovingRoot == null)
+		{
+			return;
+		}
+
+		AIMovingLastRootPosition = AIMovingRoot.position;
+		AIMovingHasLastRootPosition = true;
 	}
 
 	public int Cooling_getSystemHealth()

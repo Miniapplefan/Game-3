@@ -176,6 +176,10 @@ public class BodyController : MonoBehaviour
 
 	public bool isKnockbacked = false;
 	private float knockbackTimer;
+	[SerializeField] private float knockbackSettleVelocityThreshold = 0.05f;
+	[SerializeField] private float knockbackSettleDuration = 0.15f;
+	[SerializeField] private float knockbackNavMeshSampleRadius = 1.0f;
+	private float knockbackSettledTimer;
 
 	private NavMeshAgent agent;
 	private Vector3 agentDestination;
@@ -1612,9 +1616,21 @@ public class BodyController : MonoBehaviour
 	private void ApplyKnockback(Vector3 force, Limb l)
 	{
 		isKnockbacked = true;
+		knockbackSettledTimer = 0f;
 		if (isAI)
 		{
-			agentDestination = agent.destination;
+			if (agent == null)
+			{
+				agent = GetComponentInParent<NavMeshAgent>();
+			}
+
+			if (agent != null && agent.enabled)
+			{
+				agentDestination = agent.hasPath ? agent.destination : agent.transform.position;
+				agent.isStopped = true;
+				agent.ResetPath();
+				agent.velocity = Vector3.zero;
+			}
 		}
 		// if (agent != null)
 		// {
@@ -1666,38 +1682,91 @@ public class BodyController : MonoBehaviour
 
 	private void HandleKnockback()
 	{
-		if (knockbackTimer > 0 && isKnockbacked == true)
+		if (!isKnockbacked)
+		{
+			return;
+		}
+
+		if (knockbackTimer > 0f)
 		{
 			knockbackTimer -= Time.deltaTime;
+			return;
 		}
-		else
+
+		if (rb == null)
 		{
-			if (rb.velocity.magnitude < 0.05f && rb.velocity.y < 0.01f && isKnockbacked == true)
+			FinishKnockbackRecovery(transform.position);
+			return;
+		}
+
+		float velocityThresholdSqr = knockbackSettleVelocityThreshold * knockbackSettleVelocityThreshold;
+		if (rb.velocity.sqrMagnitude > velocityThresholdSqr || Mathf.Abs(rb.velocity.y) > knockbackSettleVelocityThreshold)
+		{
+			knockbackSettledTimer = 0f;
+			return;
+		}
+
+		knockbackSettledTimer += Time.deltaTime;
+		if (knockbackSettledTimer < knockbackSettleDuration)
+		{
+			return;
+		}
+
+		FinishKnockbackRecovery(rb.transform.position);
+	}
+
+	private void FinishKnockbackRecovery(Vector3 bodyWorldPosition)
+	{
+		Vector3 recoveryPosition = bodyWorldPosition;
+		bool recoveredToBody = !isAI;
+		if (isAI)
+		{
+			if (agent == null)
 			{
-				NavMeshAgent agent = GetComponentInParent<NavMeshAgent>();
-				isKnockbacked = false;
-				rb.velocity = Vector3.zero;
-				rb.angularVelocity = Vector3.zero;
-				transform.localPosition.Set(0, transform.localPosition.y, 0);
-				// Transform parentTransform = GetComponentInParent<Transform>();
-				// parentTransform.position = transform.position;
-				if (agent != null)
+				agent = GetComponentInParent<NavMeshAgent>();
+			}
+
+			if (agent != null && agent.enabled)
+			{
+				bool warped = false;
+				Vector3 sampleOrigin = new Vector3(bodyWorldPosition.x, agent.transform.position.y, bodyWorldPosition.z);
+				if (NavMesh.SamplePosition(sampleOrigin, out NavMeshHit hit, knockbackNavMeshSampleRadius, agent.areaMask))
 				{
-					float yPos = transform.localPosition.y;
-					agent.enabled = true;
-					agent.Warp(rb.transform.position);
-					rb.transform.localPosition = new Vector3(0, yPos, 0);
-					// Debug.Log(agent.hasPath);
-					agent.ResetPath();
-					agent.SetDestination(agentDestination);
-					//this.transform.SetParent(parent.transform, true);
+					recoveryPosition = hit.position;
+					warped = agent.Warp(recoveryPosition);
 				}
+
+				recoveredToBody = warped;
+
+				agent.ResetPath();
+				agent.isStopped = false;
 			}
 		}
-		// if (agent != null && Vector3.Distance(agent.transform.position, rb.transform.position) > 0.01f)
-		// {
-		// 	agent.Warp(rb.transform.position);
-		// }
+
+		isKnockbacked = false;
+		knockbackSettledTimer = 0f;
+		if (rb != null)
+		{
+			rb.velocity = Vector3.zero;
+			rb.angularVelocity = Vector3.zero;
+			if (recoveredToBody)
+			{
+				rb.transform.localPosition = new Vector3(0f, rb.transform.localPosition.y, 0f);
+			}
+		}
+
+		if (isAI && agent != null && agent.enabled)
+		{
+			AgentMoveBehavior moveBehavior = agent.GetComponent<AgentMoveBehavior>();
+			if (moveBehavior != null)
+			{
+				moveBehavior.RefreshCurrentDestination();
+			}
+			else if (agentDestination != Vector3.zero)
+			{
+				agent.SetDestination(agentDestination);
+			}
+		}
 	}
 
 	private void ClampRigidbodyYPos()
@@ -2042,7 +2111,7 @@ public class BodyController : MonoBehaviour
 		legs.UpdateMovementTick(Time.deltaTime);
 		weapons.RecoverFromDisruption();
 		// doCooling();
-		// HandleKnockback();
+		HandleKnockback();
 		ClampRigidbodyYPos();
 		if (isAI)
 		{
