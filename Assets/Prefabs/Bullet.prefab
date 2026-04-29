@@ -268,10 +268,10 @@ MonoBehaviour:
   noHitTelegraphMaterial: {fileID: 2100000, guid: c4dab12b6ad08384ba8a3ce2f7eba5f7, type: 2}
   hitMask:
     serializedVersion: 2
-    m_Bits: 896
+    m_Bits: 576
   telegraphMask:
     serializedVersion: 2
-    m_Bits: 384
+    m_Bits: 64
   collisionRadius: 0.0001
   telegraphRadiusMultiplier: 1.1
   marchingCubesDamage: 1

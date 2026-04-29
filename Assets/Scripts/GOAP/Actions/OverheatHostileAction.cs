@@ -96,7 +96,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		{
 			if (data.targetState != null)
 			{
-				data.AIController.SetAimTarget(data.targetState.bodyController.physicalHead.transform.position + new Vector3(0,0.5f,0));
+				data.AIController.SetAimTarget(data.targetState.bodyController.physicalHead.transform.position + new Vector3(0,0f,0));
 			}
 
 			if (data.targetState != null)
@@ -112,7 +112,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 							continue;
 						}
 						// Debug.Log("Attacking " + limbConsideration.limb);
-						data.AIController.SetAimTarget(limbPos + new Vector3(0,0.3f,0));
+						data.AIController.SetAimTarget(limbPos + new Vector3(0,0.05f,0));
 						break;
 					}
 				}

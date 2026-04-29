@@ -188,24 +188,14 @@ public class Gun : MonoBehaviour
 			//lastShootTime = Time.time;
 			chargeTimeLeftCache = gunData.shootConfig.fireRate;
 			shootSystem.Play();
-			Vector3 shootDirection = shootSystem.transform.forward
-				+ new Vector3(
-					Random.Range(
-						-gunData.shootConfig.Spread.x,
-						gunData.shootConfig.Spread.x
-					),
-					Random.Range(
-						-gunData.shootConfig.Spread.y,
-						gunData.shootConfig.Spread.y
-					),
-					Random.Range(
-						-gunData.shootConfig.Spread.z,
-						gunData.shootConfig.Spread.z
-					)
-				);
-				shootDirection.Normalize();
-				Vector3 recoilDirection = modelRoot != null ? modelRoot.up.normalized : transform.up.normalized;
-				weapon.AddForce(recoilDirection * gunData.shootConfig.recoil, ForceMode.Impulse);
+			Vector3 shootDirection = GetSpreadDirection(shootSystem.transform.forward);
+			if (isAI)
+			{
+				shootDirection = ClampDirectionOutsideNpcInnerCone(shootSystem.transform.forward, shootDirection);
+				shootDirection = ClampDirectionOutsideNpcExcludedLowerArc(shootSystem.transform.forward, shootDirection);
+			}
+			Vector3 recoilDirection = modelRoot != null ? modelRoot.up.normalized : transform.up.normalized;
+			weapon.AddForce(recoilDirection * gunData.shootConfig.recoil, ForceMode.Impulse);
 
 			if (isAI)
 			{
@@ -244,6 +234,122 @@ public class Gun : MonoBehaviour
 			}
 		}
 		return true;
+	}
+
+	private Vector3 GetSpreadDirection(Vector3 forward)
+	{
+		Vector3 shootDirection = forward
+			+ new Vector3(
+				Random.Range(
+					-gunData.shootConfig.Spread.x,
+					gunData.shootConfig.Spread.x
+				),
+				Random.Range(
+					-gunData.shootConfig.Spread.y,
+					gunData.shootConfig.Spread.y
+				),
+				Random.Range(
+					-gunData.shootConfig.Spread.z,
+					gunData.shootConfig.Spread.z
+				)
+			);
+
+		if (shootDirection.sqrMagnitude <= Mathf.Epsilon)
+		{
+			return forward.normalized;
+		}
+
+		return shootDirection.normalized;
+	}
+
+	private Vector3 ClampDirectionOutsideNpcInnerCone(Vector3 centerForward, Vector3 shootDirection)
+	{
+		float innerConeAngle = gunData.shootConfig.npcInnerConeAngle;
+		if (innerConeAngle <= 0f)
+		{
+			return shootDirection.normalized;
+		}
+
+		Vector3 center = centerForward.normalized;
+		Vector3 direction = shootDirection.normalized;
+		if (Vector3.Angle(center, direction) >= innerConeAngle)
+		{
+			return direction;
+		}
+
+		Vector3 radial = Vector3.ProjectOnPlane(direction, center);
+		if (radial.sqrMagnitude <= 0.0001f)
+		{
+			radial = GetRandomPerpendicular(center);
+		}
+		else
+		{
+			radial.Normalize();
+		}
+
+		float angleRadians = innerConeAngle * Mathf.Deg2Rad;
+		return (center * Mathf.Cos(angleRadians) + radial * Mathf.Sin(angleRadians)).normalized;
+	}
+
+	private Vector3 ClampDirectionOutsideNpcExcludedLowerArc(Vector3 centerForward, Vector3 shootDirection)
+	{
+		float excludedArcDegrees = gunData.shootConfig.npcExcludedLowerArcDegrees;
+		if (excludedArcDegrees <= 0f)
+		{
+			return shootDirection.normalized;
+		}
+
+		Vector3 center = centerForward.normalized;
+		Vector3 direction = shootDirection.normalized;
+		float coneAngle = Vector3.Angle(center, direction);
+		Vector3 radial = Vector3.ProjectOnPlane(direction, center);
+		if (radial.sqrMagnitude <= 0.0001f)
+		{
+			radial = GetRandomPerpendicular(center);
+		}
+		else
+		{
+			radial.Normalize();
+		}
+
+		Vector3 bottomRadial = Vector3.ProjectOnPlane(Vector3.down, center);
+		if (bottomRadial.sqrMagnitude <= 0.0001f)
+		{
+			bottomRadial = GetRandomPerpendicular(center);
+		}
+		else
+		{
+			bottomRadial.Normalize();
+		}
+
+		float signedAngleFromBottom = Vector3.SignedAngle(bottomRadial, radial, center);
+		if (Mathf.Abs(signedAngleFromBottom) >= excludedArcDegrees)
+		{
+			return direction;
+		}
+
+		float side = Mathf.Approximately(signedAngleFromBottom, 0f)
+			? (Random.value < 0.5f ? -1f : 1f)
+			: Mathf.Sign(signedAngleFromBottom);
+		Vector3 clampedRadial = Quaternion.AngleAxis(side * excludedArcDegrees, center) * bottomRadial;
+		float coneAngleRadians = coneAngle * Mathf.Deg2Rad;
+
+		return (center * Mathf.Cos(coneAngleRadians) + clampedRadial * Mathf.Sin(coneAngleRadians)).normalized;
+	}
+
+	private Vector3 GetRandomPerpendicular(Vector3 axis)
+	{
+		Vector3 radial = Vector3.ProjectOnPlane(Random.onUnitSphere, axis);
+		if (radial.sqrMagnitude <= 0.0001f)
+		{
+			radial = Vector3.ProjectOnPlane(Vector3.up, axis);
+		}
+		if (radial.sqrMagnitude <= 0.0001f)
+		{
+			radial = Vector3.ProjectOnPlane(Vector3.right, axis);
+		}
+
+		return radial.normalized;
 	}
 
 	public void StartReload()

@@ -14805,11 +14805,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4854418801658231612, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.257
+      value: 0.34
       objectReference: {fileID: 0}
     - target: {fileID: 5410714147512533004, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_Name
       value: Body_total new
+      objectReference: {fileID: 0}
+    - target: {fileID: 5852610686868378518, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: m_Radius
+      value: 0.3
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

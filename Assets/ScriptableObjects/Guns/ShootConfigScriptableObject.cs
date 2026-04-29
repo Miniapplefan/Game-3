@@ -6,6 +6,10 @@ public class ShootConfigScriptableObject : ScriptableObject
 	public int powerRequired = 1;
 	public LayerMask HitMask;
 	public Vector3 Spread = new Vector3(0.1f, 0.1f, 0.1f);
+	[Min(0f)]
+	public float npcInnerConeAngle = 3f;
+	[Range(0f, 180f)]
+	public float npcExcludedLowerArcDegrees = 0f;
 	public float rawDamage = 1f;
 	public float maxRange = 100f;
 	public bool isBurst = true;
