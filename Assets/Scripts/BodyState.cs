@@ -6,7 +6,7 @@ using UnityEngine.AI;
 
 public class BodyState : MonoBehaviour
 {
-	BodyController bodyController;
+	public BodyController bodyController;
 	public HeatContainer heatContainer;
 	public HeadModel head;
 	public CoolingModel cooling;

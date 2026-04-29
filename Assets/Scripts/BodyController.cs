@@ -2808,26 +2808,6 @@ public class BodyController : MonoBehaviour
 				return;
 			}
 
-			if (!isAimingRight || !isAimingLeft)
-			{
-				torsoAimPoint.position = torso;
-				if (!startedAimingRight && !startedAimingLeft)
-				{
-					weaponAimPoint.position = torso;
-					weaponAimPointL.position = torso;
-					return;
-				}
-
-				if (startedAimingRight && !isAimingRight)
-				{
-					weaponAimPoint.position = headObjectAimOffset.position;
-				}
-				if (startedAimingLeft && !isAimingLeft)
-				{
-					weaponAimPointL.position = headObjectAimOffsetL.position;
-				}
-			}
-
 			if (isAimingRight || isAimingLeft)
 			{
 				combinedRot = Quaternion.Euler(aimCam.transform.eulerAngles.x,
@@ -2845,7 +2825,6 @@ public class BodyController : MonoBehaviour
 
 				if (!startedAimingRight && !startedAimingLeft && !freezeHeadDuringMoveAimYaw)
 				{
-					Debug.Log("setting head to cache");
 					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 				}
 			}
@@ -2900,43 +2879,22 @@ public class BodyController : MonoBehaviour
 
 						if (Vector3.Distance(rb.transform.position, bodyHit.Value.point) < Vector3.Distance(rb.transform.position, enviroHits[0].point))
 						{
-							Vector3 targetPoint = bodyHit.Value.point;
-
-							if (isAimingRight)
-							{
-								weaponAimPoint.position = targetPoint;
-							}
-							else if (isAimingLeft)
-							{
-								weaponAimPointL.position = targetPoint;
-							}
+							weaponAimPoint.position = bodyHit.Value.point;
 						}
 						else
 						{
-							Vector3 targetPoint = enviroHits[0].point;
-							if (isAimingRight)
-							{
-								weaponAimPoint.position = targetPoint;
-							}
-							else if (isAimingLeft)
-							{
-								weaponAimPointL.position = targetPoint;
-							}
+							weaponAimPoint.position = enviroHits[0].point;
 						}
+					}
+					else
+					{
+						weaponAimPoint.position = bodyHit.Value.point;
 					}
 				}
 				else if (enviroHits.Count > 0)
 				{
 					enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
-					Vector3 targetPoint = enviroHits[0].point;
-					if (isAimingRight)
-					{
-						weaponAimPoint.position = targetPoint;
-					}
-					else if (isAimingLeft)
-					{
-						weaponAimPointL.position = targetPoint;
-					}
+					weaponAimPoint.position = enviroHits[0].point;
 				}
 				else
 				{

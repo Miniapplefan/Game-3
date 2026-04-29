@@ -94,10 +94,10 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 		if (Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.AttackableLayerMask) > 0)
 		{
-			// if (data.targetState != null && data.targetState.bodyIsOverheated)
-			// {
-			// 	data.AIController.SetAimTarget(data.targetState.head.transform.position);
-			// }
+			if (data.targetState != null)
+			{
+				data.AIController.SetAimTarget(data.targetState.bodyController.physicalHead.transform.position + new Vector3(0,0.5f,0));
+			}
 
 			if (data.targetState != null)
 			{
@@ -112,7 +112,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 							continue;
 						}
 						// Debug.Log("Attacking " + limbConsideration.limb);
-						data.AIController.SetAimTarget(limbPos);
+						data.AIController.SetAimTarget(limbPos + new Vector3(0,0.3f,0));
 						break;
 					}
 				}
