@@ -264,7 +264,7 @@ public class Gun : MonoBehaviour
 
 	private Vector3 ClampDirectionOutsideNpcInnerCone(Vector3 centerForward, Vector3 shootDirection)
 	{
-		float innerConeAngle = gunData.shootConfig.npcInnerConeAngle;
+		float innerConeAngle = GetDistanceCorrectedNpcInnerConeAngle(centerForward);
 		if (innerConeAngle <= 0f)
 		{
 			return shootDirection.normalized;
@@ -289,6 +289,58 @@ public class Gun : MonoBehaviour
 
 		float angleRadians = innerConeAngle * Mathf.Deg2Rad;
 		return (center * Mathf.Cos(angleRadians) + radial * Mathf.Sin(angleRadians)).normalized;
+	}
+
+	private float GetDistanceCorrectedNpcInnerConeAngle(Vector3 centerForward)
+	{
+		float innerConeRadius = gunData.shootConfig.npcInnerConeRadius;
+		if (innerConeRadius <= 0f || !TryGetNpcBodyDistance(centerForward, out float bodyDistance))
+		{
+			return gunData.shootConfig.npcInnerConeAngle;
+		}
+
+		return Mathf.Atan(innerConeRadius / bodyDistance) * Mathf.Rad2Deg;
+	}
+
+	private bool TryGetNpcBodyDistance(Vector3 centerForward, out float bodyDistance)
+	{
+		bodyDistance = 0f;
+		const int bodyLayer = 6;
+		RaycastHit[] hits = Physics.RaycastAll(
+			shootSystem.transform.position,
+			centerForward.normalized,
+			Mathf.Infinity,
+			1 << bodyLayer,
+			QueryTriggerInteraction.Ignore
+		);
+		if (hits.Length == 0)
+		{
+			return false;
+		}
+
+		Transform ownRoot = transform.root;
+		float closestDistance = float.PositiveInfinity;
+		for (int i = 0; i < hits.Length; i++)
+		{
+			RaycastHit hit = hits[i];
+			if (hit.collider == null || hit.collider.transform.root == ownRoot)
+			{
+				continue;
+			}
+
+			if (hit.distance < closestDistance)
+			{
+				closestDistance = hit.distance;
+			}
+		}
+
+		if (float.IsPositiveInfinity(closestDistance) || closestDistance <= Mathf.Epsilon)
+		{
+			return false;
+		}
+
+		bodyDistance = closestDistance;
+		return true;
 	}
 
 	private Vector3 ClampDirectionOutsideNpcExcludedLowerArc(Vector3 centerForward, Vector3 shootDirection)

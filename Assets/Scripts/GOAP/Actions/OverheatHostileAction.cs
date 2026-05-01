@@ -112,7 +112,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 							continue;
 						}
 						// Debug.Log("Attacking " + limbConsideration.limb);
-						data.AIController.SetAimTarget(limbPos + new Vector3(0,0.05f,0));
+						data.AIController.SetAimTarget(limbPos + new Vector3(0,0.02f,0));
 						break;
 					}
 				}

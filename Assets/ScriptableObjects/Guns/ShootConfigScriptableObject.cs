@@ -8,6 +8,8 @@ public class ShootConfigScriptableObject : ScriptableObject
 	public Vector3 Spread = new Vector3(0.1f, 0.1f, 0.1f);
 	[Min(0f)]
 	public float npcInnerConeAngle = 3f;
+	[Min(0f)]
+	public float npcInnerConeRadius = 0.15f;
 	[Range(0f, 180f)]
 	public float npcExcludedLowerArcDegrees = 0f;
 	public float rawDamage = 1f;
