@@ -7,9 +7,12 @@ using UnityEngine.AI;
 
 public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 {
+	// Sense/cache throttling
 	private const float SenseIntervalSeconds = 0.2f;
 	private const float AgentMoveThresholdSqr = 0.25f;
 	private const float TargetMoveThresholdSqr = 1f;
+
+	// Candidate sampling budgets
 	private const int MaxCirclePointSamples = 12;
 	private const int MaxFallbackPointSamples = 8;
 	private const int MaxStrafePointSamples = 12;
@@ -23,22 +26,31 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private const int StrafePointsPerSense = 4;
 	private const int MaxRandomCircleAttempts = 6;
 
-	private AttackConfigSO AttackConfig;
+	// Player annulus candidate recipe
 	private static readonly float[] TacticalAnnulusRadiusFractions = { 0.2f, 0.5f, 0.8f, 0.35f, 0.65f, 0.9f };
 	private static readonly int[] TacticalAnnulusSectorOffsets = { 0, 0, 0, -1, 1, 0 };
 	private static readonly float[] TacticalAnnulusSectorFractions = { -0.35f, 0.35f, 0f, 0f, 0f, 0.18f };
 
+	private AttackConfigSO AttackConfig;
+
+	// Circle and ally spacing fallback
 	public float circleRadius = 5f;
 	public int numberOfPoints = 36;
 	public float minAllySeparationAngle = 20f;
 	public float allySeparationWeight = 12f;
 	public float distancePenaltyWeight = 0.5f;
 	public float allySearchRadiusMultiplier = 1.25f;
+
+	// NavMesh validation
 	public float navMeshSampleRadius = 2.5f;
 	public float navMeshEdgeClearance = 0.6f;
+
+	// Agent-local fallback movement
 	public float agentFallbackRadius = 6f;
 	public int agentFallbackPoints = 16;
 	public float agentFallbackPlayerWeight = 1f;
+
+	// Radial claim spacing
 	public float radialMinDistanceMultiplier = 0.5f;
 	public float radialMaxDistanceMultiplier = 0.75f;
 	public float radialDistanceStep = 1.5f;
@@ -52,27 +64,42 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public int radialClaimSectorExclusionRadius = 1;
 	public float radialRecoveryMinDistanceMultiplier = 0.5f;
 	public float radialRecoveryMaxDistanceMultiplier = 1f;
+
+	// Tactical candidate generation
 	public float tacticalClaimedPositionSeparation = 2f;
 	public float tacticalLocalSampleInnerRadius = 2f;
 	public float tacticalLocalSampleOuterRadius = 5f;
+	public bool enablePlayerAnnulusCandidates = false;
+
+	// Tactical candidate scoring
+	public float tacticalDesiredSectorScore = 400f;
+	public float tacticalNearbySectorScore = 220f;
+	public float tacticalGapScoreWeight = 55f;
+	public float tacticalGapCenterPenaltyWeight = 18f;
+	public float tacticalSourcePriorityWeight = 12f;
+	public float tacticalUnclaimedPositionBonus = 80f;
+	public float tacticalClaimedSeparationBonusMaxDistance = 12f;
+	public float tacticalClaimedSeparationBonusWeight = 10f;
 	public float tacticalNearbyPositionPenaltyWeight = 0.15f;
 	public float tacticalCurrentPositionStickinessBonus = 140f;
 	public float tacticalSwitchScoreMargin = 80f;
+
+	// Visible hold behavior
 	public float visiblePositionDwellDuration = 1.5f;
 	public int visibleHoldFailureThreshold = 3;
-	public bool enablePlayerAnnulusCandidates = false;
+
+	// Tactical debug visualization
 	public bool drawTacticalQueryGizmos = true;
-	// ------------------****DEBUG****---------------------
 	public bool spawnTacticalQueryDebugObjects = false;
 	public bool logTacticalQuerySelections = true;
-	// ------------------****DEBUG****---------------------
-
 	public bool logFallbackSelections = true;
 	public string tacticalDebugAgentName = "NPC_total new";
 	public string tacticalDebugTargetName = "Body_total new";
 	public float tacticalDebugCandidateMarkerScale = 0.35f;
 	public float tacticalDebugRingMarkerScale = 0.12f;
 	public int tacticalDebugRingMarkerCount = 24;
+
+	// Runtime query state
 	private Collider[] AllyColliders = new Collider[32];
 	private List<Vector3> AllyPositions = new List<Vector3>(32);
 	private List<Transform> AllyRoots = new List<Transform>(32);
@@ -1258,13 +1285,13 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private float ScoreTacticalCandidate(TacticalCandidate candidate)
 	{
-		float score = candidate.SectorDistanceFromDesired == 0 ? 400f : 220f;
-		score += candidate.GapScore * 55f;
-		score -= candidate.GapCenterOffset * 18f;
-		score += candidate.SourcePriority * 12f;
+		float score = candidate.SectorDistanceFromDesired == 0 ? tacticalDesiredSectorScore : tacticalNearbySectorScore;
+		score += candidate.GapScore * tacticalGapScoreWeight;
+		score -= candidate.GapCenterOffset * tacticalGapCenterPenaltyWeight;
+		score += candidate.SourcePriority * tacticalSourcePriorityWeight;
 		score += float.IsPositiveInfinity(candidate.MinClaimedDistanceSqr)
-			? 80f
-			: Mathf.Min(Mathf.Sqrt(candidate.MinClaimedDistanceSqr), 12f) * 10f;
+			? tacticalUnclaimedPositionBonus
+			: Mathf.Min(Mathf.Sqrt(candidate.MinClaimedDistanceSqr), tacticalClaimedSeparationBonusMaxDistance) * tacticalClaimedSeparationBonusWeight;
 		score -= Mathf.Sqrt(candidate.DistanceToAgentSqr) * tacticalNearbyPositionPenaltyWeight;
 		if (candidate.IsIncumbent)
 		{
