@@ -64,6 +64,10 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public int radialClaimSectorExclusionRadius = 1;
 	public float radialRecoveryMinDistanceMultiplier = 0.5f;
 	public float radialRecoveryMaxDistanceMultiplier = 1f;
+	public bool enableWideFlankSelection = true;
+	public int wideFlankOppositeClusterWeight = 100;
+	public int wideFlankNearestClaimWeight = 25;
+	public int wideFlankTravelPenaltyWeight = 8;
 
 	// Tactical candidate generation
 	public float tacticalClaimedPositionSeparation = 2f;
@@ -96,6 +100,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public string tacticalDebugAgentName = "NPC_total new";
 	public string tacticalDebugTargetName = "Body_total new";
 	public bool drawLosDebugMarker = false;
+	public bool logWideFlankSelections = false;
 	public float losDebugMarkerScale = 0.45f;
 	public float losDebugMarkerHeight = 0.15f;
 	public float tacticalDebugCandidateMarkerScale = 0.35f;
@@ -126,6 +131,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private Vector3 LastTacticalDebugBestPoint;
 	private bool HasLastTacticalDebugBestPoint;
 	private GameObject TacticalDebugRoot;
+	private Transform LastLosDebugAgent;
 	private bool HasLoggedTacticalDebugCapture;
 	private bool HasLastLoggedTacticalSelection;
 	private Vector3 LastLoggedTacticalSelectionPoint;
@@ -134,6 +140,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	{
 		public Vector3 CachedPosition;
 		public bool HasCachedPosition;
+		public BodyState BodyState;
 		public float NextSenseTime;
 		public Vector3 LastAgentPosition;
 		public Transform LastTargetTransform;
@@ -160,6 +167,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public Vector3 LastKnownAgentPosition;
 		public Vector3 LastKnownTargetPosition;
 		public Vector3 ClaimedPosition;
+		public BodyState AgentBodyState;
 	}
 
 	private struct TacticalCandidate
@@ -299,6 +307,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			SharedAgentPerception.Snapshot perception,
 			AgentRuntimeState runtimeState,
 			BodyState bodyState,
+			GoapAgentDebugSettings debugSettings,
 			Transform targetTransform,
 			Vector3 agentPosition,
 			Vector3 targetPosition,
@@ -309,6 +318,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			Perception = perception;
 			RuntimeState = runtimeState;
 			BodyState = bodyState;
+			DebugSettings = debugSettings;
 			TargetTransform = targetTransform;
 			AgentPosition = agentPosition;
 			TargetPosition = targetPosition;
@@ -320,6 +330,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public SharedAgentPerception.Snapshot Perception { get; }
 		public AgentRuntimeState RuntimeState { get; }
 		public BodyState BodyState { get; }
+		public GoapAgentDebugSettings DebugSettings { get; }
 		public Transform TargetTransform { get; }
 		public Vector3 AgentPosition { get; }
 		public Vector3 TargetPosition { get; }
@@ -393,6 +404,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		var perception = SharedAgentPerception.GetSnapshot(agent, references, AttackConfig);
 		var runtimeState = GetRuntimeState(agent);
 		var bodyState = perception.BodyState;
+		var debugSettings = GetOrCreateDebugSettings(agent);
+		runtimeState.BodyState = bodyState;
 		Vector3 agentPosition = agent.transform.position;
 		Vector3 targetPosition = perception.TargetPosition;
 
@@ -401,11 +414,33 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			perception,
 			runtimeState,
 			bodyState,
+			debugSettings,
 			perception.TargetTransform,
 			agentPosition,
 			targetPosition,
 			perception.TargetHeadPosition,
 			Vector3.Distance(agentPosition, targetPosition));
+	}
+
+	private GoapAgentDebugSettings GetOrCreateDebugSettings(IMonoAgent agent)
+	{
+		if (agent == null || agent.transform == null)
+		{
+			return null;
+		}
+
+		GoapAgentDebugSettings settings = agent.GetComponent<GoapAgentDebugSettings>();
+		if (settings == null)
+		{
+			settings = agent.GetComponentInChildren<GoapAgentDebugSettings>();
+		}
+
+		if (settings == null && Application.isPlaying)
+		{
+			settings = agent.transform.gameObject.AddComponent<GoapAgentDebugSettings>();
+		}
+
+		return settings;
 	}
 
 	// No BodyState means the sensor cannot reason about combat movement.
@@ -601,6 +636,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			}
 		}
 
+		if (TryGetWideFlankRadialPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
+		{
+			ResetClaimedSectorFailures(runtimeState);
+			return true;
+		}
+
 		if (TryGetOpenRadialPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, weaponRange, runtimeState, currentSector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
 		{
 			ResetClaimedSectorFailures(runtimeState);
@@ -633,6 +674,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			}
 
 			if (Time.time > claim.ExpiresAt)
+			{
+				ClaimCleanupAgentIds.Add(entry.Key);
+				continue;
+			}
+
+			if (claim.AgentBodyState != null && claim.AgentBodyState.isDead)
 			{
 				ClaimCleanupAgentIds.Add(entry.Key);
 				continue;
@@ -880,6 +927,150 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		return runtimeState.ConsecutiveClaimedSectorFailures < Mathf.Max(1, radialSectorFailureThreshold);
+	}
+
+	private bool TryGetWideFlankRadialPoint(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int currentSector, int agentId, float minDistanceMultiplier, float maxDistanceMultiplier, ref int attemptedMask, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		if (!enableWideFlankSelection || targetState == null || !TryGetClaimClusterCenterSector(targetState, agentId, out int clusterCenterSector))
+		{
+			return false;
+		}
+
+		int oppositeSector = WrapSectorIndex(clusterCenterSector + RadialSectorCount / 2);
+		int exclusionRadius = Mathf.Max(0, radialClaimSectorExclusionRadius);
+
+		for (int i = 0; i < RadialSectorCount; i++)
+		{
+			if (!TryGetBestWideFlankSectorCandidate(targetState, currentSector, oppositeSector, agentId, attemptedMask, exclusionRadius, out int candidateSector))
+			{
+				break;
+			}
+
+			if (TryRadialSector(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, weaponRange, runtimeState, candidateSector, agentId, minDistanceMultiplier, maxDistanceMultiplier, ref attemptedMask, out bestPoint))
+			{
+				LogWideFlankSelection(agent.transform, targetTransform, candidateSector, oppositeSector);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryGetBestWideFlankSectorCandidate(TargetAngleClaimState targetState, int currentSector, int oppositeSector, int agentId, int attemptedMask, int exclusionRadius, out int bestSector)
+	{
+		bestSector = -1;
+		int bestScore = int.MinValue;
+		int bestOppositeDistance = int.MaxValue;
+		int bestTravelDistance = int.MaxValue;
+
+		for (int sectorIndex = 0; sectorIndex < RadialSectorCount; sectorIndex++)
+		{
+			int sectorMask = 1 << sectorIndex;
+			if ((attemptedMask & sectorMask) != 0)
+			{
+				continue;
+			}
+
+			if (TryGetSectorOwnerClaim(targetState, sectorIndex, out AngleClaim sectorOwner) && sectorOwner.AgentId != agentId)
+			{
+				continue;
+			}
+
+			if (IsSectorWithinClaimExclusion(targetState, sectorIndex, exclusionRadius))
+			{
+				continue;
+			}
+
+			int oppositeDistance = GetWrappedSectorDistance(oppositeSector, sectorIndex);
+			int nearestClaimDistance = GetNearestClaimedSectorDistance(targetState, agentId, sectorIndex);
+			int travelDistance = GetWrappedSectorDistance(currentSector, sectorIndex);
+			int oppositeScore = (RadialSectorCount - oppositeDistance) * wideFlankOppositeClusterWeight;
+			int nearestClaimScore = nearestClaimDistance * wideFlankNearestClaimWeight;
+			int travelPenalty = travelDistance * wideFlankTravelPenaltyWeight;
+			int score = oppositeScore + nearestClaimScore - travelPenalty;
+
+			if (score > bestScore
+				|| (score == bestScore && oppositeDistance < bestOppositeDistance)
+				|| (score == bestScore && oppositeDistance == bestOppositeDistance && travelDistance < bestTravelDistance))
+			{
+				bestSector = sectorIndex;
+				bestScore = score;
+				bestOppositeDistance = oppositeDistance;
+				bestTravelDistance = travelDistance;
+			}
+		}
+
+		return bestSector >= 0;
+	}
+
+	private bool TryGetClaimClusterCenterSector(TargetAngleClaimState targetState, int agentId, out int clusterCenterSector)
+	{
+		clusterCenterSector = -1;
+		if (targetState == null || targetState.ClaimsByAgent.Count == 0)
+		{
+			return false;
+		}
+
+		Vector2 directionSum = Vector2.zero;
+		int claimCount = 0;
+		foreach (AngleClaim claim in targetState.ClaimsByAgent.Values)
+		{
+			if (claim == null || claim.AgentId == agentId || claim.SectorIndex < 0)
+			{
+				continue;
+			}
+
+			Vector3 sectorDirection = GetSectorDirection(claim.SectorIndex);
+			directionSum += new Vector2(sectorDirection.x, sectorDirection.z);
+			claimCount++;
+		}
+
+		if (claimCount == 0 || directionSum.sqrMagnitude < 0.0001f)
+		{
+			return false;
+		}
+
+		float angle = Mathf.Atan2(directionSum.y, directionSum.x) * Mathf.Rad2Deg;
+		if (angle < 0f)
+		{
+			angle += 360f;
+		}
+
+		float sectorSize = 360f / RadialSectorCount;
+		clusterCenterSector = Mathf.Clamp(Mathf.FloorToInt(angle / sectorSize), 0, RadialSectorCount - 1);
+		return true;
+	}
+
+	private int GetNearestClaimedSectorDistance(TargetAngleClaimState targetState, int agentId, int sectorIndex)
+	{
+		if (targetState == null || targetState.ClaimsByAgent.Count == 0)
+		{
+			return RadialSectorCount;
+		}
+
+		int nearestDistance = RadialSectorCount;
+		foreach (AngleClaim claim in targetState.ClaimsByAgent.Values)
+		{
+			if (claim == null || claim.AgentId == agentId || claim.SectorIndex < 0)
+			{
+				continue;
+			}
+
+			nearestDistance = Mathf.Min(nearestDistance, GetWrappedSectorDistance(sectorIndex, claim.SectorIndex));
+		}
+
+		return nearestDistance;
+	}
+
+	private void LogWideFlankSelection(Transform agentTransform, Transform targetTransform, int selectedSector, int oppositeSector)
+	{
+		if (!ShouldLogWideFlankSelections(agentTransform) || !ShouldCaptureTacticalDebug(agentTransform))
+		{
+			return;
+		}
+
+		Debug.Log($"HostileTargetSensor: wide flank selected sector {selectedSector} for '{agentTransform?.name}' around target '{targetTransform?.name}' opposite sector {oppositeSector}.");
 	}
 
 	private bool TryGetOpenRadialPoint(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, int currentSector, int agentId, float minDistanceMultiplier, float maxDistanceMultiplier, ref int attemptedMask, out Vector3 bestPoint)
@@ -1316,11 +1507,14 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private void CaptureTacticalCandidateDebug(Transform agentTransform, Transform targetTransform, Vector3 targetPosition, int desiredSector, float minDistance, float maxDistance, int selectedCandidateIndex, Vector3 bestPoint, bool foundBestPoint)
 	{
-		if (!drawTacticalQueryGizmos && !spawnTacticalQueryDebugObjects)
+		if (!HasTacticalQueryDebugOutputRequested(agentTransform))
 		{
-			TacticalCandidateDebugSnapshots.Clear();
-			HasLastTacticalDebugBestPoint = false;
-			UpdateRuntimeTacticalDebugObjects();
+			if (LastTacticalDebugAgent == null || LastTacticalDebugAgent == agentTransform)
+			{
+				TacticalCandidateDebugSnapshots.Clear();
+				HasLastTacticalDebugBestPoint = false;
+				UpdateRuntimeTacticalDebugObjects();
+			}
 			return;
 		}
 
@@ -1356,7 +1550,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			//Debug.Log($"HostileTargetSensor: captured tactical query for '{agentTransform?.name}' with {TacticalCandidateDebugSnapshots.Count} candidates from {TacticalProbeDebugSnapshots.Count} probes.");
 		}
 
-		if (logTacticalQuerySelections && foundBestPoint)
+		if (ShouldLogTacticalQuerySummary(agentTransform))
+		{
+			LogTacticalQuerySummary(agentTransform, desiredSector, minDistance, maxDistance, selectedCandidateIndex, bestPoint, foundBestPoint);
+		}
+
+		if (ShouldLogTacticalSelections(agentTransform) && foundBestPoint)
 		{
 			bool selectionChanged = !HasLastLoggedTacticalSelection
 				|| (LastLoggedTacticalSelectionPoint - bestPoint).sqrMagnitude > 0.01f;
@@ -1365,18 +1564,66 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				HasLastLoggedTacticalSelection = true;
 				LastLoggedTacticalSelectionPoint = bestPoint;
 				float distanceToTarget = Vector3.Distance(bestPoint, targetPosition);
-				//Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} (distance {distanceToTarget:F2}) from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
+				Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} (distance {distanceToTarget:F2}) from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
 			}
 		}
 
 		UpdateRuntimeTacticalDebugObjects();
 	}
 
+	private void LogTacticalQuerySummary(Transform agentTransform, int desiredSector, float minDistance, float maxDistance, int selectedCandidateIndex, Vector3 bestPoint, bool foundBestPoint)
+	{
+		int accepted = 0;
+		int navMeshRejected = 0;
+		int distanceRejected = 0;
+		int sectorRejected = 0;
+		int ownershipRejected = 0;
+		int lineOfSightRejected = 0;
+		int claimSeparationRejected = 0;
+		int dedupedRejected = 0;
+
+		for (int i = 0; i < TacticalProbeDebugSnapshots.Count; i++)
+		{
+			switch (TacticalProbeDebugSnapshots[i].Result)
+			{
+				case TacticalProbeDebugResult.Accepted:
+					accepted++;
+					break;
+				case TacticalProbeDebugResult.NavMeshRejected:
+					navMeshRejected++;
+					break;
+				case TacticalProbeDebugResult.DistanceRejected:
+					distanceRejected++;
+					break;
+				case TacticalProbeDebugResult.SectorRejected:
+					sectorRejected++;
+					break;
+				case TacticalProbeDebugResult.OwnershipRejected:
+					ownershipRejected++;
+					break;
+				case TacticalProbeDebugResult.LineOfSightRejected:
+					lineOfSightRejected++;
+					break;
+				case TacticalProbeDebugResult.ClaimSeparationRejected:
+					claimSeparationRejected++;
+					break;
+				case TacticalProbeDebugResult.DedupedRejected:
+					dedupedRejected++;
+					break;
+			}
+		}
+
+		string result = foundBestPoint ? "selected" : "failed";
+		string bestPointText = foundBestPoint ? bestPoint.ToString("F2") : "none";
+		Debug.Log(
+			$"HostileTargetSensor: tactical query {result} for '{agentTransform?.name}' sector {desiredSector}, distance band {minDistance:F2}-{maxDistance:F2}, candidates={TacticalCandidateDebugSnapshots.Count}, selectedIndex={selectedCandidateIndex}, best={bestPointText}, probes accepted={accepted}, navmesh={navMeshRejected}, distance={distanceRejected}, sector={sectorRejected}, ownership={ownershipRejected}, los={lineOfSightRejected}, claimSeparation={claimSeparationRejected}, deduped={dedupedRejected}.");
+	}
+
 	private Color GetTacticalCandidateGizmoColor(TacticalCandidateDebugSnapshot snapshot)
 	{
 		if (snapshot.IsSelected)
 		{
-			return Color.green;
+			return Color.white;
 		}
 
 		switch (snapshot.SourcePriority)
@@ -1397,7 +1644,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		switch (result)
 		{
 			case TacticalProbeDebugResult.Accepted:
-				return new Color(0.2f, 1f, 0.35f, 1f);
+				return Color.white;
 			case TacticalProbeDebugResult.NavMeshRejected:
 				return Color.gray;
 			case TacticalProbeDebugResult.DistanceRejected:
@@ -1407,7 +1654,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			case TacticalProbeDebugResult.OwnershipRejected:
 				return new Color(0.8f, 0.2f, 1f, 1f);
 			case TacticalProbeDebugResult.LineOfSightRejected:
-				return Color.red;
+				return Color.cyan;
 			case TacticalProbeDebugResult.ClaimSeparationRejected:
 				return new Color(0.15f, 0.5f, 1f, 1f);
 			case TacticalProbeDebugResult.DedupedRejected:
@@ -1469,6 +1716,17 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private bool ShouldCaptureTacticalDebug(Transform agentTransform)
 	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		if (IsHostileTargetSensorDebugEnabled(settings))
+		{
+			return true;
+		}
+
+		if (!HasLegacyHostileTargetDebugEnabled())
+		{
+			return false;
+		}
+
 		if (agentTransform == null || string.IsNullOrEmpty(tacticalDebugAgentName))
 		{
 			return true;
@@ -1478,20 +1736,114 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			|| agentTransform.name.IndexOf(tacticalDebugAgentName, System.StringComparison.OrdinalIgnoreCase) >= 0;
 	}
 
+	private GoapAgentDebugSettings GetDebugSettings(Transform agentTransform)
+	{
+		if (agentTransform == null)
+		{
+			return null;
+		}
+
+		GoapAgentDebugSettings settings = agentTransform.GetComponent<GoapAgentDebugSettings>();
+		if (settings == null)
+		{
+			settings = agentTransform.GetComponentInChildren<GoapAgentDebugSettings>();
+		}
+		if (settings == null)
+		{
+			settings = agentTransform.GetComponentInParent<GoapAgentDebugSettings>();
+		}
+
+		return settings;
+	}
+
+	private bool IsHostileTargetSensorDebugEnabled(GoapAgentDebugSettings settings)
+	{
+		return settings != null && settings.enableHostileTargetSensorDebug;
+	}
+
+	private bool HasLegacyHostileTargetDebugEnabled()
+	{
+		return drawTacticalQueryGizmos
+			|| spawnTacticalQueryDebugObjects
+			|| logTacticalQuerySelections
+			|| logFallbackSelections
+			|| drawLosDebugMarker
+			|| logWideFlankSelections;
+	}
+
+	private bool HasTacticalQueryDebugOutputRequested(Transform agentTransform)
+	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		bool bridgeRequested = IsHostileTargetSensorDebugEnabled(settings)
+			&& (settings.showHostileTargetTacticalQueryMarkers
+				|| settings.logHostileTargetTacticalQuerySummary
+				|| settings.logHostileTargetSelections);
+
+		return bridgeRequested
+			|| drawTacticalQueryGizmos
+			|| spawnTacticalQueryDebugObjects
+			|| logTacticalQuerySelections;
+	}
+
+	private bool ShouldShowTacticalQueryMarkers(Transform agentTransform)
+	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		return spawnTacticalQueryDebugObjects
+			|| (IsHostileTargetSensorDebugEnabled(settings) && settings.showHostileTargetTacticalQueryMarkers);
+	}
+
+	private bool ShouldLogTacticalQuerySummary(Transform agentTransform)
+	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		return IsHostileTargetSensorDebugEnabled(settings)
+			&& settings.logHostileTargetTacticalQuerySummary;
+	}
+
+	private bool ShouldLogTacticalSelections(Transform agentTransform)
+	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		return logTacticalQuerySelections
+			|| (IsHostileTargetSensorDebugEnabled(settings) && settings.logHostileTargetSelections);
+	}
+
+	private bool ShouldLogFallbackSelections(Transform agentTransform)
+	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		return logFallbackSelections
+			|| (IsHostileTargetSensorDebugEnabled(settings) && settings.logHostileTargetFallbackSelections);
+	}
+
+	private bool ShouldLogWideFlankSelections(Transform agentTransform)
+	{
+		GoapAgentDebugSettings settings = GetDebugSettings(agentTransform);
+		return logWideFlankSelections
+			|| (IsHostileTargetSensorDebugEnabled(settings) && settings.logHostileTargetWideFlankSelections);
+	}
+
+	private bool ShouldShowLosMarker(SenseContext context)
+	{
+		GoapAgentDebugSettings settings = context.DebugSettings != null
+			? context.DebugSettings
+			: GetDebugSettings(context.Agent.transform);
+
+		return drawLosDebugMarker
+			|| (IsHostileTargetSensorDebugEnabled(settings) && settings.showHostileTargetLosMarker);
+	}
+
 	private void LogFallbackSelection(Transform agentTransform, string fallbackName, Vector3 point, Vector3 targetPosition)
 	{
-		if (!logFallbackSelections || !ShouldCaptureTacticalDebug(agentTransform))
+		if (!ShouldLogFallbackSelections(agentTransform) || !ShouldCaptureTacticalDebug(agentTransform))
 		{
 			return;
 		}
 
 		float distanceToTarget = Vector3.Distance(point, targetPosition);
-		//Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} (distance {distanceToTarget:F2}) toward target {targetPosition}.");
+		Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} (distance {distanceToTarget:F2}) toward target {targetPosition}.");
 	}
 
 	private void UpdateRuntimeTacticalDebugObjects()
 	{
-		if (!spawnTacticalQueryDebugObjects || !Application.isPlaying)
+		if (!Application.isPlaying || !ShouldShowTacticalQueryMarkers(LastTacticalDebugAgent))
 		{
 			SetRuntimeDebugObjectsActive(false);
 			return;
@@ -1560,9 +1912,9 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private void UpdateLosDebugObject(SenseContext context)
 	{
-		if (!drawLosDebugMarker || !Application.isPlaying || !ShouldCaptureTacticalDebug(context.Agent.transform))
+		if (!ShouldShowLosMarker(context) || !Application.isPlaying || !ShouldCaptureTacticalDebug(context.Agent.transform))
 		{
-			if (LosDebugObject != null)
+			if (LosDebugObject != null && LastLosDebugAgent == context.Agent.transform)
 			{
 				LosDebugObject.SetActive(false);
 			}
@@ -1580,6 +1932,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			}
 		}
 
+		LastLosDebugAgent = context.Agent.transform;
 		Color color = Color.gray;
 		if (context.HasTarget)
 		{
@@ -1790,6 +2143,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		claim.ClaimedPosition = claimedPosition;
 		claim.LastKnownAgentPosition = agentPosition;
 		claim.LastKnownTargetPosition = targetPosition;
+		claim.AgentBodyState = runtimeState.BodyState;
 		runtimeState.LastClaimedSectorIndex = sectorIndex;
 	}
 
