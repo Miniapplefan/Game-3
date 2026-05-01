@@ -89,12 +89,15 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public int visibleHoldFailureThreshold = 3;
 
 	// Tactical debug visualization
-	public bool drawTacticalQueryGizmos = true;
+	public bool drawTacticalQueryGizmos = false;
 	public bool spawnTacticalQueryDebugObjects = false;
-	public bool logTacticalQuerySelections = true;
-	public bool logFallbackSelections = true;
+	public bool logTacticalQuerySelections = false;
+	public bool logFallbackSelections = false;
 	public string tacticalDebugAgentName = "NPC_total new";
 	public string tacticalDebugTargetName = "Body_total new";
+	public bool drawLosDebugMarker = false;
+	public float losDebugMarkerScale = 0.45f;
+	public float losDebugMarkerHeight = 0.15f;
 	public float tacticalDebugCandidateMarkerScale = 0.35f;
 	public float tacticalDebugRingMarkerScale = 0.12f;
 	public int tacticalDebugRingMarkerCount = 24;
@@ -113,6 +116,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private readonly List<int> ClaimCleanupAgentIds = new List<int>(16);
 	private readonly Dictionary<int, AgentRuntimeState> AgentStates = new Dictionary<int, AgentRuntimeState>();
 	private readonly NavMeshPath SharedNavMeshPath = new NavMeshPath();
+	private GameObject LosDebugObject;
 	private Transform LastTacticalDebugAgent;
 	private Transform LastTacticalDebugTarget;
 	private Vector3 LastTacticalDebugTargetPosition;
@@ -344,6 +348,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public override ITarget Sense(IMonoAgent agent, IComponentReference references)
 	{
 		var context = BuildSenseContext(agent, references);
+		UpdateLosDebugObject(context);
 
 		if (TryResolveMissingBodyState(context, out Vector3 position))
 		{
@@ -1348,7 +1353,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		if (!HasLoggedTacticalDebugCapture)
 		{
 			HasLoggedTacticalDebugCapture = true;
-			Debug.Log($"HostileTargetSensor: captured tactical query for '{agentTransform?.name}' with {TacticalCandidateDebugSnapshots.Count} candidates from {TacticalProbeDebugSnapshots.Count} probes.");
+			//Debug.Log($"HostileTargetSensor: captured tactical query for '{agentTransform?.name}' with {TacticalCandidateDebugSnapshots.Count} candidates from {TacticalProbeDebugSnapshots.Count} probes.");
 		}
 
 		if (logTacticalQuerySelections && foundBestPoint)
@@ -1360,7 +1365,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				HasLastLoggedTacticalSelection = true;
 				LastLoggedTacticalSelectionPoint = bestPoint;
 				float distanceToTarget = Vector3.Distance(bestPoint, targetPosition);
-				Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} (distance {distanceToTarget:F2}) from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
+				//Debug.Log($"HostileTargetSensor: tactical candidate selected for '{agentTransform?.name}' at {bestPoint} (distance {distanceToTarget:F2}) from {TacticalCandidateDebugSnapshots.Count} candidates / {TacticalProbeDebugSnapshots.Count} probes.");
 			}
 		}
 
@@ -1481,7 +1486,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		float distanceToTarget = Vector3.Distance(point, targetPosition);
-		Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} (distance {distanceToTarget:F2}) toward target {targetPosition}.");
+		//Debug.Log($"HostileTargetSensor: {fallbackName} selected for '{agentTransform?.name}' at {point} (distance {distanceToTarget:F2}) toward target {targetPosition}.");
 	}
 
 	private void UpdateRuntimeTacticalDebugObjects()
@@ -1551,6 +1556,37 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			marker.name = $"TacticalDebug_Candidate_{i}_{GetTacticalCandidateDebugLabel(snapshot)}";
 			ConfigureDebugObject(marker, snapshot.Position, scale, GetTacticalCandidateGizmoColor(snapshot));
 		}
+	}
+
+	private void UpdateLosDebugObject(SenseContext context)
+	{
+		if (!drawLosDebugMarker || !Application.isPlaying || !ShouldCaptureTacticalDebug(context.Agent.transform))
+		{
+			if (LosDebugObject != null)
+			{
+				LosDebugObject.SetActive(false);
+			}
+			return;
+		}
+
+		if (LosDebugObject == null)
+		{
+			LosDebugObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+			LosDebugObject.name = "TacticalDebug_LOS";
+			Collider markerCollider = LosDebugObject.GetComponent<Collider>();
+			if (markerCollider != null)
+			{
+				Object.Destroy(markerCollider);
+			}
+		}
+
+		Color color = Color.gray;
+		if (context.HasTarget)
+		{
+			color = context.CanSeeTarget ? Color.cyan : new Color(1f, 0.55f, 0f);
+		}
+
+		ConfigureDebugObject(LosDebugObject, context.AgentPosition + Vector3.up * losDebugMarkerHeight, losDebugMarkerScale, color);
 	}
 
 	private void UpdateRingDebugObjects(List<GameObject> ringObjects, float radius, Color color)

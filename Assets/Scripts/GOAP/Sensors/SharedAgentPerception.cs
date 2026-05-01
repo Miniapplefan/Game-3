@@ -8,6 +8,7 @@ public static class SharedAgentPerception
 	private const float RefreshIntervalSeconds = 0.1f;
 	private const float AgentMoveThresholdSqr = 0.25f;
 	private const float TargetMoveThresholdSqr = 1f;
+	private const bool LogLineOfSightFailures = false;
 
 	private static readonly Dictionary<int, AgentPerceptionState> States = new Dictionary<int, AgentPerceptionState>();
 	private static readonly RaycastHit[] LineOfSightHits = new RaycastHit[16];
@@ -145,7 +146,33 @@ public static class SharedAgentPerception
 			}
 		}
 
-		return nearestHit.HasValue && nearestHit.Value.transform.GetComponent<PlayerController>() != null;
+		bool hitPlayer = nearestHit.HasValue && nearestHit.Value.transform.GetComponentInParent<PlayerController>() != null;
+		if (!hitPlayer && LogLineOfSightFailures)
+		{
+			LogLineOfSightFailure(start, end, ignoredRoot, hitCount, nearestHit);
+		}
+
+		return hitPlayer;
+	}
+
+	private static void LogLineOfSightFailure(Vector3 start, Vector3 end, Transform ignoredRoot, int hitCount, RaycastHit? nearestHit)
+	{
+		string ignoredRootName = ignoredRoot != null ? ignoredRoot.name : "null";
+		if (!nearestHit.HasValue)
+		{
+			Debug.Log($"SharedAgentPerception LOS failed: no non-ignored hit. hitCount={hitCount}, ignoredRoot={ignoredRootName}, start={start}, end={end}");
+			return;
+		}
+
+		Transform hitTransform = nearestHit.Value.transform;
+		string hitName = hitTransform != null ? hitTransform.name : "null";
+		string hitRootName = hitTransform != null && hitTransform.root != null ? hitTransform.root.name : "null";
+		string layerName = hitTransform != null ? LayerMask.LayerToName(hitTransform.gameObject.layer) : "null";
+		bool hasPlayerInParent = hitTransform != null && hitTransform.GetComponentInParent<PlayerController>() != null;
+		bool ignoredByRoot = ignoredRoot != null && hitTransform != null && hitTransform.root == ignoredRoot;
+
+		Debug.Log(
+			$"SharedAgentPerception LOS failed: nearest='{hitName}', root='{hitRootName}', layer='{layerName}', distance={nearestHit.Value.distance:F3}, hasPlayerInParent={hasPlayerInParent}, ignoredByRoot={ignoredByRoot}, hitCount={hitCount}, ignoredRoot={ignoredRootName}, start={start}, end={end}");
 	}
 
 	private static bool NeedsRefresh(AgentPerceptionState state, Vector3 agentPosition)
