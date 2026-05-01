@@ -16,8 +16,9 @@ MonoBehaviour:
   HitMask:
     serializedVersion: 2
     m_Bits: 4672
-  Spread: {x: 0, y: 0, z: 0}
-  npcInnerConeAngle: 2.34
+  Spread: {x: 0.11, y: 0, z: 0}
+  npcInnerConeAngle: 2.33
+  npcInnerConeRadius: 0.16
   npcExcludedLowerArcDegrees: 150
   rawDamage: 1
   maxRange: 20

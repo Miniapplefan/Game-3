@@ -261,6 +261,46 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 	}
 
+	private readonly struct SenseContext
+	{
+		public SenseContext(
+			IMonoAgent agent,
+			SharedAgentPerception.Snapshot perception,
+			AgentRuntimeState runtimeState,
+			BodyState bodyState,
+			Transform targetTransform,
+			Vector3 agentPosition,
+			Vector3 targetPosition,
+			Vector3 targetAimPosition,
+			float distanceToTarget)
+		{
+			Agent = agent;
+			Perception = perception;
+			RuntimeState = runtimeState;
+			BodyState = bodyState;
+			TargetTransform = targetTransform;
+			AgentPosition = agentPosition;
+			TargetPosition = targetPosition;
+			TargetAimPosition = targetAimPosition;
+			DistanceToTarget = distanceToTarget;
+		}
+
+		public IMonoAgent Agent { get; }
+		public SharedAgentPerception.Snapshot Perception { get; }
+		public AgentRuntimeState RuntimeState { get; }
+		public BodyState BodyState { get; }
+		public Transform TargetTransform { get; }
+		public Vector3 AgentPosition { get; }
+		public Vector3 TargetPosition { get; }
+		public Vector3 TargetAimPosition { get; }
+		public float WeaponRange => BodyState != null && BodyState.desiredGunToUse != null
+			? BodyState.desiredGunToUse.gunData.shootConfig.maxRange
+			: 10f;
+		public float DistanceToTarget { get; }
+		public bool HasTarget => Perception.HasTarget;
+		public bool CanSeeTarget => Perception.CanSeeTarget;
+	}
+
 	public override void Created()
 	{
 		if (spawnTacticalQueryDebugObjects && Application.isPlaying)
@@ -276,100 +316,195 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	public override ITarget Sense(IMonoAgent agent, IComponentReference references)
 	{
+		var context = BuildSenseContext(agent, references);
+
+		if (TryResolveMissingBodyState(context, out Vector3 position))
+		{
+			return new PositionTarget(position);
+		}
+
+		if (TryResolveImmobilePosition(context, out position))
+		{
+			return CachePosition(context, position, null);
+		}
+
+		if (TryReuseCachedPosition(context, out position))
+		{
+			return new PositionTarget(position);
+		}
+
+		if (context.HasTarget)
+		{
+			if (TryHoldVisibleAttackPosition(context, out position))
+				return CachePosition(context, position, context.TargetTransform);
+
+			if (TryFindVisibleAttackPosition(context, out position))
+				return CachePosition(context, position, context.TargetTransform);
+
+			if (TryFindRecoveryAttackPosition(context, out position))
+				return CachePosition(context, position, context.TargetTransform);
+
+			return CachePosition(context, context.AgentPosition, context.TargetTransform);
+		}
+
+		if (TryFindLostTargetAdvancePosition(context, out position, out Transform lostTargetTransform))
+		{
+			return CachePosition(context, position, lostTargetTransform);
+		}
+
+		TryFindRandomIdlePosition(context, out position);
+		return CachePosition(context, position, null);
+	}
+
+	private SenseContext BuildSenseContext(IMonoAgent agent, IComponentReference references)
+	{
 		var perception = SharedAgentPerception.GetSnapshot(agent, references, AttackConfig);
 		var runtimeState = GetRuntimeState(agent);
 		var bodyState = perception.BodyState;
+		Vector3 agentPosition = agent.transform.position;
+		Vector3 targetPosition = perception.TargetPosition;
 
-		if (bodyState == null)
+		return new SenseContext(
+			agent,
+			perception,
+			runtimeState,
+			bodyState,
+			perception.TargetTransform,
+			agentPosition,
+			targetPosition,
+			perception.TargetHeadPosition,
+			Vector3.Distance(agentPosition, targetPosition));
+	}
+
+	// No BodyState means the sensor cannot reason about combat movement.
+	private bool TryResolveMissingBodyState(SenseContext context, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		return context.BodyState == null;
+	}
+
+	// Keep immobilized agents from requesting tactical movement.
+	private bool TryResolveImmobilePosition(SenseContext context, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		return context.BodyState.legs.getMoveSpeed() <= 0;
+	}
+
+	// Preserve the existing fast path to avoid expensive tactical queries every sense tick.
+	private bool TryReuseCachedPosition(SenseContext context, out Vector3 position)
+	{
+		position = context.RuntimeState.CachedPosition;
+		return CanReuseCachedResult(context.AgentPosition, context.RuntimeState, context.Perception);
+	}
+
+	// Preserve current behavior: if the agent can see the target in weapon range, hold position.
+	private bool TryHoldVisibleAttackPosition(SenseContext context, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		if (!context.CanSeeTarget
+			|| context.DistanceToTarget > context.WeaponRange
+			|| ShouldBreakVisibleHoldFromTargetShift(context.RuntimeState, context.TargetPosition))
 		{
-			return new PositionTarget(agent.transform.position);
+			return false;
 		}
 
-		if (bodyState.legs.getMoveSpeed() <= 0)
+		RegisterVisibleHoldSuccess(context.RuntimeState);
+		EnsureVisibleHoldAnchor(context.RuntimeState, context.TargetPosition);
+		int holdSectorIndex = GetSectorIndex(context.TargetPosition, context.AgentPosition);
+		UpdateAngleClaim(context.TargetTransform, context.Agent.transform.GetInstanceID(), holdSectorIndex, position, context.AgentPosition, context.TargetPosition, context.RuntimeState);
+		return true;
+	}
+
+	// When the target is visible but not holdable, find a better attack position.
+	private bool TryFindVisibleAttackPosition(SenseContext context, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		if (!context.CanSeeTarget)
 		{
-			return CachePosition(runtimeState, agent.transform.GetInstanceID(), agent.transform.position, agent.transform.position, null);
+			return false;
 		}
 
-		if (CanReuseCachedResult(agent.transform.position, runtimeState, perception))
+		ResetVisibleHoldFailures(context.RuntimeState);
+		ClearVisibleHoldAnchor(context.RuntimeState);
+		if (TryGetBestRadialPoint(context.Agent, context.BodyState, context.TargetAimPosition, context.TargetTransform, context.TargetPosition, context.WeaponRange, context.RuntimeState, out Vector3 bestPoint))
 		{
-			return new PositionTarget(runtimeState.CachedPosition);
+			position = bestPoint;
+			return true;
 		}
 
-		Transform targetTransform = perception.TargetTransform;
-		Vector3 result = agent.transform.position;
-
-		if (perception.HasTarget)
+		if (TryGetBestPointOnCircle(context.TargetPosition, context.WeaponRange / 2f, context.Agent, context.RuntimeState, true, context.DistanceToTarget, out bestPoint))
 		{
-			bool seeTarget = perception.CanSeeTarget;
-			Vector3 targetPosition = perception.TargetPosition;
-			float distanceToPlayer = Vector3.Distance(agent.transform.position, targetPosition);
-			float inRangeDistance = bodyState.desiredGunToUse == null ? 10 : bodyState.desiredGunToUse.gunData.shootConfig.maxRange;
-
-					if (seeTarget && distanceToPlayer <= inRangeDistance && !ShouldBreakVisibleHoldFromTargetShift(runtimeState, targetPosition))
-					{
-						result = agent.transform.position;
-						RegisterVisibleHoldSuccess(runtimeState);
-						EnsureVisibleHoldAnchor(runtimeState, targetPosition);
-						int holdSectorIndex = GetSectorIndex(targetPosition, agent.transform.position);
-						UpdateAngleClaim(targetTransform, agent.transform.GetInstanceID(), holdSectorIndex, result, agent.transform.position, targetPosition, runtimeState);
-					}
-					else if (seeTarget)
-					{
-						ResetVisibleHoldFailures(runtimeState);
-						ClearVisibleHoldAnchor(runtimeState);
-						if (TryGetBestRadialPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 bestPoint))
-						{
-							result = bestPoint;
-				}
-				else if (TryGetBestPointOnCircle(targetPosition, inRangeDistance / 2f, agent, runtimeState, true, distanceToPlayer, out bestPoint))
-				{
-					result = bestPoint;
-				}
-				else
-				{
-					result = runtimeState.HasCachedPosition ? runtimeState.CachedPosition : agent.transform.position;
-				}
-			}
-
-				else if (!seeTarget)//&& distanceToPlayer <= inRangeDistance / 2
-				{
-					ClearVisibleHoldAnchor(runtimeState);
-					if (TryGetBestRadialRecoveryPoint(agent, bodyState, perception.TargetHeadPosition, targetTransform, targetPosition, inRangeDistance, runtimeState, out Vector3 recoveryPoint))
-					{
-						result = recoveryPoint;
-				}
-				else if (TryGetClosestStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
-				{
-					LogFallbackSelection(agent.transform, "StrafeFallback", closestPoint, targetPosition);
-					result = closestPoint;
-				}
-				else if (TryGetBestPointOnCircle(targetPosition, distanceToPlayer, agent, runtimeState, false, float.PositiveInfinity, out Vector3 bestFallback))
-				{
-					LogFallbackSelection(agent.transform, "CircleFallback", bestFallback, targetPosition);
-					result = bestFallback;
-				}
-				else if (runtimeState.HasCachedPosition)
-				{
-					result = runtimeState.CachedPosition;
-				}
-				else
-				{
-					result = GetRandomPointOnCircle(targetPosition, distanceToPlayer, agent);
-				}
-			}
-		}
-		else if (runtimeState.LastTargetTransform != null && TryGetBestPointOnCircle(runtimeState.LastTargetTransform.position, UnityEngine.Random.Range(1f, 5f), agent, runtimeState, false, float.PositiveInfinity, out Vector3 bestAdvance))
-		{
-			targetTransform = runtimeState.LastTargetTransform;
-			result = bestAdvance;
-		}
-		else
-		{
-			result = GetRandomPointOnCircle(agent.transform.position, UnityEngine.Random.Range(1f, 5f), agent);
-			targetTransform = null;
+			position = bestPoint;
+			return true;
 		}
 
-		return CachePosition(runtimeState, agent.transform.GetInstanceID(), result, agent.transform.position, targetTransform);
+		position = context.RuntimeState.HasCachedPosition ? context.RuntimeState.CachedPosition : context.AgentPosition;
+		return true;
+	}
+
+	// When the target is known but not visible, recover line of sight before falling back.
+	private bool TryFindRecoveryAttackPosition(SenseContext context, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		if (context.CanSeeTarget)
+		{
+			return false;
+		}
+
+		ClearVisibleHoldAnchor(context.RuntimeState);
+		if (TryGetBestRadialRecoveryPoint(context.Agent, context.BodyState, context.TargetAimPosition, context.TargetTransform, context.TargetPosition, context.WeaponRange, context.RuntimeState, out Vector3 recoveryPoint))
+		{
+			position = recoveryPoint;
+			return true;
+		}
+
+		if (TryGetClosestStrafePoint(context.Agent, context.TargetPosition, context.RuntimeState, out Vector3 closestPoint))
+		{
+			LogFallbackSelection(context.Agent.transform, "StrafeFallback", closestPoint, context.TargetPosition);
+			position = closestPoint;
+			return true;
+		}
+
+		if (TryGetBestPointOnCircle(context.TargetPosition, context.DistanceToTarget, context.Agent, context.RuntimeState, false, float.PositiveInfinity, out Vector3 bestFallback))
+		{
+			LogFallbackSelection(context.Agent.transform, "CircleFallback", bestFallback, context.TargetPosition);
+			position = bestFallback;
+			return true;
+		}
+
+		if (context.RuntimeState.HasCachedPosition)
+		{
+			position = context.RuntimeState.CachedPosition;
+			return true;
+		}
+
+		position = GetRandomPointOnCircle(context.TargetPosition, context.DistanceToTarget, context.Agent);
+		return true;
+	}
+
+	// If the current target is gone, advance around the last known target position.
+	private bool TryFindLostTargetAdvancePosition(SenseContext context, out Vector3 position, out Transform targetTransform)
+	{
+		position = context.AgentPosition;
+		targetTransform = context.RuntimeState.LastTargetTransform;
+		if (targetTransform == null)
+		{
+			return false;
+		}
+
+		return TryGetBestPointOnCircle(targetTransform.position, UnityEngine.Random.Range(1f, 5f), context.Agent, context.RuntimeState, false, float.PositiveInfinity, out position);
+	}
+
+	// With no current or remembered target, keep the old random nearby point behavior.
+	private bool TryFindRandomIdlePosition(SenseContext context, out Vector3 position)
+	{
+		position = GetRandomPointOnCircle(context.AgentPosition, UnityEngine.Random.Range(1f, 5f), context.Agent);
+		return true;
+	}
+
+	private PositionTarget CachePosition(SenseContext context, Vector3 position, Transform targetTransform)
+	{
+		return CachePosition(context.RuntimeState, context.Agent.transform.GetInstanceID(), position, context.AgentPosition, targetTransform);
 	}
 
 	private bool TryGetBestRadialRecoveryPoint(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out Vector3 bestPoint)
