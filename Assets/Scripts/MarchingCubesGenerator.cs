@@ -8,6 +8,8 @@ public class MarchingCubesGenerator : MonoBehaviour
 	[Header("Grid Settings")]
 	public float resolution = 0.1f; // Distance between vertices
 	public float isolevel = 0.5f;  // Threshold for the marching cubes algorithm
+	[SerializeField] private bool updateNavMeshOnDamage = false;
+	[SerializeField] private int navMeshDirtyRemovedVoxelThreshold = 30;
 
 	private Vector3[,,] vertexMatrix;
 	private float[,,] scalarField;
@@ -18,6 +20,7 @@ public class MarchingCubesGenerator : MonoBehaviour
 	private MeshCollider meshCollider;
 
 	private int damageCount;
+	private int removedVoxelsSinceNavMeshDirty;
 
 	private void Start()
 	{
@@ -41,6 +44,7 @@ public class MarchingCubesGenerator : MonoBehaviour
 			uvs[i] = new Vector2(vertices[i].x, vertices[i].z);
 		}
 		mesh.uv = uvs;
+		MarkNavMeshDirty();
 	}
 
 	private void GenerateVertexMatrix()
@@ -321,6 +325,7 @@ public class MarchingCubesGenerator : MonoBehaviour
 	{
 		// Precompute world positions if possible to avoid repeated TransformPoint calls
 		bool allZero = true;
+		int removedVoxelCount = 0;
 		float closestNonZeroDistance = float.MaxValue;
 		Vector3Int closestNonZeroPoint = default;
 
@@ -358,6 +363,7 @@ public class MarchingCubesGenerator : MonoBehaviour
 			{
 				scalarField[point.x, point.y, point.z] = 0;
 				damageCount++;
+				removedVoxelCount++;
 				//				Debug.Log(damageCount);
 				allZero = false;
 			}
@@ -368,12 +374,42 @@ public class MarchingCubesGenerator : MonoBehaviour
 		{
 			scalarField[closestNonZeroPoint.x, closestNonZeroPoint.y, closestNonZeroPoint.z] = 0;
 			damageCount++;
+			removedVoxelCount++;
 			//			Debug.Log(damageCount);
 		}
 
 		// Regenerate the mesh to reflect changes
 		MarchCubes();
 		SetMesh();
+		MarkNavMeshDirtyAfterDamage(removedVoxelCount);
+	}
+
+	private void MarkNavMeshDirtyAfterDamage(int removedVoxelCount)
+	{
+		if (!updateNavMeshOnDamage || removedVoxelCount <= 0)
+		{
+			return;
+		}
+
+		removedVoxelsSinceNavMeshDirty += removedVoxelCount;
+		if (removedVoxelsSinceNavMeshDirty < Mathf.Max(1, navMeshDirtyRemovedVoxelThreshold))
+		{
+			return;
+		}
+
+		removedVoxelsSinceNavMeshDirty = 0;
+		MarkNavMeshDirty();
+	}
+
+	private void MarkNavMeshDirty()
+	{
+		if (meshCollider != null)
+		{
+			RuntimeNavMeshUpdater.MarkDirty(meshCollider.bounds);
+			return;
+		}
+
+		RuntimeNavMeshUpdater.MarkDirty();
 	}
 
 	// Helper priority queue class

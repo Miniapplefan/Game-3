@@ -180,6 +180,11 @@ public class BodyController : MonoBehaviour
 	[SerializeField] private float knockbackSettleDuration = 0.15f;
 	[SerializeField] private float knockbackNavMeshSampleRadius = 1.0f;
 	private float knockbackSettledTimer;
+	[SerializeField] private bool enableAiBodyDriftCorrection = true;
+	[SerializeField] private float bodyDriftCorrectionThreshold = 0.15f;
+	[SerializeField] private float bodyDriftSnapThreshold = 0.6f;
+	[SerializeField] private float bodyDriftCorrectionSpeed = 12f;
+	[SerializeField] private bool logBodyDriftCorrection = false;
 
 	private NavMeshAgent agent;
 	private Vector3 agentDestination;
@@ -1769,6 +1774,72 @@ public class BodyController : MonoBehaviour
 		}
 	}
 
+	private void CorrectAiBodyDrift()
+	{
+		if (!enableAiBodyDriftCorrection
+			|| !isAI
+			|| isDead
+			|| isKnockbacked
+			|| rb == null)
+		{
+			return;
+		}
+
+		if (agent == null)
+		{
+			agent = GetComponentInParent<NavMeshAgent>();
+		}
+
+		if (agent == null || !agent.enabled)
+		{
+			return;
+		}
+
+		Vector3 localPosition = rb.transform.localPosition;
+		Vector2 horizontalDrift = new Vector2(localPosition.x, localPosition.z);
+		float driftMagnitude = horizontalDrift.magnitude;
+		if (driftMagnitude <= bodyDriftCorrectionThreshold)
+		{
+			return;
+		}
+
+		Vector3 correctedHorizontalPosition;
+		bool snapped = driftMagnitude > bodyDriftSnapThreshold;
+		if (snapped)
+		{
+			correctedHorizontalPosition = Vector3.zero;
+		}
+		else
+		{
+			Vector3 currentHorizontalPosition = new Vector3(localPosition.x, 0f, localPosition.z);
+			correctedHorizontalPosition = Vector3.MoveTowards(
+				currentHorizontalPosition,
+				Vector3.zero,
+				bodyDriftCorrectionSpeed * Time.fixedDeltaTime);
+		}
+
+		rb.transform.localPosition = new Vector3(correctedHorizontalPosition.x, localPosition.y, correctedHorizontalPosition.z);
+		ClearRigidbodyLateralVelocity();
+
+		if (logBodyDriftCorrection)
+		{
+			Debug.Log($"BodyController: corrected AI body drift for '{name}' from {driftMagnitude:F2}m using {(snapped ? "snap" : "smooth")} correction.");
+		}
+	}
+
+	private void ClearRigidbodyLateralVelocity()
+	{
+		if (rb == null || agent == null)
+		{
+			return;
+		}
+
+		Vector3 localVelocity = agent.transform.InverseTransformDirection(rb.velocity);
+		localVelocity.x = 0f;
+		localVelocity.z = 0f;
+		rb.velocity = agent.transform.TransformDirection(localVelocity);
+	}
+
 	private void ClampRigidbodyYPos()
 	{
 		float yPos = Mathf.Clamp(rb.transform.position.y, 1.6f, Mathf.Infinity);
@@ -2112,6 +2183,7 @@ public class BodyController : MonoBehaviour
 		weapons.RecoverFromDisruption();
 		// doCooling();
 		HandleKnockback();
+		CorrectAiBodyDrift();
 		ClampRigidbodyYPos();
 		if (isAI)
 		{

@@ -9037,6 +9037,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 35efbcefeb6574d9698f67292887ef2e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  bodyController: {fileID: 0}
   heatContainer: {fileID: 0}
   rb: {fileID: 7396135337298073847}
   bodyHeat: 0
@@ -9063,6 +9064,8 @@ MonoBehaviour:
   AttackableLayerMask:
     serializedVersion: 2
     m_Bits: 0
+  AIMovingVelocityThreshold: 0.05
+  AIMovingRootVelocityThreshold: 0.05
   desiredGunToUse: {fileID: 0}
 --- !u!114 &374547860822685908
 MonoBehaviour:

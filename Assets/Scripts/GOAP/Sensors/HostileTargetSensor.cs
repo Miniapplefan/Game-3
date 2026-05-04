@@ -43,7 +43,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	// NavMesh validation
 	public float navMeshSampleRadius = 2.5f;
-	public float navMeshEdgeClearance = 0.6f;
+	public float navMeshEdgeClearance = 0.2f;
 
 	// Agent-local fallback movement
 	public float agentFallbackRadius = 6f;
@@ -68,6 +68,9 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	public int wideFlankOppositeClusterWeight = 100;
 	public int wideFlankNearestClaimWeight = 25;
 	public int wideFlankTravelPenaltyWeight = 8;
+	public bool enableCompressedFlankFallback = true;
+	public float compressedFlankMinDistance = 2f;
+	public float compressedFlankMaxDistanceMultiplier = 0.5f;
 
 	// Tactical candidate generation
 	public float tacticalClaimedPositionSeparation = 2f;
@@ -1179,7 +1182,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		attemptedMask |= sectorMask;
 
-		if (!TryGetBestTacticalPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, sectorIndex, agentId, weaponRange, minDistanceMultiplier, maxDistanceMultiplier, out bestPoint))
+		if (!TryGetBestTacticalPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, sectorIndex, agentId, weaponRange, minDistanceMultiplier, maxDistanceMultiplier, out bestPoint)
+			&& !TryGetCompressedFlankTacticalPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, sectorIndex, agentId, weaponRange, out bestPoint))
 		{
 			return false;
 		}
@@ -1193,6 +1197,25 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		bestPoint = agent.transform.position;
 		float minDistance = Mathf.Max(1f, weaponRange * minDistanceMultiplier);
 		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * maxDistanceMultiplier);
+		return TryGetBestTacticalPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, desiredSector, agentId, minDistance, maxDistance, out bestPoint);
+	}
+
+	private bool TryGetCompressedFlankTacticalPoint(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, int desiredSector, int agentId, float weaponRange, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
+		if (!enableCompressedFlankFallback)
+		{
+			return false;
+		}
+
+		float minDistance = Mathf.Max(1f, compressedFlankMinDistance);
+		float maxDistance = Mathf.Max(minDistance + 0.1f, weaponRange * compressedFlankMaxDistanceMultiplier);
+		return TryGetBestTacticalPoint(agent, bodyState, targetAimPosition, targetState, targetTransform, targetPosition, desiredSector, agentId, minDistance, maxDistance, out bestPoint);
+	}
+
+	private bool TryGetBestTacticalPoint(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Transform targetTransform, Vector3 targetPosition, int desiredSector, int agentId, float minDistance, float maxDistance, out Vector3 bestPoint)
+	{
+		bestPoint = agent.transform.position;
 		TacticalCandidates.Clear();
 		TacticalProbeDebugSnapshots.Clear();
 		CollectSectorBandCandidates(agent, bodyState, targetAimPosition, targetState, targetPosition, desiredSector, agentId, minDistance, maxDistance);

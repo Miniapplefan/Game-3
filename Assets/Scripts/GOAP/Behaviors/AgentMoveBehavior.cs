@@ -19,6 +19,7 @@ public class AgentMoveBehavior : MonoBehaviour
 	[SerializeField] private float ArrivalStallDuration = 0.2f;
 	[SerializeField] private float ArrivalVelocityThreshold = 0.05f;
 	[SerializeField] private float ArrivalProgressEpsilon = 0.02f;
+	[SerializeField] private bool drawPathDebug = false;
 	private Vector3 EyeLevel = new Vector3(0, 2.33f, 0);
 	private Vector3 LastPosition;
 	private float ArrivalStallTimer;
@@ -180,6 +181,39 @@ public class AgentMoveBehavior : MonoBehaviour
 		ArrivalStallTimer = 0f;
 		LastRemainingDistance = remainingDistance;
 		return false;
+	}
+
+	private void OnDrawGizmosSelected()
+	{
+		if (!drawPathDebug)
+		{
+			return;
+		}
+
+		NavMeshAgent agent = NavMeshAgent != null ? NavMeshAgent : GetComponent<NavMeshAgent>();
+		if (agent == null || !agent.hasPath)
+		{
+			return;
+		}
+
+		Gizmos.color = agent.pathStatus == NavMeshPathStatus.PathComplete
+			? Color.cyan
+			: Color.yellow;
+
+		Vector3[] corners = agent.path.corners;
+		for (int i = 0; i < corners.Length - 1; i++)
+		{
+			Gizmos.DrawLine(corners[i], corners[i + 1]);
+			Gizmos.DrawSphere(corners[i], 0.15f);
+		}
+
+		if (corners.Length > 0)
+		{
+			Gizmos.DrawSphere(corners[corners.Length - 1], 0.2f);
+		}
+
+		Gizmos.color = Color.magenta;
+		Gizmos.DrawSphere(agent.steeringTarget, 0.25f);
 	}
 
 }
