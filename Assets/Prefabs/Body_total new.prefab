@@ -7042,6 +7042,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2857187716034250569}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: aimYawLimit
+      value: 89
+      objectReference: {fileID: 0}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: headObjectL
       value: 
       objectReference: {fileID: 1285628469629030229}
@@ -7175,7 +7179,7 @@ PrefabInstance:
       objectReference: {fileID: 3457758011005780888}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: aimYawFollowSpeedMax
-      value: 40
+      value: 100
       objectReference: {fileID: 0}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: aimYawFollowSpeedMin

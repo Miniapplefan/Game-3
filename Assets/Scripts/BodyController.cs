@@ -1867,17 +1867,16 @@ public class BodyController : MonoBehaviour
 
 	private void DoReload()
 	{
-		if (!isAimingLeft && !isAimingRight)
+		if (IsActiveArmLeft())
 		{
-			gunsL.ActiveGun1.StartReload();
-			guns.ActiveGun1.StartReload();
+			if (gunsL != null && gunsL.ActiveGun1 != null)
+			{
+				gunsL.ActiveGun1.StartReload();
+			}
+			return;
 		}
 
-		if (isAimingLeft)
-		{
-			gunsL.ActiveGun1.StartReload();
-		}
-		if (isAimingRight)
+		if (guns != null && guns.ActiveGun1 != null)
 		{
 			guns.ActiveGun1.StartReload();
 		}

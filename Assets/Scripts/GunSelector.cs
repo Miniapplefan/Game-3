@@ -6,6 +6,7 @@ using TMPro;
 public class GunSelector : MonoBehaviour
 {
 	private const int ReloadBarWidth = 6;
+	private const string ActiveAimMarker = "●";
 	private static readonly Quaternion AmmoIndicatorFacingOffset = Quaternion.Euler(0f, 180f, 0f);
 	private static readonly string[] ReloadIndicatorTexts = BuildReloadIndicatorTexts();
 
@@ -36,6 +37,7 @@ public class GunSelector : MonoBehaviour
 	private bool lastAmmoIndicatorReloading;
 	private int lastDisplayedAmmoCount;
 	private int lastDisplayedReloadBarCount = -1;
+	private string lastDisplayedAmmoIndicatorText;
 	private bool laserVisible = true;
 	[SerializeField] private float minPrimaryAimDistance = 0.75f;
 	[SerializeField] private Transform forearmForwardFallback;
@@ -306,25 +308,75 @@ public class GunSelector : MonoBehaviour
 			int filled = Mathf.RoundToInt(progress01 * ReloadBarWidth);
 			filled = Mathf.Clamp(filled, 0, ReloadBarWidth);
 
-			if (!hasAmmoIndicatorState || !lastAmmoIndicatorReloading || lastDisplayedReloadBarCount != filled)
+			string displayText = FormatAmmoIndicatorText(ReloadIndicatorTexts[filled]);
+			if (!hasAmmoIndicatorState
+				|| !lastAmmoIndicatorReloading
+				|| lastDisplayedReloadBarCount != filled
+				|| lastDisplayedAmmoIndicatorText != displayText)
 			{
-				ammoIndicator.text = ReloadIndicatorTexts[filled];
+				ammoIndicator.text = displayText;
 				hasAmmoIndicatorState = true;
 				lastAmmoIndicatorReloading = true;
 				lastDisplayedReloadBarCount = filled;
+				lastDisplayedAmmoIndicatorText = displayText;
 			}
 		}
 		else
 		{
 			int currentAmmo = ActiveGun1.currentShotsInMag;
-			if (!hasAmmoIndicatorState || lastAmmoIndicatorReloading || lastDisplayedAmmoCount != currentAmmo)
+			string displayText = FormatAmmoIndicatorText(currentAmmo.ToString());
+			if (!hasAmmoIndicatorState
+				|| lastAmmoIndicatorReloading
+				|| lastDisplayedAmmoCount != currentAmmo
+				|| lastDisplayedAmmoIndicatorText != displayText)
 			{
-				ammoIndicator.text = currentAmmo.ToString();
+				ammoIndicator.text = displayText;
 				hasAmmoIndicatorState = true;
 				lastAmmoIndicatorReloading = false;
 				lastDisplayedAmmoCount = currentAmmo;
+				lastDisplayedAmmoIndicatorText = displayText;
 			}
 		}
+	}
+
+	private string FormatAmmoIndicatorText(string text)
+	{
+		if (bodyController == null)
+		{
+			bodyController = GetComponentInParent<BodyController>();
+			if (bodyController == null)
+			{
+				return text;
+			}
+		}
+
+		bool selectedArmIsLeft = IsSelectedArmLeft();
+		if (bodyController.guns == this && !selectedArmIsLeft)
+		{
+			return ActiveAimMarker + text;
+		}
+
+		if (bodyController.gunsL == this && selectedArmIsLeft)
+		{
+			return text + ActiveAimMarker;
+		}
+
+		return text;
+	}
+
+	private bool IsSelectedArmLeft()
+	{
+		if (bodyController.isAimingLeft && !bodyController.isAimingRight)
+		{
+			return true;
+		}
+
+		if (bodyController.isAimingRight && !bodyController.isAimingLeft)
+		{
+			return false;
+		}
+
+		return bodyController.KeepCameraAimUsesLeft;
 	}
 
 	private static string[] BuildReloadIndicatorTexts()

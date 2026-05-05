@@ -27,6 +27,7 @@ public class BodyState : MonoBehaviour
 	private float losCheckIntervalCache = 0.2f;
 	public bool hasLOS;
 	public bool isBeingAimedAt;
+	private int playerAimColliderOverlapCount;
 	public float TimeToAim;
 	public bool isAimed = false;
 	public float hitStunAmount;
@@ -341,8 +342,9 @@ public class BodyState : MonoBehaviour
 
 	private void OnTriggerEnter(Collider other)
 	{
-		if (other.gameObject.layer == 13 && Target_HaveLOS())
+		if (IsPlayerAimCollider(other) && Target_HaveLOS())
 		{
+			playerAimColliderOverlapCount++;
 			isBeingAimedAt = true;
 		}
 	}
@@ -357,10 +359,30 @@ public class BodyState : MonoBehaviour
 
 	private void OnTriggerExit(Collider other)
 	{
-		if (other.gameObject.layer == 13)
+		if (IsPlayerAimCollider(other))
 		{
-			isBeingAimedAt = false;
+			playerAimColliderOverlapCount = Mathf.Max(0, playerAimColliderOverlapCount - 1);
+			if (playerAimColliderOverlapCount == 0)
+			{
+				isBeingAimedAt = false;
+			}
 		}
+	}
+
+	private bool IsPlayerAimCollider(Collider other)
+	{
+		if (other == null || other.gameObject.layer != 13)
+		{
+			return false;
+		}
+
+		BodyController aimOwner = other.GetComponentInParent<BodyController>();
+		if (aimOwner != null)
+		{
+			return !aimOwner.isAI && aimOwner.GetComponentInParent<PlayerController>() != null;
+		}
+
+		return other.GetComponentInParent<PlayerController>() != null;
 	}
 
 	#region AI data
