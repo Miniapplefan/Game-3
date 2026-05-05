@@ -38,8 +38,7 @@ public class GunSelector : MonoBehaviour
 	private int lastDisplayedReloadBarCount = -1;
 	private bool laserVisible = true;
 	[SerializeField] private float minPrimaryAimDistance = 0.75f;
-	private Vector3 lastStablePrimaryAimForward;
-	private bool hasStablePrimaryAimForward;
+	[SerializeField] private Transform forearmForwardFallback;
 
 	[Space]
 	[Header("Runtime Filled")]
@@ -151,7 +150,7 @@ public class GunSelector : MonoBehaviour
 			return Quaternion.LookRotation(fallbackDirection.normalized, fallbackUp);
 		}
 
-		if (!TryGetStablePrimaryAimForward(muzzle, targetPoint, out Vector3 desiredForward))
+		if (!TryGetPrimaryAimForward(muzzle, targetPoint, out Vector3 desiredForward))
 		{
 			return transform.rotation;
 		}
@@ -177,34 +176,23 @@ public class GunSelector : MonoBehaviour
 		return desiredMuzzleRotation * Quaternion.Inverse(localMuzzleRotation);
 	}
 
-	private bool TryGetStablePrimaryAimForward(Transform muzzle, Vector3 targetPoint, out Vector3 desiredForward)
+	private bool TryGetPrimaryAimForward(Transform muzzle, Vector3 targetPoint, out Vector3 desiredForward)
 	{
 		Vector3 desiredDirection = targetPoint - muzzle.position;
 		float minDistance = Mathf.Max(0f, minPrimaryAimDistance);
 		if (desiredDirection.sqrMagnitude >= minDistance * minDistance)
 		{
 			desiredForward = desiredDirection.normalized;
-			lastStablePrimaryAimForward = desiredForward;
-			hasStablePrimaryAimForward = true;
 			return true;
 		}
 
-		if (hasStablePrimaryAimForward)
+		if (forearmForwardFallback == null || forearmForwardFallback.forward.sqrMagnitude <= 0.0001f)
 		{
-			desiredForward = lastStablePrimaryAimForward;
-			return true;
+			desiredForward = Vector3.zero;
+			return false;
 		}
 
-		desiredForward = muzzle.forward.sqrMagnitude > 0.0001f
-			? muzzle.forward.normalized
-			: transform.forward.normalized;
-		if (desiredForward.sqrMagnitude <= 0.0001f)
-		{
-			desiredForward = Vector3.forward;
-		}
-
-		lastStablePrimaryAimForward = desiredForward;
-		hasStablePrimaryAimForward = true;
+		desiredForward = forearmForwardFallback.forward.normalized;
 		return true;
 	}
 

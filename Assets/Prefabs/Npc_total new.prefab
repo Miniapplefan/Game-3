@@ -104,7 +104,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &7805835623842404600
 Transform:
   m_ObjectHideFlags: 0
@@ -3882,6 +3882,10 @@ PrefabInstance:
       propertyPath: gunHolders.Array.size
       value: 3
       objectReference: {fileID: 0}
+    - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: forearmForwardFallback
+      value: 
+      objectReference: {fileID: 60973815211320191}
     - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: raycastLayerMask.m_Bits
       value: 576

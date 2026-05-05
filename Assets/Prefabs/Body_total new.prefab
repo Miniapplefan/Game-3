@@ -5708,6 +5708,7 @@ MonoBehaviour:
   weapon: {fileID: 2857187715870912185}
   ammoIndicator: {fileID: 5490793076457762896}
   minPrimaryAimDistance: 0.38
+  forearmForwardFallback: {fileID: 6322084844445424364}
   ActiveGun1: {fileID: 0}
   ActiveGun2: {fileID: 0}
   ActiveGun3: {fileID: 0}
@@ -7517,6 +7518,10 @@ PrefabInstance:
       value: 0.38
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: forearmForwardFallback
+      value: 
+      objectReference: {fileID: 2857187715870912211}
+    - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: raycastLayerMask.m_Bits
       value: 576
       objectReference: {fileID: 0}
@@ -7620,6 +7625,10 @@ PrefabInstance:
       propertyPath: RagdollLeftWeapon
       value: 
       objectReference: {fileID: 2787992421544357198}
+    - target: {fileID: 5897900685165210135, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: armAimFollowSpeed
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900685165210135, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: RagdollRightFootRb
       value: 
@@ -8760,6 +8769,11 @@ MonoBehaviour:
   limb:
     linkedSystem: 5
     specificLimb: 5
+--- !u!4 &2857187715870912211 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5897900685165210177, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+  m_PrefabInstance: {fileID: 8538623108797842578}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2857187715870912214 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5897900685165210180, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
