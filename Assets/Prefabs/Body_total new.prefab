@@ -120,7 +120,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &5304740016258301853
 Transform:
   m_ObjectHideFlags: 0
@@ -2761,7 +2761,7 @@ GameObject:
   - component: {fileID: 676752465468586183}
   - component: {fileID: 9006917895135992496}
   m_Layer: 2
-  m_Name: Sphere
+  m_Name: target_L_point
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2900,7 +2900,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &2190810883484393038
 Transform:
   m_ObjectHideFlags: 0
@@ -5027,7 +5027,7 @@ GameObject:
   - component: {fileID: 7951145906712776070}
   - component: {fileID: 683866777076118778}
   m_Layer: 2
-  m_Name: Sphere
+  m_Name: target_R_point
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -6670,7 +6670,7 @@ Transform:
   m_GameObject: {fileID: 9088554217926094952}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.053, y: 0.24, z: 0.019}
+  m_LocalPosition: {x: 0.053, y: 0.34, z: 0.019}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -6695,7 +6695,7 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.35
+  m_Radius: 0.3
   m_Height: 0.7508154
   m_Direction: 1
   m_Center: {x: 0, y: 0.033624087, z: 0}
@@ -7025,7 +7025,7 @@ PrefabInstance:
       objectReference: {fileID: 4764579793260980086}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: isGodMode
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: siphonArm

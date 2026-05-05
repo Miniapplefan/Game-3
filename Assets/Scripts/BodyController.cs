@@ -156,6 +156,10 @@ public class BodyController : MonoBehaviour
 	public Transform weaponAimPointL;
 	public Transform weaponStandbyPointR;
 	public Transform weaponStandbyPointL;
+	[SerializeField] private GameObject rightAimPointIndicator;
+	[SerializeField] private GameObject leftAimPointIndicator;
+	private bool rightAimPointIndicatorVisible = true;
+	private bool leftAimPointIndicatorVisible = true;
 	[Header("Standby Elbow Targets")]
 	public Transform elbowTargetR;
 	public Transform elbowTargetL;
@@ -278,6 +282,8 @@ public class BodyController : MonoBehaviour
 
 		// coolingGaugeScaleCache = coolingGauge.transform.localScale;
 		taggingGaugeScaleCache = taggingGauge.transform.localScale;
+		ResolveAimPointIndicators();
+		UpdateAimPointIndicatorVisibility();
 		// healthIndicator.text = head.health.ToString();
 	}
 
@@ -2176,10 +2182,11 @@ public class BodyController : MonoBehaviour
 				}
 				doSiphoning();
 				doLimbRepairs();
-		}
-		legs.DoMoveDeacceleration();
-		legs.RecoverFromTagging(1);
-		legs.UpdateMovementTick(Time.deltaTime);
+			}
+			UpdateAimPointIndicatorVisibility();
+			legs.DoMoveDeacceleration();
+			legs.RecoverFromTagging(1);
+			legs.UpdateMovementTick(Time.deltaTime);
 		weapons.RecoverFromDisruption();
 		// doCooling();
 		HandleKnockback();
@@ -2303,6 +2310,50 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 		weaponAimPointL.position = pos;
+	}
+
+	private void ResolveAimPointIndicators()
+	{
+		if (rightAimPointIndicator == null && weaponAimPoint != null)
+		{
+			Transform indicator = weaponAimPoint.Find("target_R_point");
+			if (indicator != null)
+			{
+				rightAimPointIndicator = indicator.gameObject;
+			}
+		}
+
+		if (leftAimPointIndicator == null && weaponAimPointL != null)
+		{
+			Transform indicator = weaponAimPointL.Find("target_L_point");
+			if (indicator != null)
+			{
+				leftAimPointIndicator = indicator.gameObject;
+			}
+		}
+	}
+
+	private void UpdateAimPointIndicatorVisibility()
+	{
+		ResolveAimPointIndicators();
+		SetAimPointIndicatorActive(rightAimPointIndicator, ref rightAimPointIndicatorVisible, !isDead && isAimingRight);
+		SetAimPointIndicatorActive(leftAimPointIndicator, ref leftAimPointIndicatorVisible, !isDead && isAimingLeft);
+	}
+
+	private void SetAimPointIndicatorActive(GameObject indicator, ref bool visibleCache, bool visible)
+	{
+		bool activeStateMatches = indicator == null || indicator.activeSelf == visible;
+		if (visibleCache == visible && activeStateMatches)
+		{
+			return;
+		}
+
+		visibleCache = visible;
+
+		if (indicator != null)
+		{
+			indicator.SetActive(visible);
+		}
 	}
 
 	private void UpdateStandbyElbowTargets()
