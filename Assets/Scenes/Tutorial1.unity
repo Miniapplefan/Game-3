@@ -14772,6 +14772,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: armAimFollowSpeed
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: armAimSwapCatchUpDuration
+      value: 0.01
+      objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
       value: 143.20163

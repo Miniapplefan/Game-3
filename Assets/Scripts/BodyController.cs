@@ -103,6 +103,7 @@ public class BodyController : MonoBehaviour
 	public Transform headObjectAimOffsetL;
 
 	public GameObject aimCam;
+	[SerializeField] private MovePlayerCamera cameraMoveScript;
 	public bool isAimingRight = false;
 	bool startedAimingRight = false;
 	public bool isAimingLeft = false;
@@ -2267,10 +2268,18 @@ public class BodyController : MonoBehaviour
 			//headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 		}
 
+		bool wasAimingRight = isAimingRight;
+		bool wasAimingLeft = isAimingLeft;
+		bool wasKeepingCameraAimWithoutArm = keepCameraAimWithoutArm;
+		bool wasKeepingCameraAimUsesLeft = keepCameraAimUsesLeft;
 		bool scrollUp = input.getScrollUp();
 		bool scrollDown = !scrollUp && input.getScrollDown();
 		ProcessAimScrollInput(scrollUp, scrollDown, false);
 		if (input.getAimMiddle()) HandleMiddleClick();
+		if (AimCameraAnchorStateChanged(wasAimingRight, wasAimingLeft, wasKeepingCameraAimWithoutArm, wasKeepingCameraAimUsesLeft))
+		{
+			ApplyCameraImmediateForAimSwap();
+		}
 
 		if (input.getReload()) DoReload();
 
@@ -2300,6 +2309,50 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 		weaponAimPoint.position = pos;
+	}
+
+	private bool AimCameraAnchorStateChanged(bool wasAimingRight, bool wasAimingLeft, bool wasKeepingCameraAimWithoutArm, bool wasKeepingCameraAimUsesLeft)
+	{
+		return wasAimingRight != isAimingRight
+			|| wasAimingLeft != isAimingLeft
+			|| wasKeepingCameraAimWithoutArm != keepCameraAimWithoutArm
+			|| wasKeepingCameraAimUsesLeft != keepCameraAimUsesLeft;
+	}
+
+	private void ApplyCameraImmediateForAimSwap()
+	{
+		if (isAI)
+		{
+			return;
+		}
+
+		ResolveCameraMoveScript();
+		if (cameraMoveScript != null)
+		{
+			cameraMoveScript.ApplyCameraImmediate();
+		}
+	}
+
+	private void ResolveCameraMoveScript()
+	{
+		if (cameraMoveScript != null)
+		{
+			return;
+		}
+
+		if (aimCam != null)
+		{
+			cameraMoveScript = aimCam.GetComponentInParent<MovePlayerCamera>();
+			if (cameraMoveScript == null)
+			{
+				cameraMoveScript = aimCam.GetComponentInChildren<MovePlayerCamera>();
+			}
+		}
+
+		if (cameraMoveScript == null)
+		{
+			cameraMoveScript = GetComponentInChildren<MovePlayerCamera>();
+		}
 	}
 
 	private void SetWeaponAimPointL(Vector3 pos)

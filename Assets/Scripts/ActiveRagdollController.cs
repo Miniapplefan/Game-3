@@ -83,6 +83,16 @@ public class ActiveRagdollController : MonoBehaviour
 	private Vector3 positionVelocity = Vector3.zero;
 	private Vector3 rotationVelocity = Vector3.zero;
 
+	[Header("Arm Aim Follow")]
+	[SerializeField] private float armAimFollowSpeed = 12f;
+	// [SerializeField] private float armAimSwapCatchUpSpeed = 40f;
+	// [SerializeField] private float armAimSwapCatchUpDuration = 0.08f;
+	[SerializeField] private float minAimDirectionSqrMagnitude = 0.0001f;
+	private bool wasAimingRight;
+	private bool wasAimingLeft;
+	// private float rightAimSwapCatchUpTimer;
+	// private float leftAimSwapCatchUpTimer;
+
 	// Start is called before the first frame update
 	void Start()
 	{
@@ -263,37 +273,18 @@ public class ActiveRagdollController : MonoBehaviour
 
 		if (bodyState.hitStunAmount <= 0 && !bodyController.isDead)
 		{
-			float speedR = (1f / RagdollRightArmRb.velocity.magnitude);
-			Vector3 direction = target.transform.position - RagdollRightArm.transform.position;
-			Quaternion toRotation = Quaternion.LookRotation(direction, transform.up);
-			//AnimatedRightArm.transform.rotation = toRotation;
-			//AnimatedRightWeapon.transform.rotation = toRotation;
-			//RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, toRotation, speed * Time.deltaTime);
-			//RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speed * Time.deltaTime);
-			//RagdollRightArm.transform.rotation = toRotation;
+			UpdateAimSwapCatchUpTimers();
 
-			RagdollRightArm.transform.rotation = Quaternion.Lerp(RagdollRightArm.transform.rotation, toRotation, speedR * Time.deltaTime);
+			// float rightSpeed = rightAimSwapCatchUpTimer > 0f ? armAimSwapCatchUpSpeed : armAimFollowSpeed;
+			// float leftSpeed = leftAimSwapCatchUpTimer > 0f ? armAimSwapCatchUpSpeed : armAimFollowSpeed;
+			float rightSpeed = armAimFollowSpeed;
+			float leftSpeed = armAimFollowSpeed;
 
-			Vector3 d = target.transform.position - RagdollRightWeapon.transform.position;
-			Quaternion t = bodyController.guns != null
-				? bodyController.guns.GetPrimaryHandAimRotation(target.transform.position, transform.right)
-				: Quaternion.LookRotation(d, transform.right);
+			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false);
+			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false);
 
-			RagdollRightWeapon.transform.rotation = Quaternion.Lerp(RagdollRightWeapon.transform.rotation, t, speedR * Time.deltaTime);
-
-
-			float speedL = (1f / RagdollLeftArmRb.velocity.magnitude);
-			direction = targetL.transform.position - RagdollLeftArm.transform.position;
-			toRotation = Quaternion.LookRotation(direction, transform.up);
-
-			RagdollLeftArm.transform.rotation = Quaternion.Lerp(RagdollLeftArm.transform.rotation, toRotation, speedL * Time.deltaTime);
-
-			d = targetL.transform.position - RagdollLeftWeapon.transform.position;
-			t = bodyController.gunsL != null
-				? bodyController.gunsL.GetPrimaryHandAimRotation(targetL.transform.position, transform.right)
-				: Quaternion.LookRotation(d, transform.right);
-
-			RagdollLeftWeapon.transform.rotation = Quaternion.Lerp(RagdollLeftWeapon.transform.rotation, t, speedL * Time.deltaTime);
+			// rightAimSwapCatchUpTimer = Mathf.Max(0f, rightAimSwapCatchUpTimer - Time.deltaTime);
+			// leftAimSwapCatchUpTimer = Mathf.Max(0f, leftAimSwapCatchUpTimer - Time.deltaTime);
 
 		}
 
@@ -314,7 +305,82 @@ public class ActiveRagdollController : MonoBehaviour
 		// 	RagdollRightFootRb.isKinematic = false;
 		// }
 		//}
-		//RagdollHead.transform.rotation = AnimatedHead.rotation;
+			//RagdollHead.transform.rotation = AnimatedHead.rotation;
+		}
+
+	private void UpdateAimSwapCatchUpTimers()
+	{
+		bool isAimingRight = bodyController != null && bodyController.isAimingRight;
+		bool isAimingLeft = bodyController != null && bodyController.isAimingLeft;
+
+		if (isAimingRight && !wasAimingRight)
+		{
+			// rightAimSwapCatchUpTimer = armAimSwapCatchUpDuration;
+			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, armAimFollowSpeed, true);
+		}
+
+		if (isAimingLeft && !wasAimingLeft)
+		{
+			// leftAimSwapCatchUpTimer = armAimSwapCatchUpDuration;
+			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, armAimFollowSpeed, true);
+		}
+
+		wasAimingRight = isAimingRight;
+		wasAimingLeft = isAimingLeft;
+	}
+
+	private void UpdateArmAim(Transform arm, Transform weapon, Transform aimTarget, GunSelector gunSelector, float followSpeed, bool instant)
+	{
+		if (arm == null || weapon == null || aimTarget == null)
+		{
+			return;
+		}
+
+		float t = instant ? 1f : GetAimFollowT(followSpeed);
+		Vector3 direction = aimTarget.position - arm.position;
+		if (TryGetAimRotation(direction, transform.up, arm.rotation, out Quaternion armRotation))
+		{
+			arm.rotation = Quaternion.Slerp(arm.rotation, armRotation, t);
+		}
+
+		Quaternion weaponRotation;
+		if (gunSelector != null)
+		{
+			weaponRotation = gunSelector.GetPrimaryHandAimRotation(aimTarget.position, transform.right);
+		}
+		else
+		{
+			Vector3 weaponDirection = aimTarget.position - weapon.position;
+			if (!TryGetAimRotation(weaponDirection, transform.right, weapon.rotation, out weaponRotation))
+			{
+				return;
+			}
+		}
+
+		weapon.rotation = Quaternion.Slerp(weapon.rotation, weaponRotation, t);
+	}
+
+	private float GetAimFollowT(float followSpeed)
+	{
+		followSpeed = Mathf.Max(0f, followSpeed);
+		return Mathf.Clamp01(1f - Mathf.Exp(-followSpeed * Time.deltaTime));
+	}
+
+	private bool TryGetAimRotation(Vector3 direction, Vector3 up, Quaternion fallback, out Quaternion rotation)
+	{
+		if (direction.sqrMagnitude <= minAimDirectionSqrMagnitude)
+		{
+			rotation = fallback;
+			return false;
+		}
+
+		if (up.sqrMagnitude <= minAimDirectionSqrMagnitude)
+		{
+			up = Vector3.up;
+		}
+
+		rotation = Quaternion.LookRotation(direction, up);
+		return true;
 	}
 
 	private void UpdateJointTargets()

@@ -37,6 +37,11 @@ public class MovePlayerCamera : MonoBehaviour
         ApplyCamera();
     }
 
+    public void ApplyCameraImmediate()
+    {
+        ApplyCamera();
+    }
+
     private void ApplyCamera()
     {
         if (bodyController != null && bodyController.IsMoveAimYawInProgress)
