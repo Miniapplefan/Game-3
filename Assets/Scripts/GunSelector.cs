@@ -28,6 +28,7 @@ public class GunSelector : MonoBehaviour
 	private LineRenderer laser;
 	public TMP_Text ammoIndicator;
 	private Vector3 raycastPoint;
+	private bool hasRaycastPoint;
 	private Quaternion initialLocalRotation;
 	private BodyController bodyController;
 	private Transform ammoIndicatorHeadTarget;
@@ -35,6 +36,10 @@ public class GunSelector : MonoBehaviour
 	private bool lastAmmoIndicatorReloading;
 	private int lastDisplayedAmmoCount;
 	private int lastDisplayedReloadBarCount = -1;
+	private bool laserVisible = true;
+	[SerializeField] private float minPrimaryAimDistance = 0.75f;
+	private Vector3 lastStablePrimaryAimForward;
+	private bool hasStablePrimaryAimForward;
 
 	[Space]
 	[Header("Runtime Filled")]
@@ -73,10 +78,11 @@ public class GunSelector : MonoBehaviour
 
 	void FixedUpdate()
 	{
-		float dist = Vector3.Distance(transform.position, raycastPoint);
-		if (!isAI)
+		bool shouldDrawLaser = !isAI && IsOwningArmAimed();
+		SetLaserVisible(shouldDrawLaser);
+		if (shouldDrawLaser)
 		{
-			DrawLaser(transform.position + transform.forward * dist / 1.5f, transform.position + transform.forward * dist);
+			DrawPrimaryMuzzleLaser();
 		}
 		UpdateAmmoIndicator();
 	}
@@ -87,16 +93,26 @@ public class GunSelector : MonoBehaviour
 
 	void PerformRaycast()
 	{
+		Transform muzzle = GetPrimaryMuzzleTransform();
+		if (muzzle == null)
+		{
+			return;
+		}
+
 		RaycastHit hit;
-		if (Physics.Raycast(transform.position, transform.forward, out hit, Mathf.Infinity, raycastLayerMask))
+		float maxRange = GetPrimaryGunMaxRange();
+		if (Physics.Raycast(muzzle.position, muzzle.forward, out hit, maxRange, raycastLayerMask))
 		{
 			raycastPoint = hit.point;
+			hasRaycastPoint = true;
 			// Rotate the guns to look at the hit point
 			RotateGuns(hit.point);
 		}
 		else
 		{
-			// No hit, keep the previous rotation
+			raycastPoint = muzzle.position + muzzle.forward * maxRange;
+			hasRaycastPoint = true;
+			RotateGuns(raycastPoint);
 		}
 	}
 
@@ -135,13 +151,11 @@ public class GunSelector : MonoBehaviour
 			return Quaternion.LookRotation(fallbackDirection.normalized, fallbackUp);
 		}
 
-		Vector3 desiredDirection = targetPoint - muzzle.position;
-		if (desiredDirection.sqrMagnitude <= Mathf.Epsilon)
+		if (!TryGetStablePrimaryAimForward(muzzle, targetPoint, out Vector3 desiredForward))
 		{
 			return transform.rotation;
 		}
 
-		Vector3 desiredForward = desiredDirection.normalized;
 		Quaternion parentRotation = transform.parent != null ? transform.parent.rotation : Quaternion.identity;
 		Vector3 preferredUp = parentRotation * (initialLocalRotation * Vector3.up);
 		Vector3 correctedUp = Vector3.ProjectOnPlane(preferredUp, desiredForward);
@@ -163,11 +177,125 @@ public class GunSelector : MonoBehaviour
 		return desiredMuzzleRotation * Quaternion.Inverse(localMuzzleRotation);
 	}
 
-	private void DrawLaser(Vector3 startPosition, Vector3 endPosition)
+	private bool TryGetStablePrimaryAimForward(Transform muzzle, Vector3 targetPoint, out Vector3 desiredForward)
 	{
-		float dist = Vector3.Distance(transform.position, endPosition);
-		laser.startWidth = dist / 200;
-		laser.endWidth = dist / 200;
+		Vector3 desiredDirection = targetPoint - muzzle.position;
+		float minDistance = Mathf.Max(0f, minPrimaryAimDistance);
+		if (desiredDirection.sqrMagnitude >= minDistance * minDistance)
+		{
+			desiredForward = desiredDirection.normalized;
+			lastStablePrimaryAimForward = desiredForward;
+			hasStablePrimaryAimForward = true;
+			return true;
+		}
+
+		if (hasStablePrimaryAimForward)
+		{
+			desiredForward = lastStablePrimaryAimForward;
+			return true;
+		}
+
+		desiredForward = muzzle.forward.sqrMagnitude > 0.0001f
+			? muzzle.forward.normalized
+			: transform.forward.normalized;
+		if (desiredForward.sqrMagnitude <= 0.0001f)
+		{
+			desiredForward = Vector3.forward;
+		}
+
+		lastStablePrimaryAimForward = desiredForward;
+		hasStablePrimaryAimForward = true;
+		return true;
+	}
+
+	private void DrawPrimaryMuzzleLaser()
+	{
+		Transform muzzle = GetPrimaryMuzzleTransform();
+		if (muzzle == null || laser == null)
+		{
+			CollapseLaser();
+			return;
+		}
+
+		if (!hasRaycastPoint)
+		{
+			raycastPoint = muzzle.position + muzzle.forward * GetPrimaryGunMaxRange();
+			hasRaycastPoint = true;
+		}
+
+		float dist = Vector3.Distance(muzzle.position, raycastPoint);
+		Vector3 startPosition = muzzle.position;
+		Vector3 endPosition = muzzle.position + muzzle.forward * dist;
+		DrawLaser(startPosition, endPosition, dist);
+	}
+
+	private bool IsOwningArmAimed()
+	{
+		if (bodyController == null)
+		{
+			bodyController = GetComponentInParent<BodyController>();
+			if (bodyController == null)
+			{
+				return true;
+			}
+		}
+
+		if (bodyController.guns == this)
+		{
+			return bodyController.isAimingRight;
+		}
+
+		if (bodyController.gunsL == this)
+		{
+			return bodyController.isAimingLeft;
+		}
+
+		return true;
+	}
+
+	private void SetLaserVisible(bool visible)
+	{
+		if (laser == null)
+		{
+			return;
+		}
+
+		if (laserVisible == visible && laser.enabled == visible)
+		{
+			return;
+		}
+
+		laserVisible = visible;
+		laser.enabled = visible;
+	}
+
+	private Transform GetPrimaryMuzzleTransform()
+	{
+		return ActiveGun1 != null ? ActiveGun1.MuzzleTransform : null;
+	}
+
+	private float GetPrimaryGunMaxRange()
+	{
+		return ActiveGun1 != null && ActiveGun1.gunData != null
+			? ActiveGun1.gunData.shootConfig.maxRange
+			: 0f;
+	}
+
+	private void CollapseLaser()
+	{
+		if (laser == null)
+		{
+			return;
+		}
+
+		laser.SetPosition(0, transform.position);
+		laser.SetPosition(1, transform.position);
+	}
+
+	private void DrawLaser(Vector3 startPosition, Vector3 endPosition, float dist)
+	{
+		// laser.startWidth = dist / 200;
+		// laser.endWidth = dist / 200;
 		laser.SetPosition(0, startPosition);
 		laser.SetPosition(1, endPosition);
 	}

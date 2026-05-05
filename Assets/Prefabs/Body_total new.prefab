@@ -5707,6 +5707,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e4dc899535db14847bb9e441a9ccead7, type: 2}
   weapon: {fileID: 2857187715870912185}
   ammoIndicator: {fileID: 5490793076457762896}
+  minPrimaryAimDistance: 0.38
   ActiveGun1: {fileID: 0}
   ActiveGun2: {fileID: 0}
   ActiveGun3: {fileID: 0}
@@ -7510,6 +7511,10 @@ PrefabInstance:
     - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: gunHolders.Array.size
       value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: minPrimaryAimDistance
+      value: 0.38
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: raycastLayerMask.m_Bits

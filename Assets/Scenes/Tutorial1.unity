@@ -137,7 +137,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -198,22 +198,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 6818118027180316941, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 8207518774564645656, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5842735498611464420, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 7069810136486823040, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1 &28711386
 GameObject:
@@ -526,7 +511,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -587,22 +572,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 6818118027180316941, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 8207518774564645656, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5842735498611464420, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 7069810136486823040, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1001 &145850163
 PrefabInstance:
@@ -1466,7 +1436,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -1527,22 +1497,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 6818118027180316941, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 8207518774564645656, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5842735498611464420, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 7069810136486823040, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1001 &845309673
 PrefabInstance:
@@ -1977,6 +1932,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Npc_total new
       objectReference: {fileID: 0}
+    - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
       value: 
@@ -2024,22 +1983,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 6818118027180316941, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 8207518774564645656, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5842735498611464420, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 7069810136486823040, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1 &1062438531
 GameObject:
@@ -14788,10 +14732,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 53880547513704480, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 1133274928165910862, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_LocalPosition.x
       value: 4.9
@@ -14832,10 +14772,6 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 2857187716034250568, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
       value: 143.20163
@@ -14848,33 +14784,9 @@ PrefabInstance:
       propertyPath: m_projectionMatrixMode
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: isGodMode
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4091606436389823939, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_Name
-      value: target_L_point
-      objectReference: {fileID: 0}
-    - target: {fileID: 4438999773468172613, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4854418801658231612, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.34
-      objectReference: {fileID: 0}
     - target: {fileID: 5410714147512533004, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_Name
       value: Body_total new
-      objectReference: {fileID: 0}
-    - target: {fileID: 5852610686868378518, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_Radius
-      value: 0.3
-      objectReference: {fileID: 0}
-    - target: {fileID: 6661745401564660134, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_Name
-      value: target_R_point
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
