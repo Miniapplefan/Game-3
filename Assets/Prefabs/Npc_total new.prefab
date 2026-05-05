@@ -182,6 +182,7 @@ MonoBehaviour:
   ArrivalStallDuration: 0.2
   ArrivalVelocityThreshold: 1
   ArrivalProgressEpsilon: 0.02
+  drawPathDebug: 0
 --- !u!114 &3911377827084599671
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -11,7 +11,7 @@ public class UIControllerNPC : MonoBehaviour
     public BodyState bodyState;
     public AttackConfigSO AttackConfig;
 
-    float AimProgress01;
+    bool aimIndicatorsVisible = true;
 
 
     // Start is called before the first frame update
@@ -23,6 +23,12 @@ public class UIControllerNPC : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        if (bodyState != null && bodyState.isDead)
+        {
+            SetAimIndicatorsActive(false);
+            return;
+        }
+
         float aimProgress01 = Mathf.Clamp01(1f - (bodyState.TimeToAim / AttackConfig.TimeToAim));
         float dist = Mathf.Lerp(3f, 0.8f, aimProgress01);
 
@@ -38,5 +44,20 @@ public class UIControllerNPC : MonoBehaviour
 
         lp = bottomAimIndicatorLine.transform.localPosition;
         bottomAimIndicatorLine.transform.localPosition = new Vector3(lp.x, -dist, lp.z);
+    }
+
+    void SetAimIndicatorsActive(bool active)
+    {
+        if (aimIndicatorsVisible == active)
+        {
+            return;
+        }
+
+        aimIndicatorsVisible = active;
+
+        if (leftAimIndicatorLine != null) leftAimIndicatorLine.SetActive(active);
+        if (rightAimIndicatorLine != null) rightAimIndicatorLine.SetActive(active);
+        if (topAimIndicatorLine != null) topAimIndicatorLine.SetActive(active);
+        if (bottomAimIndicatorLine != null) bottomAimIndicatorLine.SetActive(active);
     }
 }
