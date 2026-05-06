@@ -956,7 +956,7 @@ MonoBehaviour:
   minSpawnInterval: 2
   maxSpawnInterval: 5
   sessionDuration: 20
-  isByNumberOfTargets: 0
+  isByNumberOfTargets: 1
   numberOfTargets: 20
   totalTargetsSpawned: 0
   totalTargetsDestroyed: 0
@@ -14774,7 +14774,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 143.20163
+      value: 143.19614
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture

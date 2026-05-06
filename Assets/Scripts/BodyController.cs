@@ -591,6 +591,36 @@ public class BodyController : MonoBehaviour
 		//ragdollCore.AddForce(new Vector3(0, 0, -1000));
 	}
 
+	public void DieFacingIncomingDirection(Vector3 incomingDirection)
+	{
+		FaceIncomingDirectionYaw(incomingDirection);
+		Die();
+	}
+
+	private void FaceIncomingDirectionYaw(Vector3 incomingDirection)
+	{
+		if (isAI)
+		{
+			return;
+		}
+
+		incomingDirection.y = 0f;
+		if (incomingDirection.sqrMagnitude <= 0.0001f)
+		{
+			return;
+		}
+
+		Quaternion targetRotation = Quaternion.LookRotation(incomingDirection.normalized, Vector3.up);
+		if (rb != null && rb.transform == transform)
+		{
+			rb.rotation = targetRotation;
+		}
+		else
+		{
+			transform.rotation = targetRotation;
+		}
+	}
+
 	#region Inputs
 
 	public void MoveForward()

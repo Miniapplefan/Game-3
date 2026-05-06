@@ -100,9 +100,10 @@ public class Bullet : MonoBehaviour
             return false;
         }
 
-        if (Physics.SphereCast(startPosition, collisionRadius, delta.normalized, out RaycastHit hit, distance, hitMask, QueryTriggerInteraction.Ignore))
+        Vector3 travelDirection = delta.normalized;
+        if (Physics.SphereCast(startPosition, collisionRadius, travelDirection, out RaycastHit hit, distance, hitMask, QueryTriggerInteraction.Ignore))
         {
-            ProcessHit(hit);
+            ProcessHit(hit, -travelDirection);
             Release();
             return true;
         }
@@ -110,7 +111,7 @@ public class Bullet : MonoBehaviour
         return false;
     }
 
-    private void ProcessHit(RaycastHit hit)
+    private void ProcessHit(RaycastHit hit, Vector3 incomingDirection)
     {
         PlayerController player = hit.collider.GetComponentInParent<PlayerController>();
         if (player != null)
@@ -118,7 +119,7 @@ public class Bullet : MonoBehaviour
             BodyController bodyController = hit.collider.GetComponentInParent<BodyController>();
             if (bodyController != null && !bodyController.isGodMode)
             {
-                bodyController.Die();
+                bodyController.DieFacingIncomingDirection(incomingDirection);
             }
             //Debug.Log(hit.collider.name + " " + Time.timeSinceLevelLoadAsDouble);
             return;
