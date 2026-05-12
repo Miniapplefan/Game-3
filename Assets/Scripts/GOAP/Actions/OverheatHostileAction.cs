@@ -96,11 +96,13 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		{
 			if (data.targetState != null)
 			{
-				data.AIController.SetAimTarget(data.targetState.bodyController.physicalHead.transform.position + new Vector3(0,0f,0));
-			}
+				shootableGuns = rankGunToUse(data, agent);
+				if (!TrySelectTopRankedGun(data, shootableGuns))
+				{
+					return ActionRunState.Stop;
+				}
 
-			if (data.targetState != null)
-			{
+				Vector3 rawAimPoint = data.targetState.bodyController.physicalHead.transform.position + new Vector3(0,0f,0);
 				sortLimbsToTarget();
 				foreach (var limbConsideration in limbConsiderations)
 				{
@@ -112,35 +114,19 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 							continue;
 						}
 						// Debug.Log("Attacking " + limbConsideration.limb);
-						data.AIController.SetAimTarget(limbPos + new Vector3(0,0.02f,0));
+						rawAimPoint = limbPos + new Vector3(0,0.02f,0);
 						break;
 					}
 				}
 
-				shootableGuns = rankGunToUse(data, agent);
-				// Debug.Log("I want to fire " + data.bodyState.weapons.guns[topRankedGun.gunSlot].gunData.GunName);
-				foreach (var gunConsideration in shootableGuns)
-				{
-					if (data.bodyState.weapons.guns[gunConsideration.gunSlot].isCharged() && data.bodyState.weapons.GetCurrentPowerAllocationDictionary()[topRankedGun.gunSlot])
-					{
-						//Debug.Log("Able to fire");
-						data.bodyState.desiredGunToUse = gunConsideration.gun;
-						topRankedGun = gunConsideration;
-						break;
-					}
-					else
-					{
-						//Debug.Log("Stopping Here");
-						return ActionRunState.Stop;
-					}
-				}
-
+				SetNpcAimTarget(data, agent, rawAimPoint);
 			}
 			else
 			{
 				data.AIController.SetAimTarget(Colliders[0].transform.position);
 				topRankedGun = gunConsideration[0];
 				data.bodyState.desiredGunToUse = topRankedGun.gun;
+				topRankedGun.gun?.ClearNpcBallisticAimPoint();
 			}
 
 			// if (data.targetState != null && data.targetState.bodyIsOverheated)
@@ -295,6 +281,41 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		// 	return ActionRunState.Stop;
 		// }
 		return data.Timer > 0 ? ActionRunState.Continue : ActionRunState.Stop;
+	}
+
+	private bool TrySelectTopRankedGun(AttackData data, List<GunConsideration> rankedGuns)
+	{
+		foreach (var gunConsideration in rankedGuns)
+		{
+			if (data.bodyState.weapons.guns[gunConsideration.gunSlot].isCharged() && data.bodyState.weapons.GetCurrentPowerAllocationDictionary()[gunConsideration.gunSlot])
+			{
+				data.bodyState.desiredGunToUse = gunConsideration.gun;
+				topRankedGun = gunConsideration;
+				return true;
+			}
+
+			return false;
+		}
+
+		return false;
+	}
+
+	private void SetNpcAimTarget(AttackData data, IMonoAgent agent, Vector3 rawAimPoint)
+	{
+		Vector3 fallbackShooterPosition = data.bodyState != null && data.bodyState.headCollider != null
+			? data.bodyState.headCollider.transform.position
+			: agent.transform.position;
+		Vector3 shooterPosition = ProjectileLeadAimUtility.GetShooterPosition(topRankedGun.gun, fallbackShooterPosition);
+		ProjectileLeadAimUtility.NpcLeadAimPoints aimPoints = ProjectileLeadAimUtility.GetNpcAimPoints(topRankedGun.gun, data.targetState, shooterPosition, rawAimPoint);
+		data.AIController.SetAimTarget(aimPoints.VisualAimPoint);
+		if (aimPoints.HasBallisticAimPoint)
+		{
+			topRankedGun.gun?.SetNpcBallisticAimPoint(aimPoints.BallisticAimPoint);
+		}
+		else
+		{
+			topRankedGun.gun?.ClearNpcBallisticAimPoint();
+		}
 	}
 
 	private Vector3 LimbToPosition(LimbToTarget limb, AttackData data)

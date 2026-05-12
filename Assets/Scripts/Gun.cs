@@ -34,7 +34,10 @@ public class Gun : MonoBehaviour
 	public bool isFiringBurst = false;
 	public bool isFiring = false;
 	bool isAI;
+	private bool hasNpcBallisticAimPoint;
+	private Vector3 npcBallisticAimPoint;
 	private BodyController bodyController;
+	private ActiveRagdollController activeRagdollController;
 
 
 	public void SetParent(GameObject parent, Rigidbody weap)
@@ -78,7 +81,14 @@ public class Gun : MonoBehaviour
 
 		isAI = weapon.GetComponentInParent<AIController>() != null ? true : false;
 
-		if (!isAI) bodyController = weapon.GetComponentInParent<BodyController>();
+		if (!isAI)
+		{
+			bodyController = weapon.GetComponentInParent<BodyController>();
+			if (bodyController != null)
+			{
+				activeRagdollController = bodyController.GetComponentInChildren<ActiveRagdollController>();
+			}
+		}
 	}
 
 	private void AttachModelToSocket(Transform model)
@@ -108,6 +118,18 @@ public class Gun : MonoBehaviour
 	public bool isCharged()
 	{
 		return chargeTimeLeftCache <= 0;
+	}
+
+	public void SetNpcBallisticAimPoint(Vector3 point)
+	{
+		hasNpcBallisticAimPoint = true;
+		npcBallisticAimPoint = point;
+	}
+
+	public void ClearNpcBallisticAimPoint()
+	{
+		hasNpcBallisticAimPoint = false;
+		npcBallisticAimPoint = Vector3.zero;
 	}
 
 	public bool Shoot()
@@ -183,16 +205,19 @@ public class Gun : MonoBehaviour
 			}
 		}
 
+		ApplyMovementAimShotImpulse();
+
 		for (int i = 0; i < gunData.shootConfig.bulletsPerShot; i++)
 		{
 			//lastShootTime = Time.time;
 			chargeTimeLeftCache = gunData.shootConfig.fireRate;
 			shootSystem.Play();
-			Vector3 shootDirection = GetSpreadDirection(shootSystem.transform.forward);
+			Vector3 shotCenterDirection = GetNpcShotCenterDirection();
+			Vector3 shootDirection = GetSpreadDirection(shotCenterDirection);
 			if (isAI)
 			{
-				shootDirection = ClampDirectionOutsideNpcInnerCone(shootSystem.transform.forward, shootDirection);
-				shootDirection = ClampDirectionOutsideNpcExcludedLowerArc(shootSystem.transform.forward, shootDirection);
+				shootDirection = ClampDirectionOutsideNpcInnerCone(shotCenterDirection, shootDirection);
+				shootDirection = ClampDirectionOutsideNpcExcludedLowerArc(shotCenterDirection, shootDirection);
 			}
 			Vector3 recoilDirection = modelRoot != null ? modelRoot.up.normalized : transform.up.normalized;
 			weapon.AddForce(recoilDirection * gunData.shootConfig.recoil, ForceMode.Impulse);
@@ -234,6 +259,58 @@ public class Gun : MonoBehaviour
 			}
 		}
 		return true;
+	}
+
+	private Vector3 GetNpcShotCenterDirection()
+	{
+		if (shootSystem == null)
+		{
+			return transform.forward;
+		}
+
+		if (!isAI || !hasNpcBallisticAimPoint)
+		{
+			return shootSystem.transform.forward;
+		}
+
+		Vector3 direction = npcBallisticAimPoint - shootSystem.transform.position;
+		return direction.sqrMagnitude > 0.0001f
+			? direction.normalized
+			: shootSystem.transform.forward;
+	}
+
+	private void ApplyMovementAimShotImpulse()
+	{
+		if (isAI)
+		{
+			return;
+		}
+
+		if (bodyController == null && weapon != null)
+		{
+			bodyController = weapon.GetComponentInParent<BodyController>();
+		}
+
+		if (activeRagdollController == null && bodyController != null)
+		{
+			activeRagdollController = bodyController.GetComponentInChildren<ActiveRagdollController>();
+		}
+
+		if (bodyController == null || activeRagdollController == null)
+		{
+			return;
+		}
+
+		if (bodyController.gunsL != null && bodyController.gunsL.ActiveGun1 == this)
+		{
+			activeRagdollController.ApplyMovementAimShotImpulse(true);
+			return;
+		}
+
+		if (bodyController.guns != null && bodyController.guns.ActiveGun1 == this)
+		{
+			activeRagdollController.ApplyMovementAimShotImpulse(false);
+		}
 	}
 
 	private Vector3 GetSpreadDirection(Vector3 forward)

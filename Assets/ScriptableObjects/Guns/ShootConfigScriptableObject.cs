@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [CreateAssetMenu(fileName = "Shoot Config", menuName = "Guns/Shoot Config", order = 2)]
 public class ShootConfigScriptableObject : ScriptableObject
@@ -12,6 +13,16 @@ public class ShootConfigScriptableObject : ScriptableObject
 	public float npcInnerConeRadius = 0.15f;
 	[Range(0f, 180f)]
 	public float npcExcludedLowerArcDegrees = 0f;
+	public bool enableNpcLeadAim = false;
+	[Range(0f, 1f)]
+	public float npcVisualLeadStrength = 0f;
+	[FormerlySerializedAs("npcLeadStrength")]
+	[Range(0f, 1f)]
+	public float npcBallisticLeadStrength = 0.5f;
+	[Min(0f)]
+	public float npcMaxLeadTime = 0.75f;
+	[Min(0f)]
+	public float npcMinLeadTargetSpeed = 0.5f;
 	public float rawDamage = 1f;
 	public float maxRange = 100f;
 	public bool isBurst = true;

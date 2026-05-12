@@ -16,10 +16,12 @@ public class NPCBrain : MonoBehaviour
 	public float lastDecisionTime = 0;
 	public List<GoalConsideration> goals;
 
-	public float ConsiderCooldownVal;
+	public String currentGoalDebug;
+
+	//public float ConsiderCooldownVal;
 	public float ConsiderOverheatTargetVal;
-	public float ConsiderDeploySiphonVal;
-	public float ConsiderDefendSiphonVal;
+	//public float ConsiderDeploySiphonVal;
+	//public float ConsiderDefendSiphonVal;
 	public float ConsiderTakeCoverVal;
 
 	private void Awake()
@@ -42,19 +44,6 @@ public class NPCBrain : MonoBehaviour
 
 	private void FixedUpdate()
 	{
-		if (bodyState.hitStunAmount > 0f)
-		{
-			bodyState.hitStunAmount = Mathf.Max(0f, bodyState.hitStunAmount - 0.015f);
-			if (bodyState.hitStunAmount <= 0.001f)
-			{
-				bodyState.hitStunAmount = 0f;
-			}
-
-			if (bodyState.hitStunAmount > 0f)
-			{
-				return;
-			}
-		}
 
 		//ConsiderCooldownVal = ConsiderCooldownGoal();
 		ConsiderOverheatTargetVal = ConsiderOverheatTargetGoal();
@@ -146,17 +135,33 @@ public class NPCBrain : MonoBehaviour
 		{
 			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
 			AgentBehaviour.SetGoal<TakeCoverGoal>(true);
+			currentGoalDebug = "TakeCover";
 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
 		}
 		else if (bodyState.dangerLevel < 0.2f)
 		{
 			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
 			AgentBehaviour.SetGoal<OverheatHostileGoal>(true);
+			currentGoalDebug = "Attack";
 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
 		}
 
 		//}
 		currentGoalInertia -= Time.deltaTime;
+
+		if (bodyState.hitStunAmount > 0f)
+		{
+			bodyState.hitStunAmount = Mathf.Max(0f, bodyState.hitStunAmount - 0.015f);
+			if (bodyState.hitStunAmount <= 0.01f)
+			{
+				bodyState.hitStunAmount = 0f;
+			}
+
+			if (bodyState.hitStunAmount > 0f)
+			{
+				return;
+			}
+		}
 	}
 
 	public struct GoalConsideration
@@ -217,8 +222,8 @@ public class NPCBrain : MonoBehaviour
 
 		return FormatConsiderationVal(
 		// NegativeWeaponsChargedConsideration() *
-		LegsSystemActiveConsideration() *
-		TargetIsFiring()
+		LegsSystemActiveConsideration()
+		// * TargetIsFiring()
 		// NegativeTaggingConsideration() *
 		// DeployedSiphonConsideration(1f, 0.7f)
 		);
@@ -313,6 +318,11 @@ public class NPCBrain : MonoBehaviour
 	}
 
 	#region ----**** Considerations ****----
+
+	private float NegativeDangerLevelConsideration()
+	{
+		return 1 - bodyState.dangerLevel;
+	}
 
 	private float HealthConsideration()
 	{

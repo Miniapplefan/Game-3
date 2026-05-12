@@ -14832,9 +14832,53 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementArmSwayMaxAngle
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementAimErrorMaxDegrees
+      value: 40
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementAimErrorFollowSpeed
+      value: 0.3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementAimErrorSpeedForMax
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementShotErrorDecaySpeed
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementShotErrorMaxDegrees
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementShotErrorSpeedForMax
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementArmSwaySmoothingSpeed
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementArmSwayVelocityAmount
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementArmSwayAimedMultiplier
+      value: 1000
+      objectReference: {fileID: 0}
+    - target: {fileID: 2857187715870912133, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: movementAimErrorRetargetInterval
+      value: 0.5
+      objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 143.20163
+      value: 143.20699
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture
@@ -14843,6 +14887,10 @@ PrefabInstance:
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_projectionMatrixMode
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: standbyElbowDrop
+      value: 2.2
       objectReference: {fileID: 0}
     - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: aimYawFollowSpeedMax

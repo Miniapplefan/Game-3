@@ -93,6 +93,28 @@ public class ActiveRagdollController : MonoBehaviour
 	// private float rightAimSwapCatchUpTimer;
 	// private float leftAimSwapCatchUpTimer;
 
+	[Header("Movement Aim Error")]
+	[SerializeField] private bool enableMovementAimError = true;
+	[SerializeField] private float movementAimErrorMaxDegrees = 35f;
+	[SerializeField] private float movementAimErrorMinSpeed = 0.15f;
+	[SerializeField] private float movementAimErrorSpeedForMax = 2.5f;
+	[SerializeField] private float movementAimErrorRetargetInterval = 0.12f;
+	[SerializeField] private float movementAimErrorFollowSpeed = 18f;
+	[SerializeField] private float movementAimErrorSettleSpeed = 14f;
+	private Vector2 currentMovementAimError;
+	private Vector2 targetMovementAimError;
+	private float movementAimErrorRetargetTimer;
+	private Quaternion movementAimErrorRotation = Quaternion.identity;
+
+	[Header("Movement Aim Shot Error")]
+	[SerializeField] private float movementShotErrorMaxDegrees = 45f;
+	[SerializeField] private float movementShotErrorMinSpeed = 0.15f;
+	[SerializeField] private float movementShotErrorSpeedForMax = 2.5f;
+	[SerializeField] private float movementShotErrorDecaySpeed = 8f;
+	private Vector2 currentMovementShotError;
+	private Quaternion movementShotErrorRotation = Quaternion.identity;
+	private bool ownerIsPlayer;
+
 	// Start is called before the first frame update
 	void Start()
 	{
@@ -119,6 +141,7 @@ public class ActiveRagdollController : MonoBehaviour
 		//setUp();
 		bodyController = GetComponentInParent<BodyController>();
 		bodyState = GetComponentInParent<BodyState>();
+		ownerIsPlayer = bodyController != null && bodyController.GetComponentInParent<PlayerController>() != null;
 
 	}
 
@@ -273,6 +296,9 @@ public class ActiveRagdollController : MonoBehaviour
 
 		if (bodyState.hitStunAmount <= 0 && !bodyController.isDead)
 		{
+			bool hasAimedArm = bodyController.isAimingRight || bodyController.isAimingLeft;
+			UpdateMovementAimError(hasAimedArm);
+			UpdateMovementShotError(hasAimedArm);
 			UpdateAimSwapCatchUpTimers();
 
 			// float rightSpeed = rightAimSwapCatchUpTimer > 0f ? armAimSwapCatchUpSpeed : armAimFollowSpeed;
@@ -280,12 +306,17 @@ public class ActiveRagdollController : MonoBehaviour
 			float rightSpeed = armAimFollowSpeed;
 			float leftSpeed = armAimFollowSpeed;
 
-			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false);
-			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false);
+			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false, bodyController.isAimingRight);
+			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false, bodyController.isAimingLeft);
 
 			// rightAimSwapCatchUpTimer = Mathf.Max(0f, rightAimSwapCatchUpTimer - Time.deltaTime);
 			// leftAimSwapCatchUpTimer = Mathf.Max(0f, leftAimSwapCatchUpTimer - Time.deltaTime);
 
+		}
+		else
+		{
+			UpdateMovementAimError(false);
+			UpdateMovementShotError(false);
 		}
 
 		//AnimatedRightWeapon.transform.rotation = t;
@@ -316,20 +347,20 @@ public class ActiveRagdollController : MonoBehaviour
 		if (isAimingRight && !wasAimingRight)
 		{
 			// rightAimSwapCatchUpTimer = armAimSwapCatchUpDuration;
-			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, armAimFollowSpeed, true);
+			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, armAimFollowSpeed, true, true);
 		}
 
 		if (isAimingLeft && !wasAimingLeft)
 		{
 			// leftAimSwapCatchUpTimer = armAimSwapCatchUpDuration;
-			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, armAimFollowSpeed, true);
+			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, armAimFollowSpeed, true, true);
 		}
 
 		wasAimingRight = isAimingRight;
 		wasAimingLeft = isAimingLeft;
 	}
 
-	private void UpdateArmAim(Transform arm, Transform weapon, Transform aimTarget, GunSelector gunSelector, float followSpeed, bool instant)
+	private void UpdateArmAim(Transform arm, Transform weapon, Transform aimTarget, GunSelector gunSelector, float followSpeed, bool instant, bool applyMovementAimError)
 	{
 		if (arm == null || weapon == null || aimTarget == null)
 		{
@@ -340,6 +371,7 @@ public class ActiveRagdollController : MonoBehaviour
 		Vector3 direction = aimTarget.position - arm.position;
 		if (TryGetAimRotation(direction, transform.up, arm.rotation, out Quaternion armRotation))
 		{
+			armRotation = ApplyMovementAimError(armRotation, applyMovementAimError);
 			arm.rotation = Quaternion.Slerp(arm.rotation, armRotation, t);
 		}
 
@@ -357,7 +389,186 @@ public class ActiveRagdollController : MonoBehaviour
 			}
 		}
 
+		weaponRotation = ApplyMovementAimError(weaponRotation, applyMovementAimError);
 		weapon.rotation = Quaternion.Slerp(weapon.rotation, weaponRotation, t);
+	}
+
+	public void ApplyMovementAimShotImpulse(bool isLeftArm)
+	{
+		if (!ShouldUseMovementAimShotError(isLeftArm))
+		{
+			return;
+		}
+
+		float speed = GetMovementAimErrorSpeed();
+		float speedT = GetMovementAimErrorSpeedPercent(speed, movementShotErrorMinSpeed, movementShotErrorSpeedForMax);
+		if (speedT <= 0f)
+		{
+			return;
+		}
+
+		float coneDegrees = Mathf.Max(0f, movementShotErrorMaxDegrees) * speedT;
+		currentMovementShotError = UnityEngine.Random.insideUnitCircle * coneDegrees;
+		UpdateMovementShotErrorRotation();
+		UpdateArmAimForShotImpulse(isLeftArm);
+	}
+
+	private void UpdateMovementAimError(bool hasAimedArm)
+	{
+		float deltaTime = Mathf.Max(Time.deltaTime, 0.0001f);
+		if (!ShouldUseMovementAimError(hasAimedArm))
+		{
+			SettleMovementAimError(deltaTime);
+			return;
+		}
+
+		float speed = GetMovementAimErrorSpeed();
+		float speedT = GetMovementAimErrorSpeedPercent(speed, movementAimErrorMinSpeed, movementAimErrorSpeedForMax);
+		if (speedT <= 0f)
+		{
+			SettleMovementAimError(deltaTime);
+			return;
+		}
+
+		float coneDegrees = Mathf.Max(0f, movementAimErrorMaxDegrees) * speedT;
+		movementAimErrorRetargetTimer -= deltaTime;
+		if (movementAimErrorRetargetTimer <= 0f)
+		{
+			targetMovementAimError = UnityEngine.Random.insideUnitCircle * coneDegrees;
+			movementAimErrorRetargetTimer = Mathf.Max(0.01f, movementAimErrorRetargetInterval);
+		}
+		else
+		{
+			targetMovementAimError = Vector2.ClampMagnitude(targetMovementAimError, coneDegrees);
+		}
+
+		SmoothMovementAimError(targetMovementAimError, movementAimErrorFollowSpeed, deltaTime);
+	}
+
+	private void UpdateMovementShotError(bool hasAimedArm)
+	{
+		float deltaTime = Mathf.Max(Time.deltaTime, 0.0001f);
+		if (!ShouldUpdateMovementShotError(hasAimedArm))
+		{
+			SettleMovementShotError(deltaTime);
+			return;
+		}
+
+		SettleMovementShotError(deltaTime);
+	}
+
+	private bool ShouldUpdateMovementShotError(bool hasAimedArm)
+	{
+		return enableMovementAimError
+			&& hasAimedArm
+			&& bodyController != null
+			&& ownerIsPlayer
+			&& !bodyController.isAI
+			&& rb != null;
+	}
+
+	private void SettleMovementAimError(float deltaTime)
+	{
+		targetMovementAimError = Vector2.zero;
+		movementAimErrorRetargetTimer = 0f;
+		SmoothMovementAimError(Vector2.zero, movementAimErrorSettleSpeed, deltaTime);
+	}
+
+	private void SmoothMovementAimError(Vector2 targetError, float speed, float deltaTime)
+	{
+		float t = Mathf.Clamp01(1f - Mathf.Exp(-Mathf.Max(0f, speed) * deltaTime));
+		currentMovementAimError = Vector2.Lerp(currentMovementAimError, targetError, t);
+		if (currentMovementAimError.sqrMagnitude <= 0.0001f)
+		{
+			currentMovementAimError = Vector2.zero;
+			movementAimErrorRotation = Quaternion.identity;
+			return;
+		}
+
+		movementAimErrorRotation = Quaternion.Euler(currentMovementAimError.y, currentMovementAimError.x, 0f);
+	}
+
+	private void SettleMovementShotError(float deltaTime)
+	{
+		float t = Mathf.Clamp01(1f - Mathf.Exp(-Mathf.Max(0f, movementShotErrorDecaySpeed) * deltaTime));
+		currentMovementShotError = Vector2.Lerp(currentMovementShotError, Vector2.zero, t);
+		UpdateMovementShotErrorRotation();
+	}
+
+	private void UpdateMovementShotErrorRotation()
+	{
+		if (currentMovementShotError.sqrMagnitude <= 0.0001f)
+		{
+			currentMovementShotError = Vector2.zero;
+			movementShotErrorRotation = Quaternion.identity;
+			return;
+		}
+
+		movementShotErrorRotation = Quaternion.Euler(currentMovementShotError.y, currentMovementShotError.x, 0f);
+	}
+
+	private bool ShouldUseMovementAimError(bool hasAimedArm)
+	{
+		return enableMovementAimError
+			&& hasAimedArm
+			&& bodyController != null
+			&& ownerIsPlayer
+			&& !bodyController.isAI
+			&& rb != null
+			&& movementAimErrorMaxDegrees > 0f;
+	}
+
+	private bool ShouldUseMovementAimShotError(bool isLeftArm)
+	{
+		if (!enableMovementAimError
+			|| bodyController == null
+			|| bodyState == null
+			|| !ownerIsPlayer
+			|| bodyController.isAI
+			|| bodyController.isDead
+			|| bodyState.hitStunAmount > 0f
+			|| rb == null
+			|| movementShotErrorMaxDegrees <= 0f)
+		{
+			return false;
+		}
+
+		return isLeftArm ? bodyController.isAimingLeft : bodyController.isAimingRight;
+	}
+
+	private float GetMovementAimErrorSpeed()
+	{
+		Vector3 velocity = rb.velocity;
+		velocity.y = 0f;
+		return velocity.magnitude;
+	}
+
+	private float GetMovementAimErrorSpeedPercent(float speed, float minSpeedValue, float speedForMaxValue)
+	{
+		float minSpeed = Mathf.Max(0f, minSpeedValue);
+		float maxSpeed = Mathf.Max(minSpeed + 0.0001f, speedForMaxValue);
+		return Mathf.Clamp01((speed - minSpeed) / (maxSpeed - minSpeed));
+	}
+
+	private Quaternion ApplyMovementAimError(Quaternion baseRotation, bool applyMovementAimError)
+	{
+		if (!applyMovementAimError)
+		{
+			return baseRotation;
+		}
+
+		return baseRotation * movementAimErrorRotation * movementShotErrorRotation;
+	}
+
+	private void UpdateArmAimForShotImpulse(bool isLeftArm)
+	{
+		if (isLeftArm)
+		{
+			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, armAimFollowSpeed, true, true);
+			return;
+		}
+
+		UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, armAimFollowSpeed, true, true);
 	}
 
 	private float GetAimFollowT(float followSpeed)
