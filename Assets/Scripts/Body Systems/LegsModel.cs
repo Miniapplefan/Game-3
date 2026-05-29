@@ -200,7 +200,7 @@ public class LegsModel : SystemModel
 	public void damangeLeftLegCurrentHealth(float amount)
 	{
 		leftLegCurrentHealth = Mathf.Clamp(leftLegCurrentHealth - amount, 0, leftLegCurrentHealth);
-		if (rightLegCurrentHealth <= 0)
+		if (leftLegCurrentHealth <= 0)
 		{
 			damageLeftLeg(leftLegHealth);
 		}

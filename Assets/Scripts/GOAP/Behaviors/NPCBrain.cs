@@ -9,16 +9,24 @@ using System;
 [RequireComponent(typeof(AgentBehaviour))]
 public class NPCBrain : MonoBehaviour
 {
+	private const float MinTargetAwarenessInterval = 0.05f;
+	private static AttackConfigSO CachedAttackConfig;
 	private AgentBehaviour AgentBehaviour;
+	private AttackConfigSO AttackConfig;
 	public BodyState bodyState;
 	public float currentGoalInertia;
 	public float maxInertia = 0.5f;
 	public float lastDecisionTime = 0;
 	public List<GoalConsideration> goals;
+	[SerializeField] private float targetAwarenessInterval = 0.2f;
+	[SerializeField] private float loseTargetGraceSeconds = 1.0f;
+	private float nextAwarenessPollTime;
+	private float lastTargetSeenTime = float.NegativeInfinity;
 
 	public String currentGoalDebug;
 
 	//public float ConsiderCooldownVal;
+	public float ConsiderWanderVal;
 	public float ConsiderOverheatTargetVal;
 	//public float ConsiderDeploySiphonVal;
 	//public float ConsiderDefendSiphonVal;
@@ -28,9 +36,12 @@ public class NPCBrain : MonoBehaviour
 	{
 		AgentBehaviour = GetComponent<AgentBehaviour>();
 		bodyState = GetComponentInChildren<BodyState>();
+		AttackConfig = ResolveAttackConfig();
+		nextAwarenessPollTime = Time.time + GetAwarenessPollJitter();
 
 		goals = new List<GoalConsideration>(); // Initialize the list
 																					 //goals.Add(new GoalConsideration(new CooldownGoal(), true, ConsiderCooldownGoal));
+		goals.Add(new GoalConsideration(new WanderGoal(), true, ConsiderWanderGoal));
 		goals.Add(new GoalConsideration(new OverheatHostileGoal(), true, ConsiderOverheatTargetGoal));
 		//goals.Add(new GoalConsideration(new DeploySiphonGoal(), true, ConsiderDeploySiphonGoal));
 		//goals.Add(new GoalConsideration(new DefendSiphonGoal(), true, ConsiderDefendSiphonGoal));
@@ -39,13 +50,24 @@ public class NPCBrain : MonoBehaviour
 
 	private void Start()
 	{
-		AgentBehaviour.SetGoal<OverheatHostileGoal>(false);
+		if (HasHostileTarget())
+		{
+			AgentBehaviour.SetGoal<OverheatHostileGoal>(false);
+			currentGoalDebug = "Attack";
+		}
+		else
+		{
+			AgentBehaviour.SetGoal<WanderGoal>(false);
+			currentGoalDebug = "Wander";
+		}
 	}
 
 	private void FixedUpdate()
 	{
+		PollTargetAwareness();
 
 		//ConsiderCooldownVal = ConsiderCooldownGoal();
+		ConsiderWanderVal = ConsiderWanderGoal();
 		ConsiderOverheatTargetVal = ConsiderOverheatTargetGoal();
 		//ConsiderDeploySiphonVal = ConsiderDeploySiphonGoal();
 		//ConsiderDefendSiphonVal = ConsiderDefendSiphonGoal();
@@ -131,14 +153,20 @@ public class NPCBrain : MonoBehaviour
 			}
 		}
 
-		if (bodyState.dangerLevel > 0.6f)
+		if (!HasHostileTarget())
+		{
+			AgentBehaviour.SetGoal<WanderGoal>(true);
+			currentGoalDebug = "Wander";
+			currentGoalInertia = Mathf.Clamp(ConsiderWanderGoal(), 0, maxInertia);
+		}
+		else if (bodyState.dangerLevel > 0.6f)
 		{
 			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
 			AgentBehaviour.SetGoal<TakeCoverGoal>(true);
 			currentGoalDebug = "TakeCover";
 			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
 		}
-		else if (bodyState.dangerLevel < 0.2f)
+		else
 		{
 			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
 			AgentBehaviour.SetGoal<OverheatHostileGoal>(true);
@@ -162,6 +190,76 @@ public class NPCBrain : MonoBehaviour
 				return;
 			}
 		}
+	}
+
+	private AttackConfigSO ResolveAttackConfig()
+	{
+		GoapSetBinder binder = GetComponent<GoapSetBinder>();
+		if (binder == null)
+		{
+			binder = GetComponentInParent<GoapSetBinder>();
+		}
+
+		if (binder != null && binder.GoapRunner != null)
+		{
+			DependencyInjector injector = binder.GoapRunner.GetComponent<DependencyInjector>();
+			if (injector != null)
+			{
+				CachedAttackConfig = injector.AttackConfig;
+				return CachedAttackConfig;
+			}
+		}
+
+		if (CachedAttackConfig != null)
+		{
+			return CachedAttackConfig;
+		}
+
+		DependencyInjector fallbackInjector = FindObjectOfType<DependencyInjector>();
+		CachedAttackConfig = fallbackInjector != null ? fallbackInjector.AttackConfig : null;
+		return CachedAttackConfig;
+	}
+
+	private void PollTargetAwareness()
+	{
+		if (Time.time < nextAwarenessPollTime || AgentBehaviour == null || bodyState == null)
+		{
+			return;
+		}
+
+		nextAwarenessPollTime = Time.time + GetTargetAwarenessInterval() + GetAwarenessPollJitter();
+		if (AttackConfig == null)
+		{
+			AttackConfig = ResolveAttackConfig();
+			if (AttackConfig == null)
+			{
+				return;
+			}
+		}
+
+		SharedAgentPerception.Snapshot perception = SharedAgentPerception.GetSnapshot(AgentBehaviour, AgentBehaviour.Injector, AttackConfig);
+		if (perception.HasTarget && perception.TargetBodyState != null)
+		{
+			bodyState.targetBodyState = perception.TargetBodyState;
+			lastTargetSeenTime = Time.time;
+			return;
+		}
+
+		if (Time.time - lastTargetSeenTime > loseTargetGraceSeconds)
+		{
+			bodyState.targetBodyState = null;
+		}
+	}
+
+	private float GetTargetAwarenessInterval()
+	{
+		return Mathf.Max(MinTargetAwarenessInterval, targetAwarenessInterval);
+	}
+
+	private float GetAwarenessPollJitter()
+	{
+		int agentId = AgentBehaviour != null ? Mathf.Abs(AgentBehaviour.transform.GetInstanceID()) : 0;
+		return (agentId % 5) * 0.01f;
 	}
 
 	public struct GoalConsideration
@@ -195,9 +293,19 @@ public class NPCBrain : MonoBehaviour
 				currentGoal.Consideration() > maxGoal.Consideration() ? currentGoal : maxGoal);
 	}
 
+	private bool HasHostileTarget()
+	{
+		return bodyState != null && bodyState.targetBodyState != null;
+	}
+
 	private float FormatConsiderationVal(float val)
 	{
 		return Mathf.Round(Mathf.Clamp01(val) * 100f) / 100f;
+	}
+
+	private float ConsiderWanderGoal()
+	{
+		return HasHostileTarget() ? 0f : LegsSystemActiveConsideration();
 	}
 
 	private float ConsiderCooldownGoal()

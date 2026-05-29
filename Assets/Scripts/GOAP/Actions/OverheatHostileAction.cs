@@ -92,7 +92,9 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 		var bodyState = agent.GetComponentInChildren<BodyState>();
 		var ag = bodyState.heatContainer.airGrid;
 
-		if (Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.AttackableLayerMask) > 0)
+		Colliders[0] = null;
+		int targetCount = Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, Colliders, AttackConfig.AttackableLayerMask);
+		if (targetCount > 0 && Colliders[0] != null)
 		{
 			if (data.targetState != null)
 			{
@@ -138,6 +140,11 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 			// 	data.AIController.SetAimTarget(Colliders[0].transform.position);
 			// 	//data.AIController.SetAimTarget(data.targetState.head.transform.position);
 			// }
+		}
+		else
+		{
+			bodyState.isAimed = false;
+			return ActionRunState.Stop;
 		}
 
 		//data.bodyState.positionTracker.transform.position = agent.GetComponentInChildren<BodyState>().head.transform.position;

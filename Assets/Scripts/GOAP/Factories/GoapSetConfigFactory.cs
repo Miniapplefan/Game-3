@@ -81,9 +81,9 @@ public class GoapSetConfigFactory : GoapSetFactoryBase
 		builder.AddAction<TakeCoverAction>()
 		.SetTarget<CoverTarget>()
 		.AddEffect<IsInHostileLineOfSight>(EffectType.Decrease)
-		.SetMoveMode(ActionMoveMode.PerformWhileMoving)
+		.SetMoveMode(ActionMoveMode.MoveBeforePerforming)
 		.SetBaseCost(2)
-		.SetInRange(40);
+		.SetInRange(1.5f);
 	}
 
 	private void BuildSensors(GoapSetBuilder builder)

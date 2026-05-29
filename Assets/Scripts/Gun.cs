@@ -286,10 +286,7 @@ public class Gun : MonoBehaviour
 			return;
 		}
 
-		if (bodyController == null && weapon != null)
-		{
-			bodyController = weapon.GetComponentInParent<BodyController>();
-		}
+		GetOwnerBodyController();
 
 		if (activeRagdollController == null && bodyController != null)
 		{
@@ -311,6 +308,16 @@ public class Gun : MonoBehaviour
 		{
 			activeRagdollController.ApplyMovementAimShotImpulse(false);
 		}
+	}
+
+	private BodyController GetOwnerBodyController()
+	{
+		if (bodyController == null && weapon != null)
+		{
+			bodyController = weapon.GetComponentInParent<BodyController>();
+		}
+
+		return bodyController;
 	}
 
 	private Vector3 GetSpreadDirection(Vector3 forward)
@@ -513,7 +520,7 @@ public class Gun : MonoBehaviour
 		}
 		LimbToSystemLinker limb = hit.collider.GetComponent<LimbToSystemLinker>();
 		MarchingCubesGenerator marchingCubes = hit.collider.GetComponent<MarchingCubesGenerator>();
-		BodyController bodyController = hit.collider.GetComponentInParent<BodyController>();
+		BodyController targetBodyController = hit.collider.GetComponentInParent<BodyController>();
 		BodyVFXController bodyVFXController = hit.collider.GetComponentInParent<BodyVFXController>();
 		PracticeTarget practiceTarget = hit.collider.GetComponentInParent<PracticeTarget>();
 
@@ -525,9 +532,17 @@ public class Gun : MonoBehaviour
 		{
 			Vector3 impulse = shootSystem.transform.forward * gunData.shootConfig.impactForce;
 			//Debug.Log("hit limb");
-			DamageInfo damageInfo = new DamageInfo(gunData.shootConfig.rawDamage);
+			BodyController sourceBodyController = GetOwnerBodyController();
+			float damageAmount = gunData.shootConfig.rawDamage;
+			if (sourceBodyController != null && !sourceBodyController.isAI)
+			{
+				damageAmount *= sourceBodyController.getAuraDamageMultiplier();
+			}
+
+			DamageInfo damageInfo = new DamageInfo(damageAmount);
 			damageInfo.impactForce = gunData.shootConfig.impactForce;
 			damageInfo.impactVector = impulse;
+			damageInfo.sourceBodyController = sourceBodyController;
 			limb.TakeDamage(damageInfo);
 			if (limb.limb.specificLimb == Limb.LimbID.rightArm)
 			{
@@ -551,9 +566,9 @@ public class Gun : MonoBehaviour
 		{
 			marchingCubes.TakeDamage(hit.point, gunData.shootConfig.marchingCubesDamage);
 		}
-		if (bodyVFXController != null && bodyController != null)
+		if (bodyVFXController != null && targetBodyController != null)
 		{
-			// if (bodyController.cooling.isOverheated)
+			// if (targetBodyController.cooling.isOverheated)
 			// {
 			bodyVFXController.doBloodParticles(hit.point, Quaternion.Euler(hit.normal));
 			// }

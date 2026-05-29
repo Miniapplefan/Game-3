@@ -8,6 +8,7 @@ public class DamageInfo
 	public float impactForce;
 	public Vector3 impactVector;
 	public Limb limb;
+	public BodyController sourceBodyController;
 	public bool BypassShields { get; set; } = false;
 	public float ChanceToStartFire { get; set; } = 0.0f;
 

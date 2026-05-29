@@ -10,6 +10,9 @@ using static Limb;
 
 public class BodyController : MonoBehaviour
 {
+	private const int PlayerDamageAuraRewardTenths = 1;
+	private const int PlayerKillAuraRewardTenths = 10;
+
 	public BodyInfo so_initialBodyStats;
 
 	public BodyState bodyState;
@@ -268,7 +271,7 @@ public class BodyController : MonoBehaviour
 		{
 			input = GetComponent<AIController>();
 			agent = GetComponentInParent<NavMeshAgent>();
-			aiHealth = 4f;
+			aiHealth = Random.Range(2, 13);
 			isAI = true;
 		}
 		//so_initialBodyStats = (BodyInfo)Resources.Load<ScriptableObject>("PlayerStartBodyInfo");
@@ -370,6 +373,15 @@ public class BodyController : MonoBehaviour
 
 	public void HandleDamage(DamageInfo i)
 	{
+		bool wasAlive = !isDead;
+		AuraManager sourceAuraManager = GetPlayerSourceAuraManager(i);
+		bool shouldAwardPlayerAura = wasAlive && isAI && sourceAuraManager != null;
+
+		if (shouldAwardPlayerAura)
+		{
+			sourceAuraManager.AddAuraTenths(PlayerDamageAuraRewardTenths);
+		}
+
 		legs.HandleTagging(i.limb, i.impactForce);
 		weapons.HandleDisruption(i.limb);
 		ApplyKnockback(i.impactVector, i.limb);
@@ -378,8 +390,28 @@ public class BodyController : MonoBehaviour
 		DamageSystem(i);
 		//}
 
+		if (shouldAwardPlayerAura && isDead)
+		{
+			sourceAuraManager.AddAuraTenths(PlayerKillAuraRewardTenths);
+		}
+
 		//heatContainer.IncreaseHeat(this, i.amount);
 		//cooling.IncreaseHeat(this, i.amount);
+	}
+
+	private AuraManager GetPlayerSourceAuraManager(DamageInfo i)
+	{
+		if (i == null || i.sourceBodyController == null || i.sourceBodyController.isAI)
+		{
+			return null;
+		}
+
+		if (i.sourceBodyController.auraManager == null)
+		{
+			i.sourceBodyController.auraManager = i.sourceBodyController.GetComponent<AuraManager>();
+		}
+
+		return i.sourceBodyController.auraManager;
 	}
 
 	public void DamageSystem(DamageInfo i)
@@ -2166,9 +2198,9 @@ public class BodyController : MonoBehaviour
 		middleTorsoLeanConstraint.data.sourceObjects = a;
 	}
 
-	public float getAuraDamageMultipler()
+	public float getAuraDamageMultiplier()
 	{
-		return auraManager.AuraFloat;
+		return auraManager != null ? auraManager.AuraFloat : 1f;
 	}
 
 	//public void StartCooling()

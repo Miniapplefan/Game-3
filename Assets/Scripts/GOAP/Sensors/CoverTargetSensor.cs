@@ -1,46 +1,131 @@
+using System.Collections.Generic;
 using CrashKonijn.Goap.Classes;
 using CrashKonijn.Goap.Interfaces;
 using CrashKonijn.Goap.Sensors;
 using UnityEngine;
-using Random = UnityEngine.Random;
 using UnityEngine.AI;
-using System.Collections.Generic;
 
 public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 {
 	private const float SenseIntervalSeconds = 0.2f;
 	private const float AgentMoveThresholdSqr = 0.25f;
 	private const float TargetMoveThresholdSqr = 1f;
-	private const int MaxStrafePointSamples = 6;
-	private const int StrafePointsPerSense = 3;
-	private const int ObstacleChecksPerSense = 3;
-	private const int MaxRandomPositionAttempts = 3;
-	private const float ObstacleRefreshIntervalSeconds = 0.35f;
-	private const float ObstacleRefreshMoveThresholdSqr = 1f;
+	private static readonly float[] CoverCandidateDistances = { 2f, 4f, 10f };
 
-	private AttackConfigSO AttackConfig;
-	private Collider[] EnvironmentalCoolingColliders = new Collider[10];
-	private Vector3 currentPosition;
-	private NavMeshAgent navMeshAgent;
 	private readonly Dictionary<int, AgentRuntimeState> AgentStates = new Dictionary<int, AgentRuntimeState>();
+	private readonly List<CoverCandidate> CoverCandidates = new List<CoverCandidate>(20);
+	private readonly NavMeshPath SharedNavMeshPath = new NavMeshPath();
+	private AttackConfigSO AttackConfig;
+
+	public float navMeshSampleRadius = 2.5f;
+	public float navMeshEdgeClearance = 0.2f;
+	public float maxLocalCoverDistance = 11f;
+	public float coverCommitDuration = 0.75f;
+	public float coverCandidateDedupDistance = 0.5f;
+	public float coverHeadHeightFallback = 1.5f;
+	public float coverDistancePenaltyWeight = 1f;
+	public float coverAwayFromTargetWeight = 1.5f;
+	public float coverIncumbentBonus = 4f;
+	public bool logCoverSelectionDebug = false;
+	public bool logCoverCandidateDebug = false;
+
+	private enum CoverCandidateSource
+	{
+		Away,
+		Left,
+		Right,
+		BackLeft,
+		BackRight,
+		Incumbent,
+	}
 
 	private sealed class AgentRuntimeState
 	{
-		public readonly Collider[] CachedObstacles = new Collider[10];
 		public Vector3 CachedPosition;
 		public bool HasCachedPosition;
 		public float NextSenseTime;
 		public Vector3 LastAgentPosition;
 		public Transform LastTargetTransform;
 		public Vector3 LastTargetPosition;
-		public int StrafePointStartIndex;
-		public int ObstacleScanStartIndex;
-		public int CachedObstacleCount;
-		public float NextObstacleRefreshTime;
-		public Transform ObstacleTargetTransform;
-		public Vector3 ObstacleTargetPosition;
-		public Vector3 ObstacleAgentPosition;
+		public bool HasCommittedCoverPosition;
+		public Vector3 CommittedCoverPosition;
+		public float CommittedCoverUntilTime;
+		public Transform CommittedTargetTransform;
+		public Vector3 CommittedTargetPosition;
 	}
+
+	private readonly struct CoverSenseContext
+	{
+		public CoverSenseContext(
+			IMonoAgent agent,
+			SharedAgentPerception.Snapshot perception,
+			AgentRuntimeState runtimeState,
+			BodyState bodyState,
+			NavMeshAgent navMeshAgent,
+			Vector3 agentPosition,
+			Transform targetTransform,
+			Vector3 targetPosition,
+			Vector3 targetAimPosition)
+		{
+			Agent = agent;
+			Perception = perception;
+			RuntimeState = runtimeState;
+			BodyState = bodyState;
+			NavMeshAgent = navMeshAgent;
+			AgentPosition = agentPosition;
+			TargetTransform = targetTransform;
+			TargetPosition = targetPosition;
+			TargetAimPosition = targetAimPosition;
+		}
+
+		public IMonoAgent Agent { get; }
+		public SharedAgentPerception.Snapshot Perception { get; }
+		public AgentRuntimeState RuntimeState { get; }
+		public BodyState BodyState { get; }
+		public NavMeshAgent NavMeshAgent { get; }
+		public Vector3 AgentPosition { get; }
+		public Transform TargetTransform { get; }
+		public Vector3 TargetPosition { get; }
+		public Vector3 TargetAimPosition { get; }
+		public bool HasTarget => Perception.HasTarget;
+	}
+
+	private struct CoverCandidate
+	{
+		public Vector3 Position;
+		public CoverCandidateSource Source;
+		public float DistanceToAgent;
+		public float AwayFromTargetScore;
+		public bool IsIncumbent;
+	}
+
+	private struct CoverDebugStats
+	{
+		public int Generated;
+		public int Accepted;
+		public int RejectedNavMesh;
+		public int RejectedTooFar;
+		public int RejectedDuplicate;
+		public int RejectedExposed;
+		public int SkippedDistance;
+		public int InvalidDirection;
+		public int CommittedRejected;
+
+		public void Reset()
+		{
+			Generated = 0;
+			Accepted = 0;
+			RejectedNavMesh = 0;
+			RejectedTooFar = 0;
+			RejectedDuplicate = 0;
+			RejectedExposed = 0;
+			SkippedDistance = 0;
+			InvalidDirection = 0;
+			CommittedRejected = 0;
+		}
+	}
+
+	private CoverDebugStats DebugStats;
 
 	public override void Created()
 	{
@@ -52,337 +137,362 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 
 	public override ITarget Sense(IMonoAgent agent, IComponentReference references)
 	{
-		var perception = SharedAgentPerception.GetSnapshot(agent, references, AttackConfig);
-		var runtimeState = GetRuntimeState(agent);
-		currentPosition = agent.transform.position;
-		navMeshAgent = perception.NavMeshAgent;
-
-		if (perception.BodyState == null || navMeshAgent == null)
+		CoverSenseContext context = BuildSenseContext(agent, references);
+		if (context.BodyState == null || context.NavMeshAgent == null || !context.HasTarget)
 		{
-			return new PositionTarget(agent.transform.position);
+			ClearCommittedCover(context.RuntimeState);
+			LogCoverSelection(context, $"fallback current position: bodyState={(context.BodyState != null)}, navAgent={(context.NavMeshAgent != null)}, hasTarget={context.HasTarget}");
+			return CachePosition(context, context.AgentPosition, null);
 		}
 
-		if (CanReuseCachedResult(agent.transform.position, runtimeState, perception))
+		if (context.BodyState.legs.getMoveSpeed() <= 0)
 		{
-			return new PositionTarget(runtimeState.CachedPosition);
+			ClearCommittedCover(context.RuntimeState);
+			LogCoverSelection(context, "fallback current position: legs cannot move");
+			return CachePosition(context, context.AgentPosition, context.TargetTransform);
 		}
 
-		Vector3 position = GetCoverPosition(agent, perception, runtimeState, out Transform targetTransform);
-		return CachePosition(runtimeState, agent.transform.GetInstanceID(), position, agent.transform.position, targetTransform);
+		if (CanReuseCachedResult(context.AgentPosition, context.RuntimeState, context.Perception))
+		{
+			LogCoverSelection(context, $"reusing cached cover target {context.RuntimeState.CachedPosition} distance={Vector3.Distance(context.AgentPosition, context.RuntimeState.CachedPosition):F2}");
+			return new PositionTarget(context.RuntimeState.CachedPosition);
+		}
+
+		if (TrySelectCoverPosition(context, out Vector3 coverPosition))
+		{
+			return CachePosition(context, coverPosition, context.TargetTransform);
+		}
+
+		ClearCommittedCover(context.RuntimeState);
+		LogCoverSelection(context, $"no valid local cover candidates. {FormatDebugStats()}");
+		return CachePosition(context, context.AgentPosition, context.TargetTransform);
 	}
 
-	private Vector3 GetEnvironmentalCoolingPosition(IMonoAgent agent)
+	private CoverSenseContext BuildSenseContext(IMonoAgent agent, IComponentReference references)
 	{
-		Collider closestCoolingElement = null;
-		if (Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, EnvironmentalCoolingColliders, AttackConfig.EnvironmentalCoolingLayerMask) > 0)
+		SharedAgentPerception.Snapshot perception = SharedAgentPerception.GetSnapshot(agent, references, AttackConfig);
+		AgentRuntimeState runtimeState = GetRuntimeState(agent);
+		BodyState bodyState = perception.BodyState;
+		NavMeshAgent agentNavMeshAgent = perception.NavMeshAgent;
+		Vector3 agentPosition = agent.transform.position;
+		Vector3 targetAimPosition = perception.TargetHeadPosition;
+
+		if (!perception.HasTarget)
 		{
-			// Assume the AI has a HeatContainer attached to it
-			HeatContainer myHeatContainer = agent.GetComponentInChildren<HeatContainer>();
-			// Debug.Log("My Heat: " + myHeatContainer.GetTemperature());
-
-			float closestDistance = Mathf.Infinity;
-
-			for (int i = 0; i < EnvironmentalCoolingColliders.Length; i++)
-			{
-				Collider environmentalCollider = EnvironmentalCoolingColliders[i];
-				if (environmentalCollider == null)
-				{
-					continue;
-				}
-
-				// Check if the environmental object has a HeatContainer
-				//Debug.Log(environmentalCollider.gameObject.name);
-				// Component[] components = environmentalCollider.GetComponents(typeof(Component));
-				// foreach (Component component in components)
-				// {
-				// 	Debug.Log(component.ToString());
-				// }
-
-				bool tempCheck = true;
-				HeatContainer environmentalHeatContainer = environmentalCollider.gameObject.GetComponent<HeatContainer>();
-				if (environmentalHeatContainer != null)
-				{
-					tempCheck = environmentalHeatContainer.GetTemperature() < myHeatContainer.GetTemperature();
-				}
-
-				float dist = Vector3.Distance(agent.transform.position, environmentalCollider.transform.position);
-				bool distCheck = dist < closestDistance;
-
-				if (tempCheck && distCheck)
-				{
-					closestDistance = dist;
-					closestCoolingElement = environmentalCollider;
-				}
-				else
-				{
-					continue;
-				}
-			}
+			targetAimPosition = perception.TargetPosition;
 		}
-		if (closestCoolingElement != null)
-		{
-			return closestCoolingElement.transform.position;
-		}
-		else
-		{
-			return new Vector3(Mathf.Infinity, Mathf.Infinity, Mathf.Infinity);
-		}
+
+		return new CoverSenseContext(
+			agent,
+			perception,
+			runtimeState,
+			bodyState,
+			agentNavMeshAgent,
+			agentPosition,
+			perception.TargetTransform,
+			perception.TargetPosition,
+			targetAimPosition);
 	}
 
-	private Vector3 GetCoverPosition(IMonoAgent agent, SharedAgentPerception.Snapshot perception, AgentRuntimeState runtimeState, out Transform targetTransform)
+	private bool TrySelectCoverPosition(CoverSenseContext context, out Vector3 coverPosition)
 	{
-		targetTransform = perception.TargetTransform;
-		if (perception.HasTarget)
-		{
-			Vector3 targetPosition = perception.TargetPosition;
-			if (perception.CanSeeTarget)
-			{
-				if (TryGetClosestHiddenStrafePoint(agent, targetPosition, runtimeState, out Vector3 closestPoint))
-				{
-					return closestPoint;
-				}
+		coverPosition = context.AgentPosition;
+		CoverCandidates.Clear();
+		DebugStats.Reset();
 
-				if (TryGetIncrementalCoverPoint(agent, targetTransform, targetPosition, runtimeState, out Vector3 coverPoint))
-				{
-					return coverPoint;
-				}
-			}
+		TryAddCommittedCoverCandidate(context);
+		CollectLocalCoverCandidates(context);
 
-			Vector3 randPos = GetRandomPosition(agent);
-			while (Vector3.Distance(randPos, agent.transform.position) > Vector3.Distance(targetPosition, agent.transform.position))
-			{
-				randPos = GetRandomPosition(agent);
-			}
-			//Debug.Log("Random");
-			return randPos;
-		}
-
-		if (runtimeState.LastTargetTransform != null)
-		{
-			targetTransform = runtimeState.LastTargetTransform;
-		}
-
-		//Debug.Log("Random");
-		return GetRandomPosition(agent);
-	}
-
-	private bool TryGetClosestHiddenStrafePoint(IMonoAgent agent, Vector3 targetPosition, AgentRuntimeState runtimeState, out Vector3 closestPoint)
-	{
-		closestPoint = Vector3.zero;
-		float closestDistance = float.MaxValue;
-		float lineLength = 20f;
-		Vector3 direction = Vector3.Cross(Vector3.up, (targetPosition - agent.transform.position).normalized);
-		int totalPoints = MaxStrafePointSamples;
-		int samplesToCheck = Mathf.Min(totalPoints, StrafePointsPerSense);
-		int startIndex = runtimeState.StrafePointStartIndex;
-
-		for (int i = 0; i < samplesToCheck; i++)
-		{
-			int index = (startIndex + i) % totalPoints;
-			float t = totalPoints <= 1 ? 0.5f : (float)index / (totalPoints - 1);
-			Vector3 point = agent.transform.position + direction * (t * lineLength - lineLength / 2f);
-			float distanceToAgent = Vector3.Distance(point, agent.transform.position);
-
-			if (HasLineOfSight(point, targetPosition))
-			{
-				continue;
-			}
-
-			if (distanceToAgent < closestDistance)
-			{
-				closestDistance = distanceToAgent;
-				closestPoint = point;
-			}
-		}
-
-		runtimeState.StrafePointStartIndex = (startIndex + samplesToCheck) % totalPoints;
-		return closestPoint != Vector3.zero;
-	}
-
-	private bool TryGetIncrementalCoverPoint(IMonoAgent agent, Transform targetTransform, Vector3 targetPosition, AgentRuntimeState runtimeState, out Vector3 coverPoint)
-	{
-		coverPoint = agent.transform.position;
-		RefreshObstacleCandidatesIfNeeded(agent, runtimeState, targetTransform, targetPosition);
-		if (runtimeState.CachedObstacleCount <= 0)
+		if (CoverCandidates.Count == 0)
 		{
 			return false;
 		}
 
-		int checksToRun = Mathf.Min(runtimeState.CachedObstacleCount, ObstacleChecksPerSense);
-		int startIndex = runtimeState.ObstacleScanStartIndex;
-
-		for (int i = 0; i < checksToRun; i++)
+		float bestScore = float.NegativeInfinity;
+		int bestCandidateIndex = -1;
+		for (int i = 0; i < CoverCandidates.Count; i++)
 		{
-			int index = (startIndex + i) % runtimeState.CachedObstacleCount;
-			Collider obstacle = runtimeState.CachedObstacles[index];
-			if (obstacle == null)
+			float score = ScoreCoverCandidate(CoverCandidates[i]);
+			if (score > bestScore)
 			{
-				continue;
-			}
-
-			if (TryGetCoverPointNearObstacle(obstacle, targetPosition, out coverPoint))
-			{
-				runtimeState.ObstacleScanStartIndex = (index + 1) % runtimeState.CachedObstacleCount;
-				return true;
+				bestScore = score;
+				bestCandidateIndex = i;
 			}
 		}
 
-		runtimeState.ObstacleScanStartIndex = (startIndex + checksToRun) % runtimeState.CachedObstacleCount;
-		return false;
+		if (bestCandidateIndex < 0)
+		{
+			return false;
+		}
+
+		CoverCandidate selected = CoverCandidates[bestCandidateIndex];
+		coverPosition = selected.Position;
+		CommitCoverPosition(context.RuntimeState, context.TargetTransform, context.TargetPosition, selected.Position);
+		LogCoverSelection(context, $"selected {selected.Source} cover at {coverPosition} score={bestScore:F2}, distance={selected.DistanceToAgent:F2}, away={selected.AwayFromTargetScore:F2}. {FormatDebugStats()}");
+		return true;
 	}
 
-	private void RefreshObstacleCandidatesIfNeeded(IMonoAgent agent, AgentRuntimeState runtimeState, Transform targetTransform, Vector3 targetPosition)
+	private void CollectLocalCoverCandidates(CoverSenseContext context)
 	{
-		bool shouldRefresh = Time.time >= runtimeState.NextObstacleRefreshTime
-			|| runtimeState.ObstacleTargetTransform != targetTransform
-			|| (agent.transform.position - runtimeState.ObstacleAgentPosition).sqrMagnitude > ObstacleRefreshMoveThresholdSqr
-			|| (targetPosition - runtimeState.ObstacleTargetPosition).sqrMagnitude > ObstacleRefreshMoveThresholdSqr;
-
-		if (!shouldRefresh)
+		Vector3 toTarget = Flatten(context.TargetPosition - context.AgentPosition);
+		if (toTarget.sqrMagnitude < 0.0001f)
 		{
+			toTarget = Flatten(context.Agent.transform.forward);
+		}
+
+		if (toTarget.sqrMagnitude < 0.0001f)
+		{
+			toTarget = Vector3.forward;
+		}
+
+		toTarget.Normalize();
+		Vector3 away = -toTarget;
+		Vector3 right = Vector3.Cross(Vector3.up, toTarget).normalized;
+		Vector3 left = -right;
+		Vector3 backLeft = (away + left).normalized;
+		Vector3 backRight = (away + right).normalized;
+
+		AddDirectionalCandidates(context, away, CoverCandidateSource.Away);
+		AddDirectionalCandidates(context, left, CoverCandidateSource.Left);
+		AddDirectionalCandidates(context, right, CoverCandidateSource.Right);
+		AddDirectionalCandidates(context, backLeft, CoverCandidateSource.BackLeft);
+		AddDirectionalCandidates(context, backRight, CoverCandidateSource.BackRight);
+	}
+
+	private void AddDirectionalCandidates(CoverSenseContext context, Vector3 direction, CoverCandidateSource source)
+	{
+		if (direction.sqrMagnitude < 0.0001f)
+		{
+			DebugStats.InvalidDirection++;
 			return;
 		}
 
-		for (int i = 0; i < runtimeState.CachedObstacles.Length; i++)
+		Vector3 normalizedDirection = direction.normalized;
+		for (int i = 0; i < CoverCandidateDistances.Length; i++)
 		{
-			runtimeState.CachedObstacles[i] = null;
-		}
-
-		int hits = Physics.OverlapSphereNonAlloc(agent.transform.position, AttackConfig.SensorRadius, runtimeState.CachedObstacles, AttackConfig.ObstructionLayerMask);
-		int filteredCount = 0;
-		for (int i = 0; i < hits; i++)
-		{
-			Collider obstacle = runtimeState.CachedObstacles[i];
-			if (obstacle == null)
+			float distance = CoverCandidateDistances[i];
+			if (distance > maxLocalCoverDistance)
 			{
+				DebugStats.SkippedDistance++;
 				continue;
 			}
 
-			if (Vector3.Distance(obstacle.transform.position, targetPosition) < AttackConfig.MinPlayerDistance || obstacle.bounds.size.y < AttackConfig.MinObstacleHeight)
-			{
-				continue;
-			}
-
-			runtimeState.CachedObstacles[filteredCount] = obstacle;
-			filteredCount++;
+			Vector3 rawPoint = context.AgentPosition + normalizedDirection * distance;
+			TryAddCoverCandidate(context, rawPoint, source, false);
 		}
-
-		for (int i = filteredCount; i < runtimeState.CachedObstacles.Length; i++)
-		{
-			runtimeState.CachedObstacles[i] = null;
-		}
-
-		runtimeState.CachedObstacleCount = filteredCount;
-		currentPosition = agent.transform.position;
-		System.Array.Sort(runtimeState.CachedObstacles, ColliderArraySortComparer);
-		runtimeState.ObstacleScanStartIndex = 0;
-		runtimeState.ObstacleTargetTransform = targetTransform;
-		runtimeState.ObstacleTargetPosition = targetPosition;
-		runtimeState.ObstacleAgentPosition = agent.transform.position;
-		runtimeState.NextObstacleRefreshTime = Time.time + ObstacleRefreshIntervalSeconds;
 	}
 
-	private bool TryGetCoverPointNearObstacle(Collider obstacle, Vector3 targetPosition, out Vector3 coverPoint)
+	private void TryAddCommittedCoverCandidate(CoverSenseContext context)
 	{
-		coverPoint = obstacle.transform.position;
-		if (NavMesh.SamplePosition(obstacle.transform.position, out NavMeshHit hit, 4f, navMeshAgent.areaMask))
+		AgentRuntimeState runtimeState = context.RuntimeState;
+		if (!runtimeState.HasCommittedCoverPosition || Time.time > runtimeState.CommittedCoverUntilTime)
 		{
-			if (!NavMesh.FindClosestEdge(hit.position, out hit, navMeshAgent.areaMask))
+			if (runtimeState.HasCommittedCoverPosition)
 			{
-				Debug.LogError($"Unable to find edge close to {hit.position}");
+				DebugStats.CommittedRejected++;
+				LogCoverCandidate(context, CoverCandidateSource.Incumbent, runtimeState.CommittedCoverPosition, "rejected expired committed cover");
 			}
 
-			if (Vector3.Dot(hit.normal, (targetPosition - hit.position).normalized) < AttackConfig.HideSensitivity)
-			{
-				coverPoint = hit.position;
-				return true;
-			}
+			ClearCommittedCover(runtimeState);
+			return;
+		}
 
-			Vector3 fallbackDirection = (targetPosition - hit.position).normalized;
-			if (NavMesh.SamplePosition(obstacle.transform.position - fallbackDirection * 2f, out NavMeshHit hit2, 2f, navMeshAgent.areaMask))
-			{
-				if (!NavMesh.FindClosestEdge(hit2.position, out hit2, navMeshAgent.areaMask))
-				{
-					Debug.LogError($"Unable to find edge close to {hit2.position} (second attempt)");
-				}
+		if (runtimeState.CommittedTargetTransform != context.TargetTransform)
+		{
+			DebugStats.CommittedRejected++;
+			LogCoverCandidate(context, CoverCandidateSource.Incumbent, runtimeState.CommittedCoverPosition, "rejected committed cover target changed");
+			ClearCommittedCover(runtimeState);
+			return;
+		}
 
-				if (Vector3.Dot(hit2.normal, (targetPosition - hit2.position).normalized) < AttackConfig.HideSensitivity)
-				{
-					coverPoint = hit2.position;
-					return true;
-				}
-			}
+		if ((context.TargetPosition - runtimeState.CommittedTargetPosition).sqrMagnitude > TargetMoveThresholdSqr)
+		{
+			DebugStats.CommittedRejected++;
+			LogCoverCandidate(context, CoverCandidateSource.Incumbent, runtimeState.CommittedCoverPosition, "rejected committed cover target moved");
+			ClearCommittedCover(runtimeState);
+			return;
+		}
 
+		TryAddCoverCandidate(context, runtimeState.CommittedCoverPosition, CoverCandidateSource.Incumbent, true);
+	}
+
+	private bool TryAddCoverCandidate(CoverSenseContext context, Vector3 rawPoint, CoverCandidateSource source, bool isIncumbent)
+	{
+		DebugStats.Generated++;
+		if (!TryResolveReachablePoint(context.NavMeshAgent, rawPoint, out Vector3 reachablePoint, out string reachabilityFailure))
+		{
+			DebugStats.RejectedNavMesh++;
+			LogCoverCandidate(context, source, rawPoint, $"rejected {reachabilityFailure}");
 			return false;
 		}
 
-		Debug.LogError($"Unable to find NavMesh near object {obstacle.name} at {obstacle.transform.position}");
+		float distanceToAgent = Vector3.Distance(context.AgentPosition, reachablePoint);
+		if (distanceToAgent > maxLocalCoverDistance)
+		{
+			DebugStats.RejectedTooFar++;
+			LogCoverCandidate(context, source, reachablePoint, $"rejected too far distance={distanceToAgent:F2}");
+			return false;
+		}
+
+		if (IsDuplicateCandidate(reachablePoint))
+		{
+			DebugStats.RejectedDuplicate++;
+			LogCoverCandidate(context, source, reachablePoint, "rejected duplicate");
+			return false;
+		}
+
+		if (!IsCandidateCovered(context, reachablePoint))
+		{
+			DebugStats.RejectedExposed++;
+			LogCoverCandidate(context, source, reachablePoint, "rejected exposed/no obstruction");
+			return false;
+		}
+
+		Vector3 moveDirection = Flatten(reachablePoint - context.AgentPosition);
+		Vector3 awayDirection = Flatten(context.AgentPosition - context.TargetPosition);
+		float awayScore = 0f;
+		if (moveDirection.sqrMagnitude > 0.0001f && awayDirection.sqrMagnitude > 0.0001f)
+		{
+			awayScore = Vector3.Dot(moveDirection.normalized, awayDirection.normalized);
+		}
+
+		CoverCandidates.Add(new CoverCandidate
+		{
+			Position = reachablePoint,
+			Source = source,
+			DistanceToAgent = distanceToAgent,
+			AwayFromTargetScore = awayScore,
+			IsIncumbent = isIncumbent,
+		});
+		DebugStats.Accepted++;
+		LogCoverCandidate(context, source, reachablePoint, $"accepted distance={distanceToAgent:F2}, away={awayScore:F2}, incumbent={isIncumbent}");
+		return true;
+	}
+
+	private bool IsDuplicateCandidate(Vector3 position)
+	{
+		float dedupDistanceSqr = coverCandidateDedupDistance * coverCandidateDedupDistance;
+		for (int i = 0; i < CoverCandidates.Count; i++)
+		{
+			if ((CoverCandidates[i].Position - position).sqrMagnitude < dedupDistanceSqr)
+			{
+				return true;
+			}
+		}
+
 		return false;
 	}
 
-	bool HasLineOfSight(Vector3 start, Vector3 end)
+	private bool IsCandidateCovered(CoverSenseContext context, Vector3 candidatePosition)
 	{
-		return SharedAgentPerception.HasLineOfSight(start, end, AttackConfig);
+		Vector3 candidateHeadPosition = GetCandidateHeadPosition(context.BodyState, candidatePosition);
+		Vector3 direction = candidateHeadPosition - context.TargetAimPosition;
+		float distance = direction.magnitude;
+		if (distance <= 0.0001f)
+		{
+			return false;
+		}
+
+		return Physics.SphereCast(
+			context.TargetAimPosition,
+			AttackConfig.LineOfSightSphereCastRadius,
+			direction / distance,
+			out _,
+			distance,
+			AttackConfig.ObstructionLayerMask);
 	}
 
-	public int ColliderArraySortComparer(Collider A, Collider B)
+	private Vector3 GetCandidateHeadPosition(BodyState bodyState, Vector3 candidatePosition)
 	{
-		if (A == null && B != null)
+		float eyeHeight = coverHeadHeightFallback;
+		if (bodyState != null && bodyState.headCollider != null)
 		{
-			return 1;
+			eyeHeight = Mathf.Max(0.5f, bodyState.headCollider.bounds.center.y - bodyState.transform.position.y);
 		}
-		else if (A != null && B == null)
+
+		return candidatePosition + Vector3.up * eyeHeight;
+	}
+
+	private float ScoreCoverCandidate(CoverCandidate candidate)
+	{
+		float score = 0f;
+		score -= candidate.DistanceToAgent * coverDistancePenaltyWeight;
+		score += candidate.AwayFromTargetScore * coverAwayFromTargetWeight;
+		score += GetSourceScore(candidate.Source);
+		if (candidate.IsIncumbent)
 		{
-			return -1;
+			score += coverIncumbentBonus;
 		}
-		else if (A == null && B == null)
+
+		return score;
+	}
+
+	private float GetSourceScore(CoverCandidateSource source)
+	{
+		switch (source)
 		{
-			return 0;
-		}
-		else
-		{
-			return Vector3.Distance(currentPosition, A.transform.position).CompareTo(Vector3.Distance(currentPosition, B.transform.position));
+			case CoverCandidateSource.Away:
+				return 0.3f;
+			case CoverCandidateSource.BackLeft:
+			case CoverCandidateSource.BackRight:
+				return 0.4f;
+			case CoverCandidateSource.Incumbent:
+				return 0.5f;
+			default:
+				return 0f;
 		}
 	}
 
-	private Vector3 GetRandomPosition(IMonoAgent agent)
+	private bool TryResolveReachablePoint(NavMeshAgent agentNavMeshAgent, Vector3 rawPoint, out Vector3 reachablePoint, out string failureReason)
 	{
-		int count = 0;
+		failureReason = string.Empty;
+		reachablePoint = agentNavMeshAgent != null ? agentNavMeshAgent.transform.position : rawPoint;
+		int areaMask = agentNavMeshAgent != null ? agentNavMeshAgent.areaMask : NavMesh.AllAreas;
 
-		while (count < MaxRandomPositionAttempts)
+		if (!NavMesh.SamplePosition(rawPoint, out NavMeshHit hit, navMeshSampleRadius, areaMask))
 		{
-			Vector2 random = Random.insideUnitCircle * 10;
-			Vector3 position = agent.transform.position + new UnityEngine.Vector3(
-				random.x,
-				0,
-				random.y
-			);
-
-			if (NavMesh.SamplePosition(position, out NavMeshHit hit, 1, NavMesh.AllAreas))
-			{
-				return hit.position;
-			}
-
-			count++;
+			failureReason = "navmesh sample failed";
+			return false;
 		}
 
-		return agent.transform.position;
-	}
+		reachablePoint = hit.position;
+		float edgeClearance = navMeshEdgeClearance;
+		if (agentNavMeshAgent != null)
+		{
+			edgeClearance = Mathf.Max(edgeClearance, agentNavMeshAgent.radius);
+		}
 
-	private Vector3 GetRandomPointOnCircle(Vector3 center, float radius)
-	{
-		// Generate a random angle between 0 and 2π
-		float randomAngle = UnityEngine.Random.Range(0f, 2f * Mathf.PI);
+		if (edgeClearance > 0f
+			&& NavMesh.FindClosestEdge(reachablePoint, out NavMeshHit edgeHit, areaMask)
+			&& edgeHit.distance < edgeClearance)
+		{
+			failureReason = $"edge clearance failed distance={edgeHit.distance:F2}, required={edgeClearance:F2}";
+			return false;
+		}
 
-		// Calculate the x and z coordinates of the random point on the circle
-		float x = center.x + radius * Mathf.Cos(randomAngle);
-		float z = center.z + radius * Mathf.Sin(randomAngle);
+		if (agentNavMeshAgent == null || !agentNavMeshAgent.enabled || !agentNavMeshAgent.isOnNavMesh)
+		{
+			return true;
+		}
 
-		// Set the y coordinate to the center's y coordinate (assuming the circle is on the same plane)
-		float y = center.y;
+		if ((reachablePoint - agentNavMeshAgent.transform.position).sqrMagnitude <= AgentMoveThresholdSqr)
+		{
+			return true;
+		}
 
-		// Return the random point on the circle
-		return new Vector3(x, y, z);
+		if (!NavMesh.CalculatePath(agentNavMeshAgent.transform.position, reachablePoint, areaMask, SharedNavMeshPath))
+		{
+			failureReason = "path calculation failed";
+			return false;
+		}
+
+		if (SharedNavMeshPath.status != NavMeshPathStatus.PathComplete)
+		{
+			failureReason = $"path incomplete status={SharedNavMeshPath.status}";
+			return false;
+		}
+
+		return true;
 	}
 
 	private AgentRuntimeState GetRuntimeState(IMonoAgent agent)
@@ -414,29 +524,78 @@ public class CoverTargetSensor : LocalTargetSensorBase, IInjectable
 			return false;
 		}
 
-		if (perception.TargetTransform != null)
+		if (perception.TargetTransform != null
+			&& (perception.TargetPosition - runtimeState.LastTargetPosition).sqrMagnitude > TargetMoveThresholdSqr)
 		{
-			if ((perception.TargetPosition - runtimeState.LastTargetPosition).sqrMagnitude > TargetMoveThresholdSqr)
-			{
-				return false;
-			}
+			return false;
 		}
 
 		return true;
 	}
 
-	private PositionTarget CachePosition(AgentRuntimeState runtimeState, int agentId, Vector3 position, Vector3 agentPosition, Transform targetTransform)
+	private PositionTarget CachePosition(CoverSenseContext context, Vector3 position, Transform targetTransform)
 	{
+		AgentRuntimeState runtimeState = context.RuntimeState;
 		runtimeState.CachedPosition = position;
 		runtimeState.HasCachedPosition = true;
-		runtimeState.LastAgentPosition = agentPosition;
+		runtimeState.LastAgentPosition = context.AgentPosition;
 		runtimeState.LastTargetTransform = targetTransform;
 		if (targetTransform != null)
 		{
 			runtimeState.LastTargetPosition = targetTransform.position;
 		}
-		runtimeState.NextSenseTime = Time.time + SenseIntervalSeconds + (Mathf.Abs(agentId) % 5) * 0.01f;
+
+		runtimeState.NextSenseTime = Time.time + SenseIntervalSeconds + (Mathf.Abs(context.Agent.transform.GetInstanceID()) % 5) * 0.01f;
 		return new PositionTarget(position);
+	}
+
+	private void CommitCoverPosition(AgentRuntimeState runtimeState, Transform targetTransform, Vector3 targetPosition, Vector3 coverPosition)
+	{
+		runtimeState.HasCommittedCoverPosition = true;
+		runtimeState.CommittedCoverPosition = coverPosition;
+		runtimeState.CommittedCoverUntilTime = Time.time + coverCommitDuration;
+		runtimeState.CommittedTargetTransform = targetTransform;
+		runtimeState.CommittedTargetPosition = targetPosition;
+	}
+
+	private void ClearCommittedCover(AgentRuntimeState runtimeState)
+	{
+		runtimeState.HasCommittedCoverPosition = false;
+		runtimeState.CommittedCoverPosition = Vector3.zero;
+		runtimeState.CommittedCoverUntilTime = 0f;
+		runtimeState.CommittedTargetTransform = null;
+		runtimeState.CommittedTargetPosition = Vector3.zero;
+	}
+
+	private Vector3 Flatten(Vector3 vector)
+	{
+		vector.y = 0f;
+		return vector;
+	}
+
+	private void LogCoverSelection(CoverSenseContext context, string message)
+	{
+		if (!logCoverSelectionDebug)
+		{
+			return;
+		}
+
+		Debug.Log($"CoverTargetSensor: {message} for '{context.Agent.transform.name}'.");
+	}
+
+	private void LogCoverCandidate(CoverSenseContext context, CoverCandidateSource source, Vector3 position, string message)
+	{
+		if (!logCoverCandidateDebug)
+		{
+			return;
+		}
+
+		Debug.Log($"CoverTargetSensor: candidate {source} at {position} {message} for '{context.Agent.transform.name}'.");
+	}
+
+	private string FormatDebugStats()
+	{
+		return $"generated={DebugStats.Generated}, accepted={DebugStats.Accepted}, navmesh={DebugStats.RejectedNavMesh}, tooFar={DebugStats.RejectedTooFar}, duplicate={DebugStats.RejectedDuplicate}, exposed={DebugStats.RejectedExposed}, skippedDistance={DebugStats.SkippedDistance}, invalidDirection={DebugStats.InvalidDirection}, committedRejected={DebugStats.CommittedRejected}";
 	}
 
 	public void Inject(DependencyInjector injector)

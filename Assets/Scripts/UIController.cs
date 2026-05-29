@@ -14,6 +14,7 @@ public class UIController : MonoBehaviour
     public TMP_Text dollarsIndicator;
     public TMP_Text healthIndicator;
     public TMP_Text overheatIndicator;
+    public RectTransform auraGripGauge;
 
     Color color;
 
@@ -45,12 +46,25 @@ public class UIController : MonoBehaviour
         if (!bodyController.isAI)
         {
             displayAuraGauge();
+            displayAuraGripGauge();
         }
     }
 
     void displayAuraGauge()
     {
-        auraIndicator.text = bodyController.auraManager.AuraFloat.ToString();
+        auraIndicator.text = bodyController.auraManager.AuraFloat.ToString("0.0");
+    }
+
+    void displayAuraGripGauge()
+    {
+        if (auraGripGauge == null || bodyController.auraManager == null)
+        {
+            return;
+        }
+
+        Vector3 scale = auraGripGauge.localScale;
+        scale.x = bodyController.auraManager.AuraGripNormalized;
+        auraGripGauge.localScale = scale;
     }
 
     // void displayHeatGauge()

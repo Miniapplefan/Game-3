@@ -38,6 +38,12 @@ public class AgentLookBehavior : MonoBehaviour
 
   private void EventsOnTargetChanged(ITarget target, bool inRange)
   {
+    if (target == null)
+    {
+      CurrentTarget = null;
+      return;
+    }
+
     CurrentTarget = target;
     LastPosition = CurrentTarget.Position;
     AIController.SetAimTarget(target.Position + EyeLevel);
