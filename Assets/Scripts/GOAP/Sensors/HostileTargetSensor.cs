@@ -44,6 +44,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	// NavMesh validation
 	public float navMeshSampleRadius = 2.5f;
 	public float navMeshEdgeClearance = 0.2f;
+	public bool rejectTacticalPathsThroughTarget = true;
+	public float tacticalTargetPathClearanceRadius = 1.5f;
 
 	// Agent-local fallback movement
 	public float agentFallbackRadius = 6f;
@@ -197,6 +199,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	{
 		Accepted,
 		NavMeshRejected,
+		TargetPathRejected,
 		DistanceRejected,
 		SectorRejected,
 		OwnershipRejected,
@@ -1334,7 +1337,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private void TryAddTacticalCandidate(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, TargetAngleClaimState targetState, Vector3 targetPosition, int desiredSector, int agentId, Vector3 rawPoint, float minDistance, float maxDistance, int sourcePriority)
 	{
-		if (!TryResolveReachablePoint(agent, rawPoint, out Vector3 resolvedPoint))
+		if (!TryResolveTacticalReachablePoint(agent, rawPoint, targetPosition, out Vector3 resolvedPoint, out bool pathTooCloseToTarget))
 		{
 			RecordTacticalProbeDebug(rawPoint, TacticalProbeDebugResult.NavMeshRejected);
 			return;
@@ -1353,6 +1356,12 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		if (sectorDistance > TacticalAllowedSectorOffset)
 		{
 			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.SectorRejected);
+			return;
+		}
+
+		if (pathTooCloseToTarget)
+		{
+			RecordTacticalProbeDebug(probePoint, TacticalProbeDebugResult.TargetPathRejected);
 			return;
 		}
 
@@ -1598,6 +1607,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	{
 		int accepted = 0;
 		int navMeshRejected = 0;
+		int targetPathRejected = 0;
 		int distanceRejected = 0;
 		int sectorRejected = 0;
 		int ownershipRejected = 0;
@@ -1614,6 +1624,9 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 					break;
 				case TacticalProbeDebugResult.NavMeshRejected:
 					navMeshRejected++;
+					break;
+				case TacticalProbeDebugResult.TargetPathRejected:
+					targetPathRejected++;
 					break;
 				case TacticalProbeDebugResult.DistanceRejected:
 					distanceRejected++;
@@ -1639,7 +1652,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		string result = foundBestPoint ? "selected" : "failed";
 		string bestPointText = foundBestPoint ? bestPoint.ToString("F2") : "none";
 		Debug.Log(
-			$"HostileTargetSensor: tactical query {result} for '{agentTransform?.name}' sector {desiredSector}, distance band {minDistance:F2}-{maxDistance:F2}, candidates={TacticalCandidateDebugSnapshots.Count}, selectedIndex={selectedCandidateIndex}, best={bestPointText}, probes accepted={accepted}, navmesh={navMeshRejected}, distance={distanceRejected}, sector={sectorRejected}, ownership={ownershipRejected}, los={lineOfSightRejected}, claimSeparation={claimSeparationRejected}, deduped={dedupedRejected}.");
+			$"HostileTargetSensor: tactical query {result} for '{agentTransform?.name}' sector {desiredSector}, distance band {minDistance:F2}-{maxDistance:F2}, candidates={TacticalCandidateDebugSnapshots.Count}, selectedIndex={selectedCandidateIndex}, best={bestPointText}, probes accepted={accepted}, navmesh={navMeshRejected}, targetPath={targetPathRejected}, distance={distanceRejected}, sector={sectorRejected}, ownership={ownershipRejected}, los={lineOfSightRejected}, claimSeparation={claimSeparationRejected}, deduped={dedupedRejected}.");
 	}
 
 	private Color GetTacticalCandidateGizmoColor(TacticalCandidateDebugSnapshot snapshot)
@@ -1670,6 +1683,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				return Color.white;
 			case TacticalProbeDebugResult.NavMeshRejected:
 				return Color.gray;
+			case TacticalProbeDebugResult.TargetPathRejected:
+				return new Color(0.1f, 0.95f, 0.95f, 1f);
 			case TacticalProbeDebugResult.DistanceRejected:
 				return new Color(1f, 0.55f, 0.15f, 1f);
 			case TacticalProbeDebugResult.SectorRejected:
@@ -1700,6 +1715,8 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 				return "Accepted";
 			case TacticalProbeDebugResult.NavMeshRejected:
 				return "Rejected_NavMesh";
+			case TacticalProbeDebugResult.TargetPathRejected:
+				return "Rejected_TargetPath";
 			case TacticalProbeDebugResult.DistanceRejected:
 				return "Rejected_Distance";
 			case TacticalProbeDebugResult.SectorRejected:
@@ -2495,7 +2512,19 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 	private bool TryResolveReachablePoint(IMonoAgent agent, Vector3 rawPoint, out Vector3 reachablePoint)
 	{
+		bool pathTooCloseToTarget;
+		return TryResolveReachablePoint(agent, rawPoint, out reachablePoint, false, Vector3.zero, out pathTooCloseToTarget);
+	}
+
+	private bool TryResolveTacticalReachablePoint(IMonoAgent agent, Vector3 rawPoint, Vector3 targetPosition, out Vector3 reachablePoint, out bool pathTooCloseToTarget)
+	{
+		return TryResolveReachablePoint(agent, rawPoint, out reachablePoint, rejectTacticalPathsThroughTarget, targetPosition, out pathTooCloseToTarget);
+	}
+
+	private bool TryResolveReachablePoint(IMonoAgent agent, Vector3 rawPoint, out Vector3 reachablePoint, bool checkPathNearTarget, Vector3 targetPosition, out bool pathTooCloseToTarget)
+	{
 		reachablePoint = agent.transform.position;
+		pathTooCloseToTarget = false;
 		NavMeshAgent navMeshAgent = agent.GetComponent<NavMeshAgent>();
 		int areaMask = navMeshAgent != null ? navMeshAgent.areaMask : NavMesh.AllAreas;
 
@@ -2534,7 +2563,59 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return false;
 		}
 
-		return SharedNavMeshPath.status == NavMeshPathStatus.PathComplete;
+		if (SharedNavMeshPath.status != NavMeshPathStatus.PathComplete)
+		{
+			return false;
+		}
+
+		if (checkPathNearTarget)
+		{
+			pathTooCloseToTarget = IsNavMeshPathTooCloseToTarget(SharedNavMeshPath, targetPosition, tacticalTargetPathClearanceRadius);
+		}
+
+		return true;
+	}
+
+	private bool IsNavMeshPathTooCloseToTarget(NavMeshPath path, Vector3 targetPosition, float clearanceRadius)
+	{
+		if (path == null || path.corners == null || path.corners.Length < 2 || clearanceRadius <= 0f)
+		{
+			return false;
+		}
+
+		float clearanceRadiusSqr = clearanceRadius * clearanceRadius;
+		Vector3[] corners = path.corners;
+		for (int i = 1; i < corners.Length; i++)
+		{
+			if (GetPointSegmentDistanceSqrXZ(targetPosition, corners[i - 1], corners[i]) <= clearanceRadiusSqr)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private float GetPointSegmentDistanceSqrXZ(Vector3 point, Vector3 segmentStart, Vector3 segmentEnd)
+	{
+		float segmentX = segmentEnd.x - segmentStart.x;
+		float segmentZ = segmentEnd.z - segmentStart.z;
+		float segmentLengthSqr = segmentX * segmentX + segmentZ * segmentZ;
+		if (segmentLengthSqr <= Mathf.Epsilon)
+		{
+			float pointX = point.x - segmentStart.x;
+			float pointZ = point.z - segmentStart.z;
+			return pointX * pointX + pointZ * pointZ;
+		}
+
+		float startToPointX = point.x - segmentStart.x;
+		float startToPointZ = point.z - segmentStart.z;
+		float t = Mathf.Clamp01((startToPointX * segmentX + startToPointZ * segmentZ) / segmentLengthSqr);
+		float closestX = segmentStart.x + segmentX * t;
+		float closestZ = segmentStart.z + segmentZ * t;
+		float distanceX = point.x - closestX;
+		float distanceZ = point.z - closestZ;
+		return distanceX * distanceX + distanceZ * distanceZ;
 	}
 
 	private AgentRuntimeState GetRuntimeState(IMonoAgent agent)

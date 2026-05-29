@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f91903fd3565745d4ae6b6b867a20d85, type: 3}
   m_Name: NPC Attack Config
   m_EditorClassIdentifier: 
-  SensorRadius: 600
+  SensorRadius: 30
   FOVAngle: 90
   LineOfSightSphereCastRadius: 0.1
   AttackableLayerMask:
