@@ -296,7 +296,7 @@ public class ActiveRagdollController : MonoBehaviour
 
 		if (bodyState.hitStunAmount <= 0 && !bodyController.isDead)
 		{
-			bool hasAimedArm = bodyController.isAimingRight || bodyController.isAimingLeft;
+			bool hasAimedArm = bodyController.IsRightArmAimed || bodyController.IsLeftArmAimed;
 			UpdateMovementAimError(hasAimedArm);
 			UpdateMovementShotError(hasAimedArm);
 			UpdateAimSwapCatchUpTimers();
@@ -306,8 +306,8 @@ public class ActiveRagdollController : MonoBehaviour
 			float rightSpeed = armAimFollowSpeed;
 			float leftSpeed = armAimFollowSpeed;
 
-			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false, bodyController.isAimingRight);
-			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false, bodyController.isAimingLeft);
+			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false, bodyController.IsRightArmAimed);
+			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false, bodyController.IsLeftArmAimed);
 
 			// rightAimSwapCatchUpTimer = Mathf.Max(0f, rightAimSwapCatchUpTimer - Time.deltaTime);
 			// leftAimSwapCatchUpTimer = Mathf.Max(0f, leftAimSwapCatchUpTimer - Time.deltaTime);
@@ -341,8 +341,8 @@ public class ActiveRagdollController : MonoBehaviour
 
 	private void UpdateAimSwapCatchUpTimers()
 	{
-		bool isAimingRight = bodyController != null && bodyController.isAimingRight;
-		bool isAimingLeft = bodyController != null && bodyController.isAimingLeft;
+		bool isAimingRight = bodyController != null && bodyController.IsRightArmAimed;
+		bool isAimingLeft = bodyController != null && bodyController.IsLeftArmAimed;
 
 		if (isAimingRight && !wasAimingRight)
 		{
@@ -533,7 +533,7 @@ public class ActiveRagdollController : MonoBehaviour
 			return false;
 		}
 
-		return isLeftArm ? bodyController.isAimingLeft : bodyController.isAimingRight;
+		return isLeftArm ? bodyController.IsLeftArmAimed : bodyController.IsRightArmAimed;
 	}
 
 	private float GetMovementAimErrorSpeed()

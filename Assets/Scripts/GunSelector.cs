@@ -38,6 +38,7 @@ public class GunSelector : MonoBehaviour
 	private int lastDisplayedAmmoCount;
 	private int lastDisplayedReloadBarCount = -1;
 	private string lastDisplayedAmmoIndicatorText;
+	private bool lastSelectedArmIsLeft;
 	private bool laserVisible = true;
 	[SerializeField] private float minPrimaryAimDistance = 0.75f;
 	[SerializeField] private Transform forearmForwardFallback;
@@ -232,12 +233,12 @@ public class GunSelector : MonoBehaviour
 
 		if (bodyController.guns == this)
 		{
-			return bodyController.isAimingRight;
+			return bodyController.IsRightArmAimed;
 		}
 
 		if (bodyController.gunsL == this)
 		{
-			return bodyController.isAimingLeft;
+			return bodyController.IsLeftArmAimed;
 		}
 
 		return true;
@@ -308,33 +309,39 @@ public class GunSelector : MonoBehaviour
 			int filled = Mathf.RoundToInt(progress01 * ReloadBarWidth);
 			filled = Mathf.Clamp(filled, 0, ReloadBarWidth);
 
+			bool selectedArmIsLeft = IsSelectedArmLeft();
 			string displayText = FormatAmmoIndicatorText(ReloadIndicatorTexts[filled]);
 			if (!hasAmmoIndicatorState
 				|| !lastAmmoIndicatorReloading
 				|| lastDisplayedReloadBarCount != filled
-				|| lastDisplayedAmmoIndicatorText != displayText)
+				|| lastDisplayedAmmoIndicatorText != displayText
+				|| lastSelectedArmIsLeft != selectedArmIsLeft)
 			{
 				ammoIndicator.text = displayText;
 				hasAmmoIndicatorState = true;
 				lastAmmoIndicatorReloading = true;
 				lastDisplayedReloadBarCount = filled;
 				lastDisplayedAmmoIndicatorText = displayText;
+				lastSelectedArmIsLeft = selectedArmIsLeft;
 			}
 		}
 		else
 		{
 			int currentAmmo = ActiveGun1.currentShotsInMag;
+			bool selectedArmIsLeft = IsSelectedArmLeft();
 			string displayText = FormatAmmoIndicatorText(currentAmmo.ToString());
 			if (!hasAmmoIndicatorState
 				|| lastAmmoIndicatorReloading
 				|| lastDisplayedAmmoCount != currentAmmo
-				|| lastDisplayedAmmoIndicatorText != displayText)
+				|| lastDisplayedAmmoIndicatorText != displayText
+				|| lastSelectedArmIsLeft != selectedArmIsLeft)
 			{
 				ammoIndicator.text = displayText;
 				hasAmmoIndicatorState = true;
 				lastAmmoIndicatorReloading = false;
 				lastDisplayedAmmoCount = currentAmmo;
 				lastDisplayedAmmoIndicatorText = displayText;
+				lastSelectedArmIsLeft = selectedArmIsLeft;
 			}
 		}
 	}
@@ -366,17 +373,7 @@ public class GunSelector : MonoBehaviour
 
 	private bool IsSelectedArmLeft()
 	{
-		if (bodyController.isAimingLeft && !bodyController.isAimingRight)
-		{
-			return true;
-		}
-
-		if (bodyController.isAimingRight && !bodyController.isAimingLeft)
-		{
-			return false;
-		}
-
-		return bodyController.KeepCameraAimUsesLeft;
+		return bodyController.PrimaryAimUsesLeft;
 	}
 
 	private static string[] BuildReloadIndicatorTexts()

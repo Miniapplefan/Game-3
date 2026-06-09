@@ -98,8 +98,7 @@ public class MovePlayerCamera : MonoBehaviour
             return;
         }
 
-        bool useLeftAnchor = bodyController.isAimingLeft
-            || (bodyController.KeepCameraAimWithoutArm && bodyController.KeepCameraAimUsesLeft);
+        bool useLeftAnchor = bodyController.CameraAimUsesLeft;
         Transform targetAnchor = useLeftAnchor ? playerL : player;
         if (targetAnchor == null)
         {
