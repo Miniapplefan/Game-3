@@ -35,6 +35,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 513
   TimeBetweenAttacks: 1.5
-  TimeToAim: 3
+  TimeToAim: 6
+  PlayerShotsToUnsetFireReadiness: 3
+  SuppressiveShotTimeToAimIncrease: 1
   AttackCost: 4
   SiphonDelay: 1

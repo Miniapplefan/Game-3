@@ -10,6 +10,7 @@ public class Gun : MonoBehaviour
 	public Transform ModelRoot => modelRoot;
 	public Transform GripTransform => mountPoints != null ? mountPoints.Grip : null;
 	public Transform MuzzleTransform => mountPoints != null && mountPoints.Muzzle != null ? mountPoints.Muzzle : shootSystem != null ? shootSystem.transform : null;
+	public event System.Action<Gun> ActualShotFired;
 
 	private Rigidbody weapon;
 	private Transform modelRoot;
@@ -55,6 +56,7 @@ public class Gun : MonoBehaviour
 
 		GameObject model = Instantiate(gunData.ModelPrefab);
 		modelRoot = model.transform;
+		model.AddComponent<GunAimOwner>().Init(this);
 		mountPoints = model.GetComponent<WeaponMountPoints>();
 		if (mountPoints == null)
 		{
@@ -258,6 +260,7 @@ public class Gun : MonoBehaviour
 				}
 			}
 		}
+		ActualShotFired?.Invoke(this);
 		return true;
 	}
 
@@ -550,7 +553,7 @@ public class Gun : MonoBehaviour
 			}
 			else
 			{
-				hitRb.AddForce(impulse * 2.5f, ForceMode.Impulse);
+				hitRb.AddForce(impulse * 5f, ForceMode.Impulse);
 			}
 			// StartCoroutine(
 			// 		PlayHitParticles(hit));
@@ -719,4 +722,14 @@ public class Gun : MonoBehaviour
 		}
 	}
 
+}
+
+public class GunAimOwner : MonoBehaviour
+{
+	public Gun Gun { get; private set; }
+
+	public void Init(Gun gun)
+	{
+		Gun = gun;
+	}
 }

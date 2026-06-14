@@ -137,20 +137,13 @@ public class NPCBrain : MonoBehaviour
 		// }
 		//************************
 
-		if (bodyState.isBeingAimedAt)
+		if (bodyState.hasLOS)
 		{
-			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel += 0.0065f, 0, 1);
+			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.002f, 0, 1);
 		}
 		else
 		{
-			if (bodyState.hasLOS)
-			{
-				bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.002f, 0, 1);
-			}
-			else
-			{
-				bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.003f, 0, 1);
-			}
+			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.003f, 0, 1);
 		}
 
 		if (!HasHostileTarget())
@@ -179,6 +172,11 @@ public class NPCBrain : MonoBehaviour
 
 		if (bodyState.hitStunAmount > 0f)
 		{
+			if (bodyState.TickHitStunDecayDelay(Time.deltaTime))
+			{
+				return;
+			}
+
 			bodyState.hitStunAmount = Mathf.Max(0f, bodyState.hitStunAmount - 0.015f);
 			if (bodyState.hitStunAmount <= 0.01f)
 			{

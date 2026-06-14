@@ -17,6 +17,14 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4672
   Spread: {x: 0, y: 0, z: 0}
+  npcInnerConeAngle: 3
+  npcInnerConeRadius: 0.15
+  npcExcludedLowerArcDegrees: 0
+  enableNpcLeadAim: 0
+  npcVisualLeadStrength: 0
+  npcBallisticLeadStrength: 0.5
+  npcMaxLeadTime: 0.75
+  npcMinLeadTargetSpeed: 0.5
   rawDamage: 1
   maxRange: 100
   isBurst: 0

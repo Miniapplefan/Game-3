@@ -4,6 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.AI;
 
+public enum EnemyFireReadinessState
+{
+	Unset,
+	Set
+}
+
 public class BodyState : MonoBehaviour
 {
 	public BodyController bodyController;
@@ -27,10 +33,14 @@ public class BodyState : MonoBehaviour
 	private float losCheckIntervalCache = 0.2f;
 	public bool hasLOS;
 	public bool isBeingAimedAt;
-	private int playerAimColliderOverlapCount;
+	private Dictionary<Gun, int> suppressiveAimGunOverlapCounts = new Dictionary<Gun, int>();
 	public float TimeToAim;
 	public bool isAimed = false;
 	public float hitStunAmount;
+	[Min(0f)] public float hitStunDecayDelay = 0.1f;
+	private float hitStunDecayDelayTimer;
+	public EnemyFireReadinessState FireReadinessState = EnemyFireReadinessState.Unset;
+	private bool fireReadinessInitialized;
 
 	public Collider headCollider;
 
@@ -76,6 +86,7 @@ public class BodyState : MonoBehaviour
 		if (bc.isAI)
 		{
 			AttackConfig = GetComponentInParent<GoapSetBinder>().GoapRunner.GetComponent<DependencyInjector>().AttackConfig;
+			InitializeFireReadiness();
 		}
 	}
 
@@ -97,13 +108,111 @@ public class BodyState : MonoBehaviour
 		// bodyIsOverheated = cooling.isOverheated;
 	}
 
+	private void OnDisable()
+	{
+		ClearSuppressiveAimGunOverlaps();
+	}
+
 	void UpdateAIState()
 	{
-		if (IsAIMoving())
+		if (FireReadinessState == EnemyFireReadinessState.Set)
 		{
-			TimeToAim = Mathf.Clamp(TimeToAim + Time.deltaTime * 3f, 0f, AttackConfig.TimeToAim);
-			isAimed = false;
+			TimeToAim = 0f;
+			isAimed = true;
 		}
+	}
+
+	public bool TickFireReadiness(float deltaTime, bool hasKnownTarget)
+	{
+		EnsureFireReadinessInitialized();
+
+		if (FireReadinessState == EnemyFireReadinessState.Set)
+		{
+			TimeToAim = 0f;
+			isAimed = true;
+			return true;
+		}
+
+		isAimed = false;
+		if (!hasKnownTarget)
+		{
+			return false;
+		}
+
+		TimeToAim = Mathf.Max(0f, TimeToAim - deltaTime);
+		if (TimeToAim > 0f)
+		{
+			return false;
+		}
+
+		EnterSetFireReadiness();
+		return true;
+	}
+
+	public void NotifyShotByPlayer()
+	{
+		if (bodyController == null || !bodyController.isAI)
+		{
+			return;
+		}
+
+		EnsureFireReadinessInitialized();
+		if (FireReadinessState == EnemyFireReadinessState.Set)
+		{
+			float hitStunToUnset = AttackConfig != null ? Mathf.Max(0f, AttackConfig.HitStunToUnsetFireReadiness) : 0.9f;
+			if (hitStunAmount <= hitStunToUnset)
+			{
+				return;
+			}
+		}
+
+		EnterUnsetFireReadiness();
+	}
+
+	public void RestartHitStunDecayDelay()
+	{
+		hitStunDecayDelayTimer = Mathf.Max(0f, hitStunDecayDelay);
+	}
+
+	public bool TickHitStunDecayDelay(float deltaTime)
+	{
+		if (hitStunDecayDelayTimer <= 0f)
+		{
+			return false;
+		}
+
+		hitStunDecayDelayTimer = Mathf.Max(0f, hitStunDecayDelayTimer - deltaTime);
+		return true;
+	}
+
+	private void InitializeFireReadiness()
+	{
+		fireReadinessInitialized = true;
+		EnterUnsetFireReadiness();
+	}
+
+	private void EnsureFireReadinessInitialized()
+	{
+		if (fireReadinessInitialized || bodyController == null || !bodyController.isAI)
+		{
+			return;
+		}
+
+		InitializeFireReadiness();
+	}
+
+	private void EnterUnsetFireReadiness()
+	{
+		FireReadinessState = EnemyFireReadinessState.Unset;
+		TimeToAim = AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeToAim) : 0f;
+		isAimed = false;
+	}
+
+	private void EnterSetFireReadiness()
+	{
+		FireReadinessState = EnemyFireReadinessState.Set;
+		TimeToAim = 0f;
+		isAimed = true;
 	}
 
 	public bool IsAIMoving()
@@ -342,10 +451,11 @@ public class BodyState : MonoBehaviour
 
 	private void OnTriggerEnter(Collider other)
 	{
-		if (IsPlayerAimCollider(other) && Target_HaveLOS())
+		bool resolvedAimGun = TryResolvePlayerAimGun(other, out Gun aimGun);
+
+		if (resolvedAimGun)
 		{
-			playerAimColliderOverlapCount++;
-			isBeingAimedAt = true;
+			AddSuppressiveAimGunOverlap(aimGun);
 		}
 	}
 
@@ -359,30 +469,116 @@ public class BodyState : MonoBehaviour
 
 	private void OnTriggerExit(Collider other)
 	{
-		if (IsPlayerAimCollider(other))
+		if (TryResolvePlayerAimGun(other, out Gun aimGun))
 		{
-			playerAimColliderOverlapCount = Mathf.Max(0, playerAimColliderOverlapCount - 1);
-			if (playerAimColliderOverlapCount == 0)
-			{
-				isBeingAimedAt = false;
-			}
+			RemoveSuppressiveAimGunOverlap(aimGun);
 		}
 	}
 
-	private bool IsPlayerAimCollider(Collider other)
+	private bool TryResolvePlayerAimGun(Collider other, out Gun aimGun)
 	{
+		aimGun = null;
 		if (other == null || other.gameObject.layer != 13)
 		{
 			return false;
 		}
 
 		BodyController aimOwner = other.GetComponentInParent<BodyController>();
-		if (aimOwner != null)
+		if (aimOwner == null || aimOwner.isAI || aimOwner.GetComponentInParent<PlayerController>() == null)
 		{
-			return !aimOwner.isAI && aimOwner.GetComponentInParent<PlayerController>() != null;
+			return false;
 		}
 
-		return other.GetComponentInParent<PlayerController>() != null;
+		GunAimOwner gunAimOwner = other.GetComponentInParent<GunAimOwner>();
+		if (gunAimOwner == null || gunAimOwner.Gun == null)
+		{
+			return false;
+		}
+
+		aimGun = gunAimOwner.Gun;
+		return true;
+	}
+
+	private void AddSuppressiveAimGunOverlap(Gun aimGun)
+	{
+		if (aimGun == null)
+		{
+			return;
+		}
+
+		if (suppressiveAimGunOverlapCounts.TryGetValue(aimGun, out int overlapCount))
+		{
+			suppressiveAimGunOverlapCounts[aimGun] = overlapCount + 1;
+		}
+		else
+		{
+			suppressiveAimGunOverlapCounts.Add(aimGun, 1);
+			aimGun.ActualShotFired += OnSuppressiveAimGunActualShotFired;
+		}
+
+		isBeingAimedAt = suppressiveAimGunOverlapCounts.Count > 0;
+	}
+
+	private void RemoveSuppressiveAimGunOverlap(Gun aimGun)
+	{
+		if (aimGun == null || !suppressiveAimGunOverlapCounts.TryGetValue(aimGun, out int overlapCount))
+		{
+			return;
+		}
+
+		overlapCount--;
+		if (overlapCount > 0)
+		{
+			suppressiveAimGunOverlapCounts[aimGun] = overlapCount;
+		}
+		else
+		{
+			suppressiveAimGunOverlapCounts.Remove(aimGun);
+			aimGun.ActualShotFired -= OnSuppressiveAimGunActualShotFired;
+		}
+
+		isBeingAimedAt = suppressiveAimGunOverlapCounts.Count > 0;
+	}
+
+	private void ClearSuppressiveAimGunOverlaps()
+	{
+		foreach (Gun aimGun in suppressiveAimGunOverlapCounts.Keys)
+		{
+			if (aimGun != null)
+			{
+				aimGun.ActualShotFired -= OnSuppressiveAimGunActualShotFired;
+			}
+		}
+
+		suppressiveAimGunOverlapCounts.Clear();
+		isBeingAimedAt = false;
+	}
+
+	private void OnSuppressiveAimGunActualShotFired(Gun aimGun)
+	{
+		if (aimGun == null || !suppressiveAimGunOverlapCounts.ContainsKey(aimGun))
+		{
+			return;
+		}
+
+		ApplySuppressiveShot();
+	}
+
+	private void ApplySuppressiveShot()
+	{
+		if (bodyController == null || !bodyController.isAI)
+		{
+			return;
+		}
+
+		EnsureFireReadinessInitialized();
+		if (FireReadinessState != EnemyFireReadinessState.Unset || AttackConfig == null)
+		{
+			return;
+		}
+
+		TimeToAim = Mathf.Clamp(TimeToAim + AttackConfig.SuppressiveShotTimeToAimIncrease, 0f, AttackConfig.TimeToAim);
+		isAimed = false;
 	}
 
 	#region AI data

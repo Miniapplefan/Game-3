@@ -199,7 +199,10 @@ MonoBehaviour:
   currentGoalInertia: 0
   maxInertia: 0.2
   lastDecisionTime: 0
+  targetAwarenessInterval: 0.2
+  loseTargetGraceSeconds: 1
   currentGoalDebug: 
+  ConsiderWanderVal: 0
   ConsiderOverheatTargetVal: 0
   ConsiderTakeCoverVal: 0
 --- !u!114 &2103951502302954486
@@ -1380,7 +1383,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 10.159669, y: 0, z: -26.05855, w: -0.30422103}
+  m_margin: {x: 10.159669, y: 0, z: -37.53913, w: -0.30422103}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   _SortingLayer: 0
@@ -3887,6 +3890,10 @@ PrefabInstance:
       propertyPath: bodyColliders.Array.data[13]
       value: 
       objectReference: {fileID: 60973815555145054}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: knockbackStumblePerpendicularForceMultiplier
+      value: 0.8
+      objectReference: {fileID: 0}
     - target: {fileID: 5098131962617287734, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_IsActive
       value: 1
@@ -5158,6 +5165,8 @@ MonoBehaviour:
   TimeToAim: 0
   isAimed: 0
   hitStunAmount: 0
+  hitStunDecayDelay: 0.1
+  FireReadinessState: 0
   headCollider: {fileID: 60973815555145054}
   rightArm: {fileID: 60973815555145061}
   rightLeg: {fileID: 60973815555145032}
@@ -5244,6 +5253,7 @@ MonoBehaviour:
   dollarsIndicator: {fileID: 7021566479482130553}
   healthIndicator: {fileID: 2849982351083171743}
   overheatIndicator: {fileID: 797775611585150069}
+  auraGripGauge: {fileID: 0}
 --- !u!114 &7400733204409723228
 MonoBehaviour:
   m_ObjectHideFlags: 0

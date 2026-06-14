@@ -21,6 +21,8 @@ public class AttackConfigSO : ScriptableObject
 	public LayerMask ObstructionLayerMask;
 	public float TimeBetweenAttacks = 1;
 	public float TimeToAim = 3;
+	public float HitStunToUnsetFireReadiness = 0.9f;
+	public float SuppressiveShotTimeToAimIncrease = 1f;
 	public int AttackCost = 4;
 	public float SiphonDelay = 1;
 }

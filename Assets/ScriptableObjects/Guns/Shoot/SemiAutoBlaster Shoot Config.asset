@@ -16,12 +16,12 @@ MonoBehaviour:
   HitMask:
     serializedVersion: 2
     m_Bits: 4672
-  Spread: {x: 0.14, y: 0, z: 0}
+  Spread: {x: 0.12, y: 0, z: 0}
   npcInnerConeAngle: 2.315
   npcInnerConeRadius: 0.17
   npcExcludedLowerArcDegrees: 112.7
   enableNpcLeadAim: 1
-  npcVisualLeadStrength: 0.12
+  npcVisualLeadStrength: 0.079
   npcBallisticLeadStrength: 1
   npcMaxLeadTime: 1
   npcMinLeadTargetSpeed: 0.1

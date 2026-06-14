@@ -17,16 +17,27 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4672
   Spread: {x: 0.003, y: 0.003, z: 0}
+  npcInnerConeAngle: 3
+  npcInnerConeRadius: 0.15
+  npcExcludedLowerArcDegrees: 0
+  enableNpcLeadAim: 0
+  npcVisualLeadStrength: 0
+  npcBallisticLeadStrength: 0.5
+  npcMaxLeadTime: 0.75
+  npcMinLeadTargetSpeed: 0.5
+  rawDamage: 1
   maxRange: 100
   isBurst: 0
   burst_numShots: 3
   burst_delayBetweenShots: 0.2
   bulletsPerShot: 1
+  magSize: 13
+  reloadTime: 3
   prepTime: 0
   prepIndicator: {fileID: 0}
   fireRate: 0.3
   recoil: 50
-  impactForce: 1200
+  impactForce: 500
   marchingCubesDamage: 5
   heatPerShot: 200000
   hitParticles: {fileID: 9056568595549153658, guid: d62a75f2eddd043b4ab15b49376c3560, type: 3}

@@ -104,7 +104,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 					return ActionRunState.Stop;
 				}
 
-				Vector3 rawAimPoint = data.targetState.bodyController.physicalHead.transform.position + new Vector3(0,0f,0);
+				Vector3 rawAimPoint = data.targetState.bodyController.physicalHead.transform.position + new Vector3(0, 0f, 0);
 				sortLimbsToTarget();
 				foreach (var limbConsideration in limbConsiderations)
 				{
@@ -116,7 +116,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 							continue;
 						}
 						// Debug.Log("Attacking " + limbConsideration.limb);
-						rawAimPoint = limbPos + new Vector3(0,0.02f,0);
+						rawAimPoint = limbPos + new Vector3(0, 0.02f, 0);
 						break;
 					}
 				}
@@ -164,49 +164,17 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 				data.bodyState.targetBodyState = data.targetState;
 			}
 		}
-		//Debug.Log(bodyState.rb.velocity.magnitude);
-
-		if (bodyState.IsAIMoving())
-		{
-			bodyState.isAimed = false;
-			return ActionRunState.Continue;
-		}
-
-		// Interrupt
-		if (bodyState.hitStunAmount > 0f)
-		{
-			//Debug.Log("Need to aim again");
-			bodyState.isAimed = false;
-			bodyState.TimeToAim = AttackConfig.TimeToAim;
-			return ActionRunState.Continue;
-		}
-
 		data.Timer -= context.DeltaTime;
 
-		if (!bodyState.isAimed)
+		bool fireReadinessReady = bodyState.TickFireReadiness(context.DeltaTime, bodyState.targetBodyState != null);
+		if (!fireReadinessReady)
 		{
-			if (!seePlayer) return data.Timer > 0 ? ActionRunState.Continue : ActionRunState.Stop;
+			return data.Timer > 0 ? ActionRunState.Continue : ActionRunState.Stop;
+		}
 
-			// Start if not started
-			if (bodyState.TimeToAim <= 0f)
-				bodyState.TimeToAim = AttackConfig.TimeToAim;
-
-			// Interrupt
-			if (bodyState.hitStunAmount > 0f)
-			{
-				//Debug.Log("Need to aim again");
-				bodyState.isAimed = false;
-				bodyState.TimeToAim = AttackConfig.TimeToAim;
-				return ActionRunState.Continue;
-			}
-
-			bodyState.TimeToAim -= context.DeltaTime;
-
-			if (bodyState.TimeToAim > 0f && seePlayer)
-				return ActionRunState.Continue;
-
-			bodyState.isAimed = true;
-			bodyState.TimeToAim = 0f;
+		if (bodyState.hitStunAmount > 0.9f)
+		{
+			return ActionRunState.Continue;
 		}
 
 		// data.Timer -= context.DeltaTime;

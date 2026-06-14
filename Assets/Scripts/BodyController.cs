@@ -204,6 +204,7 @@ public class BodyController : MonoBehaviour
 	[SerializeField] private float knockbackSettleVelocityThreshold = 0.05f;
 	[SerializeField] private float knockbackSettleDuration = 0.15f;
 	[SerializeField] private float knockbackNavMeshSampleRadius = 1.0f;
+	[SerializeField] private float knockbackStumblePerpendicularForceMultiplier = 0.2f;
 	private float knockbackSettledTimer;
 	[SerializeField] private bool enableAiBodyDriftCorrection = true;
 	[SerializeField] private float bodyDriftCorrectionThreshold = 0.15f;
@@ -288,7 +289,7 @@ public class BodyController : MonoBehaviour
 		{
 			input = GetComponent<AIController>();
 			agent = GetComponentInParent<NavMeshAgent>();
-			aiHealth = Random.Range(2, 13);
+			aiHealth = Random.Range(2, 25);
 			isAI = true;
 		}
 		//so_initialBodyStats = (BodyInfo)Resources.Load<ScriptableObject>("PlayerStartBodyInfo");
@@ -391,6 +392,7 @@ public class BodyController : MonoBehaviour
 	public void HandleDamage(DamageInfo i)
 	{
 		bool wasAlive = !isDead;
+		bool wasShotByPlayer = i != null && i.sourceBodyController != null && !i.sourceBodyController.isAI;
 		AuraManager sourceAuraManager = GetPlayerSourceAuraManager(i);
 		bool shouldAwardPlayerAura = wasAlive && isAI && sourceAuraManager != null;
 
@@ -406,6 +408,16 @@ public class BodyController : MonoBehaviour
 		// {
 		DamageSystem(i);
 		//}
+
+		if (bodyState != null && bodyState.hitStunAmount > 0f)
+		{
+			bodyState.RestartHitStunDecayDelay();
+		}
+
+		if (isAI && wasShotByPlayer && bodyState != null)
+		{
+			bodyState.NotifyShotByPlayer();
+		}
 
 		if (shouldAwardPlayerAura && isDead)
 		{
@@ -447,25 +459,25 @@ public class BodyController : MonoBehaviour
 				case LimbID.leftLeg:
 					legs.damangeLeftLegCurrentHealth(i.amount);
 					head.DamageHealth(i.amount * 0.25f);
-					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.9f);
 					checkForRepair(i);
 					break;
 				case LimbID.rightLeg:
 					legs.damangeRightLegCurrentHealth(i.amount);
 					head.DamageHealth(i.amount * 0.25f);
-					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.9f);
 					checkForRepair(i);
 					break;
 				case LimbID.torso:
 					head.DamageHealth(i.amount);
 					// Debug.Log(LimbID.torso + " " + i.amount + " " + head.currentHealth);
-					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.5f);
 					break;
 				case LimbID.head:
 					head.DamageHealth(i.amount * 2);
 					// Debug.Log(LimbID.head + " " + i.amount * 2 + " " + head.currentHealth);
 					//head.Damage((int)i.amount);
-					Mathf.Clamp01(bodyState.hitStunAmount += 1f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.4f);
 					break;
 			}
 		}
@@ -878,8 +890,8 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 1);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
+			StartAimSwapBlend(0f, 1f, startedAimingLeft ? 0.7f : 0f);
 
-			StartAimSwapBlend(0f, 1f, 0f);
 		}
 		else
 		{
@@ -968,7 +980,8 @@ public class BodyController : MonoBehaviour
 			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
 			// headAimConstraint.data.sourceObjects.SetWeight(2, 1);
 
-			StartAimSwapBlend(0f, 0f, 1f);
+			StartAimSwapBlend(0f, startedAimingRight ? 0.7f : 0f, 1f);
+
 		}
 		else
 		{
@@ -1954,23 +1967,30 @@ public class BodyController : MonoBehaviour
 			backTooCloseToWall = true;
 		}
 
-		if (!backTooCloseToWall)
-		{
-			// if (cooling.isOverheated)
-			// {
-			// 	rb.AddForce((force * 2));
-
-			// }
-			// else
-			// {
-			rb.AddForce((force / 6) * (1 - legs.getTagging()) * GetKnockbackFromLimb(l));
-			//}
-		}
-		else
-		{
-			rb.AddForce((force / 8) * (1 - legs.getTagging()) * GetKnockbackFromLimb(l));
-		}
+		float knockbackScale = !backTooCloseToWall ? 1f / 6f : 1f / 8f;
+		Vector3 knockbackForce = force * knockbackScale * (1 - legs.getTagging()) * GetKnockbackFromLimb(l);
+		knockbackForce += GetRandomPerpendicularKnockbackForce(knockbackForce);
+		rb.AddForce(knockbackForce);
 		knockbackTimer = minKnockbackDuration;
+	}
+
+	private Vector3 GetRandomPerpendicularKnockbackForce(Vector3 knockbackForce)
+	{
+		if (knockbackStumblePerpendicularForceMultiplier <= 0f || knockbackForce.sqrMagnitude <= 0.0001f)
+		{
+			return Vector3.zero;
+		}
+
+		Vector3 perpendicular = Vector3.Cross(knockbackForce.normalized, Vector3.up);
+		if (perpendicular.sqrMagnitude <= 0.0001f)
+		{
+			perpendicular = Vector3.Cross(knockbackForce.normalized, Vector3.right);
+		}
+
+		return perpendicular.normalized
+			* knockbackForce.magnitude
+			* knockbackStumblePerpendicularForceMultiplier
+			* Random.Range(-1f, 1f);
 	}
 
 	public float GetKnockbackFromLimb(Limb l)
@@ -2193,7 +2213,7 @@ public class BodyController : MonoBehaviour
 		middleTorsoJoint.slerpDrive = tempJoint;
 
 		tempJoint = upperRightArmJoint.slerpDrive;
-		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 100000) + 2000, 1000, 100000);
+		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 200000) + 2000, 1000, 100000);
 		upperRightArmJoint.slerpDrive = tempJoint;
 
 		//TODO Temporary tagging gauge visual
