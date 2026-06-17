@@ -57,12 +57,13 @@ public class BodyController : MonoBehaviour
 	public bool HasStartedAimingLeft => startedAimingLeft;
 	public bool KeepCameraAimWithoutArm => keepCameraAimWithoutArm;
 	public bool KeepCameraAimUsesLeft => keepCameraAimUsesLeft;
+	public bool IsCenteredAim => IsPlayerCenteredAim();
 	public bool PrimaryAimUsesLeft => offhandMirrorActive ? offhandMirrorSourceIsLeft : IsActiveArmLeft();
 	public bool CameraAimUsesLeft => offhandMirrorActive
 		? offhandMirrorCameraUsesLeft
 		: isAimingLeft || (keepCameraAimWithoutArm && keepCameraAimUsesLeft);
-	public bool IsRightArmAimed => isAimingRight || (offhandMirrorActive && offhandMirrorSourceIsLeft);
-	public bool IsLeftArmAimed => isAimingLeft || (offhandMirrorActive && !offhandMirrorSourceIsLeft);
+	public bool IsRightArmAimed => IsPlayerCenteredAim() || isAimingRight || (offhandMirrorActive && offhandMirrorSourceIsLeft);
+	public bool IsLeftArmAimed => IsPlayerCenteredAim() || isAimingLeft || (offhandMirrorActive && !offhandMirrorSourceIsLeft);
 	private const float SlowMoveSpeedMultiplier = 0.3f;
 
 	// [HideInInspector]
@@ -140,6 +141,7 @@ public class BodyController : MonoBehaviour
 	private bool offhandMirrorRestoreOffhandOnRelease = true;
 	[Header("Aim Start Hold")]
 	public float aimStartHoldDuration = 0.05f;
+	[SerializeField] private float breakoutAimYawOffset = 45f;
 	private float aimStartHoldTimerRight = 0f;
 	private float aimStartHoldTimerLeft = 0f;
 	private Vector3 aimStartHoldPointRight;
@@ -165,6 +167,15 @@ public class BodyController : MonoBehaviour
 	private float standbyDelayTimer = 0f;
 	private bool deferStandbyRight = false;
 	private bool deferStandbyLeft = false;
+	[SerializeField] private bool useStandbyPoseWhileMoving = true;
+	private bool movementStandbyVisualActive = false;
+	private bool hasMovementStandbyStoredAimRight = false;
+	private bool hasMovementStandbyStoredAimLeft = false;
+	private Vector3 movementStandbyStoredAimRight;
+	private Vector3 movementStandbyStoredAimLeft;
+	private Transform headAimTargetProxyRight;
+	private Transform headAimTargetProxyLeft;
+	private bool headAimUsesProxyTargets = false;
 	[Header("Aim Scroll")]
 	public float aimScrollToggleCooldown = 0.12f;
 	private float nextAimScrollToggleTime = 0f;
@@ -306,6 +317,7 @@ public class BodyController : MonoBehaviour
 		taggingGaugeScaleCache = taggingGauge.transform.localScale;
 		ResolveAimPointIndicators();
 		UpdateAimPointIndicatorVisibility();
+		SetupHeadAimTargetProxies();
 		// healthIndicator.text = head.health.ToString();
 	}
 
@@ -706,6 +718,15 @@ public class BodyController : MonoBehaviour
 
 	public void FireWeapon1()
 	{
+		if (!isAI && IsPlayerCenteredAim())
+		{
+			weapons.ExecuteWeapon1(true);
+			weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
+			weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
+			weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
+			return;
+		}
+
 		if (isAI || (!PrimaryAimUsesLeft && isAimingRight))
 		{
 			weapons.ExecuteWeapon1(true);
@@ -725,6 +746,15 @@ public class BodyController : MonoBehaviour
 
 	public void FireOffhandWeapon1()
 	{
+		if (!isAI && IsPlayerCenteredAim())
+		{
+			weapons.ExecuteWeapon1(false);
+			weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
+			weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
+			weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
+			return;
+		}
+
 		bool primaryArmIsAiming = PrimaryAimUsesLeft ? isAimingLeft : isAimingRight;
 		if (!primaryArmIsAiming)
 		{
@@ -835,218 +865,236 @@ public class BodyController : MonoBehaviour
 
 	void ToggleAimingRight()
 	{
-		bool wasKeepingCameraAimWithoutArm = keepCameraAimWithoutArm;
-		bool wasAimingRight = isAimingRight;
-		bool wasAimingLeft = isAimingLeft;
-		bool wasStartedAimingRight = startedAimingRight;
-		if (wasAimingLeft)
-		{
-			CaptureRelativeAimLeft();
-		}
-		isAimingLeft = false;
-
-		isAimingRight = !isAimingRight;
 		if (isAimingRight)
 		{
-			keepCameraAimWithoutArm = false;
-			keepCameraAimUsesLeft = false;
-			bool resumeFromStandbyCameraAim = wasKeepingCameraAimWithoutArm && !wasAimingLeft;
-			bool resumeFromStoredRightAim = hasStoredRelativeAimRight;
-			if (!startedAimingRight)
-			{
-				startedAimingRight = true;
-			}
-			if (!wasStartedAimingRight && !resumeFromStandbyCameraAim && !resumeFromStoredRightAim)
-			{
-				forceAimToTorsoRight = true;
-				if (torsoAimPoint != null)
-				{
-					aimStartHoldPointRight = GetTorsoForwardWithPitch();
-					aimStartHoldTimerRight = aimStartHoldDuration;
-					holdAimStartRightUntilInput = true;
-					SetWeaponAimPointR(aimStartHoldPointRight);
-				}
-				useStoredAimRight = false;
-			}
-			else if (resumeFromStandbyCameraAim)
-			{
-				forceAimToTorsoRight = false;
-				holdAimStartRightUntilInput = false;
-				aimStartHoldTimerRight = 0f;
-			}
-			else if (resumeFromStoredRightAim)
-			{
-				forceAimToTorsoRight = false;
-				holdAimStartRightUntilInput = false;
-				aimStartHoldTimerRight = 0f;
-				ApplyRelativeAimRight();
-			}
-			else if (wasAimingLeft)
-			{
-				useStoredAimLeft = true;
-			}
-
-			// headAimConstraint.data.sourceObjects.SetWeight(0, 0);
-			// headAimConstraint.data.sourceObjects.SetWeight(1, 1);
-			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
-
-			StartAimSwapBlend(0f, 1f, startedAimingLeft ? 0.7f : 0f);
-
+			RecenterRightArm();
+			return;
 		}
-		else
-		{
-			if (wasAimingRight)
-			{
-				CaptureRelativeAimRight();
-			}
-			keepCameraAimWithoutArm = true;
-			keepCameraAimUsesLeft = false;
-			SetTorsoAimPointToCurrentView();
-			startedAimingRight = false;
-			if (!wasAimingLeft)
-			{
-				useStoredAimRight = false;
-			}
-			aimStartHoldTimerRight = 0f;
-			holdAimStartRightUntilInput = false;
-			// headAimConstraint.data.sourceObjects.SetWeight(0, 1);
-			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
-			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
 
-			SetAimStandbyImmediate();
-		}
+		FocusRightArm();
 	}
 
 	void ToggleAimingLeft()
 	{
-		bool wasKeepingCameraAimWithoutArm = keepCameraAimWithoutArm;
-		bool wasAimingLeft = isAimingLeft;
-		bool wasAimingRight = isAimingRight;
-		bool wasStartedAimingLeft = startedAimingLeft;
-		if (wasAimingRight)
-		{
-			CaptureRelativeAimRight();
-		}
-		isAimingRight = false;
-
-		isAimingLeft = !isAimingLeft;
 		if (isAimingLeft)
 		{
-			keepCameraAimWithoutArm = false;
-			keepCameraAimUsesLeft = true;
-			bool resumeFromStandbyCameraAim = wasKeepingCameraAimWithoutArm && !wasAimingRight;
-			bool resumeFromStoredLeftAim = hasStoredRelativeAimLeft;
-			if (!startedAimingLeft)
-			{
-				startedAimingLeft = true;
-			}
-			if (!wasStartedAimingLeft && !resumeFromStandbyCameraAim && !resumeFromStoredLeftAim)
-			{
-				forceAimToTorsoLeft = true;
-				if (headObjectL != null && headObjectTransformCache != null)
-				{
-					headObjectL.transform.SetPositionAndRotation(
-						headObjectTransformCache.position,
-						GetTorsoYawPitchRotation());
-				}
-				if (torsoAimPoint != null)
-				{
-					aimStartHoldPointLeft = GetTorsoForwardWithPitch();
-					aimStartHoldTimerLeft = aimStartHoldDuration;
-					holdAimStartLeftUntilInput = true;
-					SetWeaponAimPointL(aimStartHoldPointLeft);
-				}
-				useStoredAimLeft = false;
-			}
-			else if (resumeFromStandbyCameraAim)
-			{
-				forceAimToTorsoLeft = false;
-				holdAimStartLeftUntilInput = false;
-				aimStartHoldTimerLeft = 0f;
-			}
-			else if (resumeFromStoredLeftAim)
-			{
-				forceAimToTorsoLeft = false;
-				holdAimStartLeftUntilInput = false;
-				aimStartHoldTimerLeft = 0f;
-				ApplyRelativeAimLeft();
-			}
-			else if (wasAimingRight)
-			{
-				useStoredAimRight = true;
-			}
+			RecenterLeftArm();
+			return;
+		}
 
-			// headAimConstraint.data.sourceObjects.SetWeight(0, 0);
-			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
-			// headAimConstraint.data.sourceObjects.SetWeight(2, 1);
+		FocusLeftArm();
+	}
 
-			StartAimSwapBlend(0f, startedAimingRight ? 0.7f : 0f, 1f);
+	private void FocusRightArm()
+	{
+		if (isAimingLeft)
+		{
+			CaptureRelativeAimLeft();
+		}
 
+		isAimingLeft = false;
+		isAimingRight = true;
+		keepCameraAimWithoutArm = false;
+		keepCameraAimUsesLeft = false;
+		aimStartHoldTimerLeft = 0f;
+		holdAimStartLeftUntilInput = false;
+		forceAimToTorsoLeft = false;
+
+		bool wasBrokenOut = startedAimingRight;
+		bool restoringParkedAim = wasBrokenOut || hasStoredRelativeAimRight;
+		if (!startedAimingRight)
+		{
+			startedAimingRight = true;
+		}
+
+		if (!wasBrokenOut && !hasStoredRelativeAimRight)
+		{
+			forceAimToTorsoRight = true;
+			aimStartHoldPointRight = GetBreakoutStartAimPoint(false);
+			aimStartHoldTimerRight = aimStartHoldDuration;
+			holdAimStartRightUntilInput = true;
+			SetWeaponAimPointR(aimStartHoldPointRight);
+			AlignHeadAnchorToAimPoint(false);
 		}
 		else
 		{
-			if (wasAimingLeft)
+			forceAimToTorsoRight = false;
+			aimStartHoldTimerRight = 0f;
+			holdAimStartRightUntilInput = false;
+			ApplyRelativeAimRight();
+			if (restoringParkedAim)
 			{
-				CaptureRelativeAimLeft();
+				AlignHeadAnchorToAimPoint(false);
 			}
-			keepCameraAimWithoutArm = true;
-			keepCameraAimUsesLeft = true;
-			SetTorsoAimPointToCurrentView();
-			startedAimingLeft = false;
-			if (!wasAimingRight)
+		}
+
+		StartAimSwapBlend(0f, 1f, startedAimingLeft ? 0.7f : 0f);
+	}
+
+	private void FocusLeftArm()
+	{
+		if (isAimingRight)
+		{
+			CaptureRelativeAimRight();
+		}
+
+		isAimingRight = false;
+		isAimingLeft = true;
+		keepCameraAimWithoutArm = false;
+		keepCameraAimUsesLeft = true;
+		aimStartHoldTimerRight = 0f;
+		holdAimStartRightUntilInput = false;
+		forceAimToTorsoRight = false;
+
+		bool wasBrokenOut = startedAimingLeft;
+		bool restoringParkedAim = wasBrokenOut || hasStoredRelativeAimLeft;
+		if (!startedAimingLeft)
+		{
+			startedAimingLeft = true;
+		}
+
+		if (!wasBrokenOut && !hasStoredRelativeAimLeft)
+		{
+			forceAimToTorsoLeft = true;
+			if (headObjectL != null && headObjectTransformCache != null)
 			{
-				useStoredAimLeft = false;
+				headObjectL.transform.SetPositionAndRotation(
+					headObjectTransformCache.position,
+					GetTorsoYawPitchRotation());
 			}
+			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true);
+			aimStartHoldTimerLeft = aimStartHoldDuration;
+			holdAimStartLeftUntilInput = true;
+			SetWeaponAimPointL(aimStartHoldPointLeft);
+			AlignHeadAnchorToAimPoint(true);
+		}
+		else
+		{
+			forceAimToTorsoLeft = false;
 			aimStartHoldTimerLeft = 0f;
 			holdAimStartLeftUntilInput = false;
-			// headAimConstraint.data.sourceObjects.SetWeight(0, 1);
-			// headAimConstraint.data.sourceObjects.SetWeight(1, 0);
-			// headAimConstraint.data.sourceObjects.SetWeight(2, 0);
-
-			SetAimStandbyImmediate();
+			ApplyRelativeAimLeft();
+			if (restoringParkedAim)
+			{
+				AlignHeadAnchorToAimPoint(true);
+			}
 		}
+
+		StartAimSwapBlend(0f, startedAimingRight ? 0.7f : 0f, 1f);
+	}
+
+	private void RecenterRightArm()
+	{
+		isAimingRight = false;
+		startedAimingRight = false;
+		hasStoredRelativeAimRight = false;
+		useStoredAimRight = false;
+		forceAimToTorsoRight = false;
+		aimStartHoldTimerRight = 0f;
+		holdAimStartRightUntilInput = false;
+
+		EnterCenteredState();
+	}
+
+	private void ParkRightArmInCentered()
+	{
+		CaptureRelativeAimRight();
+		isAimingRight = false;
+		startedAimingRight = true;
+		forceAimToTorsoRight = false;
+		aimStartHoldTimerRight = 0f;
+		holdAimStartRightUntilInput = false;
+		EnterCenteredState();
+	}
+
+	private void RecenterLeftArm()
+	{
+		isAimingLeft = false;
+		startedAimingLeft = false;
+		hasStoredRelativeAimLeft = false;
+		useStoredAimLeft = false;
+		forceAimToTorsoLeft = false;
+		aimStartHoldTimerLeft = 0f;
+		holdAimStartLeftUntilInput = false;
+
+		EnterCenteredState();
+	}
+
+	private void ParkLeftArmInCentered()
+	{
+		CaptureRelativeAimLeft();
+		isAimingLeft = false;
+		startedAimingLeft = true;
+		forceAimToTorsoLeft = false;
+		aimStartHoldTimerLeft = 0f;
+		holdAimStartLeftUntilInput = false;
+		EnterCenteredState();
+	}
+
+	private void EnterCenteredState()
+	{
+		isAimingRight = false;
+		isAimingLeft = false;
+		keepCameraAimWithoutArm = false;
+		keepCameraAimUsesLeft = false;
+		if (!startedAimingRight)
+		{
+			hasStoredRelativeAimRight = false;
+		}
+		if (!startedAimingLeft)
+		{
+			hasStoredRelativeAimLeft = false;
+		}
+		useStoredAimRight = false;
+		useStoredAimLeft = false;
+		forceAimToTorsoRight = false;
+		forceAimToTorsoLeft = false;
+		aimStartHoldTimerRight = 0f;
+		aimStartHoldTimerLeft = 0f;
+		holdAimStartRightUntilInput = false;
+		holdAimStartLeftUntilInput = false;
+		StartAimSwapBlend(1f, 0f, 0f);
 	}
 
 	private void GetAimPoint()
 	{
-		// if (rb.velocity.magnitude > 0.2f && isAimingRight)
-		// {
-		// 	// moving → reset weapon aim to torso
-		// 	weaponAimPoint.position = torsoAimPoint.position;
-		// 	aimCam.transform.rotation = headObjectTransformCache.transform.rotation;
-		// 	ToggleAiming();
-		// 	return;
-		// }
-		//		if (Time.time - lastRaycastTime >= raycastInterval && rb.velocity.magnitude < 0.2f)
-
 		if (Time.time - lastRaycastTime >= raycastInterval)
 		{
-			//			Vector3 torso = aimCam.transform.position + 20 * aimCam.transform.forward;
-
-			// Vector3 torso = transform.position + 20 * transform.forward;
-
-			// --- Torso Aim Calculation --- //
-
-			// Step 1: get the torso’s yaw only (ignore pitch/roll)
-			Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
-
-			// Step 2: get pitch from the camera (local, relative to torso/head)
-			float pitch = aimCam.transform.localEulerAngles.x;
-
-			// Unity’s localEulerAngles.x can wrap around past 180, so normalize it:
-			if (pitch > 180f) pitch -= 360f;
-
-			// Step 3: combine yaw + pitch into a clean orientation
-			Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
-
-			// Step 4: get forward from this rotation
-			Vector3 pitchedForward = combinedRot * Vector3.forward;
-
-			// Step 5: place the torso aim point forward from the head
-			Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
-			Vector3 torsoFromTorsoYaw = torso;
+			Vector3 origin = GetAimLockOrigin();
+			Vector3 centeredForward = GetTorsoYawPitchRotation() * Vector3.forward;
+			Vector3 centeredFallback = origin + centeredForward * 20f;
+			Vector3 centeredTarget = ResolveAimPoint(centeredForward, centeredFallback);
 			bool aimSourceRight = IsAimSourceRight();
 			bool aimSourceLeft = IsAimSourceLeft();
+
+			if (IsPlayerCenteredAim())
+			{
+				if (startedAimingRight)
+				{
+					ApplyRelativeAimRight();
+				}
+				else
+				{
+					SetWeaponAimPointR(centeredTarget);
+				}
+
+				if (startedAimingLeft)
+				{
+					ApplyRelativeAimLeft();
+				}
+				else
+				{
+					SetWeaponAimPointL(centeredTarget);
+				}
+
+				torsoAimPoint.position = centeredTarget;
+				if (!freezeHeadDuringMoveAimYaw)
+				{
+					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+					headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
+				}
+				return;
+			}
 
 			if (aimSourceRight)
 			{
@@ -1054,7 +1102,7 @@ public class BodyController : MonoBehaviour
 				{
 					aimStartHoldTimerRight -= Time.deltaTime;
 					SetWeaponAimPointR(aimStartHoldPointRight);
-					torsoAimPoint.position = torsoFromTorsoYaw;
+					torsoAimPoint.position = centeredTarget;
 					return;
 				}
 
@@ -1064,10 +1112,11 @@ public class BodyController : MonoBehaviour
 					if (headInput.sqrMagnitude < 0.0001f)
 					{
 						SetWeaponAimPointR(aimStartHoldPointRight);
-						torsoAimPoint.position = torsoFromTorsoYaw;
+						torsoAimPoint.position = centeredTarget;
 						return;
 					}
 					holdAimStartRightUntilInput = false;
+					forceAimToTorsoRight = false;
 				}
 			}
 
@@ -1077,7 +1126,7 @@ public class BodyController : MonoBehaviour
 				{
 					aimStartHoldTimerLeft -= Time.deltaTime;
 					SetWeaponAimPointL(aimStartHoldPointLeft);
-					torsoAimPoint.position = torsoFromTorsoYaw;
+					torsoAimPoint.position = centeredTarget;
 					return;
 				}
 
@@ -1087,154 +1136,70 @@ public class BodyController : MonoBehaviour
 					if (headInput.sqrMagnitude < 0.0001f)
 					{
 						SetWeaponAimPointL(aimStartHoldPointLeft);
-						torsoAimPoint.position = torsoFromTorsoYaw;
+						torsoAimPoint.position = centeredTarget;
 						return;
 					}
-					if (aimCam != null)
-					{
-						Quaternion torsoYawOnly = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
-						aimCam.transform.rotation = Quaternion.Euler(aimCam.transform.eulerAngles.x, torsoYawOnly.eulerAngles.y, 0f);
-						if (sensors != null)
-						{
-							sensors.setHeadRotation(new Vector2(0f, 0f));
-						}
-					}
-					aimStartHoldPointLeft = GetTorsoForwardWithPitch();
 					SetWeaponAimPointL(aimStartHoldPointLeft);
-					torsoAimPoint.position = torsoFromTorsoYaw;
+					torsoAimPoint.position = centeredTarget;
 					holdAimStartLeftUntilInput = false;
+					forceAimToTorsoLeft = false;
 					return;
 				}
 			}
 
 			if (freezeHeadDuringMoveAimYaw)
 			{
-				torsoAimPoint.position = torso;
+				torsoAimPoint.position = centeredTarget;
 				return;
 			}
 
-			// Only reset weaponAimPoint if MOVING while not aiming
-			if (rb.velocity.magnitude > 2.5f)
+			if (!aimSourceRight)
 			{
-				torsoAimPoint.position = torso;
-				if (standbyDelayTimer > 0f)
+				if (startedAimingRight)
 				{
-					standbyDelayTimer -= Time.deltaTime;
+					ApplyRelativeAimRight();
 				}
-				// While aiming, keep updating aim/raycast below so mouse look stays responsive during movement.
-				// if (isAimingRight || isAimingLeft)
-				// {
-				// 	// While actively aiming and entering a movement reset, keep current aim
-				// 	// to avoid the head snapping toward standby points.
-				// 	return;
-				// }
-
-				// Keep lowered-arm camera-aim mode from being treated as non-aiming reset state.
-				if (!aimSourceRight && !aimSourceLeft && !keepCameraAimWithoutArm)
+				else
 				{
-					if (!deferStandbyRight)
-					{
-						SetWeaponAimPointR(weaponStandbyPointR != null ? weaponStandbyPointR.position : torso);
-					}
-					if (!deferStandbyLeft)
-					{
-						SetWeaponAimPointL(weaponStandbyPointL != null ? weaponStandbyPointL.position : torso);
-					}
-					return;
+					SetWeaponAimPointR(centeredTarget);
 				}
 			}
 
-			// If we’re not aiming but standing still → don’t overwrite weaponAimPoint.
-			// Just keep updating torsoAimPoint.
-			if (!aimSourceRight || !aimSourceLeft)
+			if (!aimSourceLeft)
 			{
-				torsoAimPoint.position = torso;
-				if (!aimSourceRight)
+				if (startedAimingLeft)
 				{
-					if (!startedAimingRight && weaponStandbyPointR != null)
-					{
-						SetWeaponAimPointR(weaponStandbyPointR.position);
-					}
-					else if (!startedAimingRight)
-					{
-						// headObjectAimOffset.position.Set(headObjectAimOffset.position.x, headObjectAimOffset.position.y, Vector3.Distance(weaponAimPoint.position, headObject.transform.position));
-						SetWeaponAimPointR(headObjectAimOffset.position);
-					}
-					else
-					{
-						ApplyRelativeAimRight();
-					}
+					ApplyRelativeAimLeft();
 				}
-
-				if (!aimSourceLeft)
+				else
 				{
-					if (!startedAimingLeft && weaponStandbyPointL != null)
-					{
-						SetWeaponAimPointL(weaponStandbyPointL.position);
-					}
-					else if (!startedAimingLeft)
-					{
-						// headObjectAimOffsetL.position.Set(headObjectAimOffsetL.position.x, headObjectAimOffsetL.position.y, Vector3.Distance(weaponAimPointL.position, headObject.transform.position));
-						SetWeaponAimPointL(headObjectAimOffsetL.position);
-					}
-					else
-					{
-						ApplyRelativeAimLeft();
-					}
+					SetWeaponAimPointL(centeredTarget);
 				}
 			}
 
-
-			if (aimSourceRight || aimSourceLeft || keepCameraAimWithoutArm)
+			if (!aimSourceRight && !aimSourceLeft)
 			{
-				// --- Aim mode: full yaw + pitch from camera ---
-				combinedRot = Quaternion.Euler(aimCam.transform.eulerAngles.x,
-																			 aimCam.transform.eulerAngles.y,
-																			 0f);
+				torsoAimPoint.position = centeredTarget;
+				return;
 			}
-			else
-			{
-				// Debug.Log("hipfire");
-
-				// --- Hipfire: yaw from torso, pitch from camera ---
-				torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
-
-				pitch = aimCam.transform.localEulerAngles.x;
-				if (pitch > 180f) pitch -= 360f;
-
-				combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
-
-				if (!startedAimingRight && !startedAimingLeft && !freezeHeadDuringMoveAimYaw)
-				{
-					// Debug.Log("setting head to cache");
-					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
-					headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
-				}
-			}
-
-			// Forward from combined rotation
-			Vector3 forward = combinedRot * Vector3.forward;
-
-			// Torso aim point
-			torso = headObjectTransformCache.position + forward * 20f;
 
 			if (aimSourceRight && forceAimToTorsoRight)
 			{
-				SetWeaponAimPointR(torsoFromTorsoYaw);
-				torsoAimPoint.position = torsoFromTorsoYaw;
+				SetWeaponAimPointR(aimStartHoldPointRight);
+				torsoAimPoint.position = centeredTarget;
 				forceAimToTorsoRight = false;
 				return;
 			}
 			if (aimSourceLeft && forceAimToTorsoLeft)
 			{
-				SetWeaponAimPointL(torsoFromTorsoYaw);
-				torsoAimPoint.position = torsoFromTorsoYaw;
+				SetWeaponAimPointL(aimStartHoldPointLeft);
+				torsoAimPoint.position = centeredTarget;
 				forceAimToTorsoLeft = false;
 				return;
 			}
 
-			// Raycast for weapon aim
-			Vector3 rayForward = forward;
+			Quaternion cameraRot = Quaternion.Euler(aimCam.transform.eulerAngles.x, aimCam.transform.eulerAngles.y, 0f);
+			Vector3 rayForward = cameraRot * Vector3.forward;
 			if (aimSourceLeft && holdAimStartLeftUntilInput)
 			{
 				rayForward = (aimStartHoldPointLeft - physicalHead.transform.position).normalized;
@@ -1243,138 +1208,17 @@ public class BodyController : MonoBehaviour
 			{
 				rayForward = (aimStartHoldPointRight - physicalHead.transform.position).normalized;
 			}
-			Ray ray = new Ray(physicalHead.transform.position, rayForward);
-			RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
-
-
-			if (hits.Length <= 0)
+			Vector3 cameraFallback = origin + rayForward * 20f;
+			Vector3 cameraTarget = ResolveAimPoint(rayForward, cameraFallback);
+			if (aimSourceRight)
 			{
-				if (aimSourceRight)
-				{
-					SetWeaponAimPointR(torso);
-				}
-				else if (aimSourceLeft)
-				{
-					SetWeaponAimPointL(torso);
-				}
-				else
-				{
-					// No active arm aim: keep current standby/lowered arm points.
-				}
-				torsoAimPoint.position = torso;
+				SetWeaponAimPointR(cameraTarget);
 			}
-			else
+			else if (aimSourceLeft)
 			{
-				RaycastHit? bodyHit = null;
-				List<RaycastHit> enviroHits = new List<RaycastHit>();
-
-				foreach (var hit in hits)
-				{
-					bool isOwnCollider = false;
-
-					if (hit.collider.gameObject.layer == 9)
-					{
-						enviroHits.Add(hit);
-						continue;
-					}
-
-					// Check if the hit collider belongs to the player
-					foreach (var collider in bodyColliders)
-					{
-						if (hit.collider == collider)
-						{
-							isOwnCollider = true;
-							break;
-						}
-					}
-
-					// if (bodyHit.HasValue)
-					// {
-					// 	Vector3 targetPoint = bodyHit.Value.point;
-					// 	// Rotate the arm/gun to aim at the targetPoint
-					// 	weaponAimPoint.position = targetPoint;
-					// 	return;
-					// }
-
-					// If the hit collider does not belong to the player, set it as the aim target
-					if (!isOwnCollider && hit.collider.gameObject.layer == 6)
-					{
-						//Debug.Log(hit.collider.gameObject.layer);
-						bodyHit = hit;
-						break; // Exit the loop after finding the first valid aim target
-					}
-				}
-
-				if (bodyHit.HasValue)
-				{
-					if (enviroHits.Count > 0)
-					{
-						enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
-
-						if (Vector3.Distance(rb.transform.position, bodyHit.Value.point) < Vector3.Distance(rb.transform.position, enviroHits[0].point))
-						{
-							Vector3 targetPoint = bodyHit.Value.point;
-
-							if (aimSourceRight)
-							{
-								SetWeaponAimPointR(targetPoint);
-							}
-							else if (aimSourceLeft)
-							{
-								SetWeaponAimPointL(targetPoint);
-							}
-						}
-						else
-						{
-							Vector3 targetPoint = enviroHits[0].point;
-							// Rotate the arm/gun to aim at the targetPoint
-							if (aimSourceRight)
-							{
-								SetWeaponAimPointR(targetPoint);
-							}
-							else if (aimSourceLeft)
-							{
-								SetWeaponAimPointL(targetPoint);
-							}
-						}
-					}
-					// Vector3 targetPoint = bodyHit.Value.point;
-					// // Rotate the arm/gun to aim at the targetPoint
-					// weaponAimPoint.position = targetPoint;
-				}
-				else if (enviroHits.Count > 0)
-				{
-					enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
-					// Use the closest hit's point as the target point
-					Vector3 targetPoint = enviroHits[0].point;
-					// Rotate the arm/gun to aim at the targetPoint
-					if (aimSourceRight)
-					{
-						SetWeaponAimPointR(targetPoint);
-					}
-					else if (aimSourceLeft)
-					{
-						SetWeaponAimPointL(targetPoint);
-					}
-				}
-				else
-				{
-					//weaponAimPoint.position = Vector3.Lerp(weaponAimPoint.position, torso, 0.2f);
-					if (aimSourceRight)
-					{
-						SetWeaponAimPointR(torso);
-					}
-					else if (aimSourceLeft)
-					{
-						SetWeaponAimPointL(torso);
-					}
-					else
-					{
-						// No active arm aim: keep current standby/lowered arm points.
-					}
-				}
+				SetWeaponAimPointL(cameraTarget);
 			}
-			torsoAimPoint.position = torso;
+			torsoAimPoint.position = cameraTarget;
 		}
 		else
 		{
@@ -1401,6 +1245,77 @@ public class BodyController : MonoBehaviour
 		// torsoAimPoint.position = torso;
 	}
 
+	private Vector3 ResolveAimPoint(Vector3 forward, Vector3 fallback)
+	{
+		if (forward.sqrMagnitude <= 0.0001f)
+		{
+			return fallback;
+		}
+
+		Transform rayOriginTransform = physicalHead != null
+			? physicalHead.transform
+			: (headObjectTransformCache != null ? headObjectTransformCache : transform);
+		Ray ray = new Ray(rayOriginTransform.position, forward.normalized);
+		RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
+		if (hits.Length <= 0)
+		{
+			return fallback;
+		}
+
+		RaycastHit? bodyHit = null;
+		List<RaycastHit> enviroHits = new List<RaycastHit>();
+		foreach (var hit in hits)
+		{
+			if (hit.collider.gameObject.layer == 9)
+			{
+				enviroHits.Add(hit);
+				continue;
+			}
+
+			bool isOwnCollider = false;
+			if (bodyColliders != null)
+			{
+				foreach (var collider in bodyColliders)
+				{
+					if (hit.collider == collider)
+					{
+						isOwnCollider = true;
+						break;
+					}
+				}
+			}
+
+			if (!isOwnCollider && hit.collider.gameObject.layer == 6)
+			{
+				bodyHit = hit;
+				break;
+			}
+		}
+
+		if (enviroHits.Count > 0)
+		{
+			enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
+		}
+
+		if (bodyHit.HasValue)
+		{
+			if (enviroHits.Count <= 0)
+			{
+				return bodyHit.Value.point;
+			}
+
+			float bodyDistance = rb != null
+				? Vector3.Distance(rb.transform.position, bodyHit.Value.point)
+				: bodyHit.Value.distance;
+			float enviroDistance = rb != null
+				? Vector3.Distance(rb.transform.position, enviroHits[0].point)
+				: enviroHits[0].distance;
+			return bodyDistance < enviroDistance ? bodyHit.Value.point : enviroHits[0].point;
+		}
+
+		return enviroHits.Count > 0 ? enviroHits[0].point : fallback;
+	}
+
 	void ResetWeaponAimPoint(bool resetPitch = false, bool resetHead = true)
 	{
 		// Debug.Log("resetting aim");
@@ -1425,12 +1340,8 @@ public class BodyController : MonoBehaviour
 		// Step 5: place the torso aim point forward from the head
 		Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
 
-		SetWeaponAimPointR(startedAimingRight
-			? torso
-			: (weaponStandbyPointR != null ? weaponStandbyPointR.position : torso));
-		SetWeaponAimPointL(startedAimingLeft
-			? torso
-			: (weaponStandbyPointL != null ? weaponStandbyPointL.position : torso));
+		SetWeaponAimPointR(torso);
+		SetWeaponAimPointL(torso);
 		torsoAimPoint.position = torso;
 		if (resetHead)
 		{
@@ -1473,7 +1384,10 @@ public class BodyController : MonoBehaviour
 
 		Vector3 origin = GetAimLockOrigin();
 		Quaternion invTorsoYaw = Quaternion.Inverse(Quaternion.Euler(0f, transform.eulerAngles.y, 0f));
-		storedRelativeAimRightLocal = invTorsoYaw * (weaponAimPoint.position - origin);
+		Vector3 aimPosition = movementStandbyVisualActive && hasMovementStandbyStoredAimRight
+			? movementStandbyStoredAimRight
+			: weaponAimPoint.position;
+		storedRelativeAimRightLocal = invTorsoYaw * (aimPosition - origin);
 		if (storedRelativeAimRightLocal.sqrMagnitude < 0.0001f)
 		{
 			storedRelativeAimRightLocal = Vector3.forward * 20f;
@@ -1490,7 +1404,10 @@ public class BodyController : MonoBehaviour
 
 		Vector3 origin = GetAimLockOrigin();
 		Quaternion invTorsoYaw = Quaternion.Inverse(Quaternion.Euler(0f, transform.eulerAngles.y, 0f));
-		storedRelativeAimLeftLocal = invTorsoYaw * (weaponAimPointL.position - origin);
+		Vector3 aimPosition = movementStandbyVisualActive && hasMovementStandbyStoredAimLeft
+			? movementStandbyStoredAimLeft
+			: weaponAimPointL.position;
+		storedRelativeAimLeftLocal = invTorsoYaw * (aimPosition - origin);
 		if (storedRelativeAimLeftLocal.sqrMagnitude < 0.0001f)
 		{
 			storedRelativeAimLeftLocal = Vector3.forward * 20f;
@@ -1522,6 +1439,108 @@ public class BodyController : MonoBehaviour
 		SetWeaponAimPointL(origin + (torsoYaw * storedRelativeAimLeftLocal));
 	}
 
+	private void AlignHeadAnchorToAimPoint(bool useLeft)
+	{
+		Transform head = useLeft
+			? (headObjectL != null ? headObjectL.transform : null)
+			: (headObject != null ? headObject.transform : null);
+		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
+		if (head == null || aimPoint == null)
+		{
+			return;
+		}
+
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : head.position;
+		Vector3 direction = aimPoint.position - origin;
+		if (direction.sqrMagnitude < 0.0001f)
+		{
+			return;
+		}
+
+		head.SetPositionAndRotation(origin, Quaternion.LookRotation(direction.normalized, Vector3.up));
+	}
+
+	private void SetupHeadAimTargetProxies()
+	{
+		if (isAI || headAimConstraint == null || weaponAimPoint == null || weaponAimPointL == null)
+		{
+			return;
+		}
+
+		var sources = headAimConstraint.data.sourceObjects;
+		if (sources.Count < 3)
+		{
+			return;
+		}
+
+		headAimTargetProxyRight = CreateHeadAimTargetProxy("HeadAimTargetProxy_R", weaponAimPoint.position);
+		headAimTargetProxyLeft = CreateHeadAimTargetProxy("HeadAimTargetProxy_L", weaponAimPointL.position);
+
+		var rightSource = sources[1];
+		var leftSource = sources[2];
+		rightSource.transform = headAimTargetProxyRight;
+		leftSource.transform = headAimTargetProxyLeft;
+		sources[1] = rightSource;
+		sources[2] = leftSource;
+		headAimConstraint.data.sourceObjects = sources;
+		headAimUsesProxyTargets = true;
+
+		RigBuilder rigBuilder = GetComponentInParent<RigBuilder>();
+		if (rigBuilder == null)
+		{
+			rigBuilder = GetComponentInChildren<RigBuilder>();
+		}
+		if (rigBuilder != null && rigBuilder.isActiveAndEnabled)
+		{
+			rigBuilder.Build();
+		}
+		SyncHeadAimTargetProxies();
+	}
+
+	private Transform CreateHeadAimTargetProxy(string proxyName, Vector3 position)
+	{
+		GameObject proxy = new GameObject(proxyName);
+		proxy.transform.SetParent(transform, true);
+		proxy.transform.position = position;
+		proxy.transform.rotation = transform.rotation;
+		return proxy.transform;
+	}
+
+	private void SyncHeadAimTargetProxies()
+	{
+		if (!headAimUsesProxyTargets)
+		{
+			return;
+		}
+
+		if (headAimTargetProxyRight != null)
+		{
+			headAimTargetProxyRight.position = GetHeadAimTargetProxyPosition(false);
+		}
+		if (headAimTargetProxyLeft != null)
+		{
+			headAimTargetProxyLeft.position = GetHeadAimTargetProxyPosition(true);
+		}
+	}
+
+	private Vector3 GetHeadAimTargetProxyPosition(bool useLeft)
+	{
+		if (movementStandbyVisualActive)
+		{
+			if (useLeft && isAimingLeft && headObjectAimOffsetL != null)
+			{
+				return headObjectAimOffsetL.position;
+			}
+			if (!useLeft && isAimingRight && headObjectAimOffset != null)
+			{
+				return headObjectAimOffset.position;
+			}
+		}
+
+		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
+		return aimPoint != null ? aimPoint.position : transform.position;
+	}
+
 	#endregion
 
 	private void ProcessAimScrollInput(bool scrollUp, bool scrollDown, bool isAIControls)
@@ -1547,35 +1566,7 @@ public class BodyController : MonoBehaviour
 
 	private void SwitchToLoweredSide(bool useLeftSide)
 	{
-		bool wasAimingRight = isAimingRight;
-		bool wasAimingLeft = isAimingLeft;
-
-		if (isAimingRight)
-		{
-			CaptureRelativeAimRight();
-			isAimingRight = false;
-			aimStartHoldTimerRight = 0f;
-			holdAimStartRightUntilInput = false;
-		}
-		if (isAimingLeft)
-		{
-			CaptureRelativeAimLeft();
-			isAimingLeft = false;
-			aimStartHoldTimerLeft = 0f;
-			holdAimStartLeftUntilInput = false;
-		}
-
-		keepCameraAimWithoutArm = true;
-		keepCameraAimUsesLeft = useLeftSide;
-		SetTorsoAimPointToCurrentView();
-		if (wasAimingRight || wasAimingLeft)
-		{
-			StartAimSwapBlend(1f, 0f, 0f);
-		}
-		else
-		{
-			SetAimStandbyImmediate();
-		}
+		EnterCenteredState();
 	}
 
 	private void SwitchToLoweredSideAI(bool useLeftSide)
@@ -1613,6 +1604,15 @@ public class BodyController : MonoBehaviour
 			&& !isAimingRight
 			&& !isAimingLeft
 			&& keepCameraAimUsesLeft == useLeftSide;
+	}
+
+	private bool IsPlayerCenteredAim()
+	{
+		return !isAI
+			&& !offhandMirrorActive
+			&& !isAimingRight
+			&& !isAimingLeft
+			&& !keepCameraAimWithoutArm;
 	}
 
 	private bool IsAimSourceRight()
@@ -1840,56 +1840,48 @@ public class BodyController : MonoBehaviour
 
 	void HandleScrollUp()
 	{
-		// Left already active: toggle left between aim and standby.
 		if (isAimingLeft)
 		{
-			ToggleAimingLeft();
+			RecenterLeftArm();
 			return;
 		}
 
-		// Switching to a remembered standby left arm should keep it lowered.
-		if (!startedAimingLeft && hasStoredRelativeAimLeft)
+		if (isAimingRight)
 		{
-			// Second scroll on already-selected lowered left arm should raise/aim it.
-			if (IsLoweredSideSelected(true))
+			if (startedAimingLeft)
 			{
-				ToggleAimingLeft();
+				FocusLeftArm();
 				return;
 			}
 
-			SwitchToLoweredSide(true);
+			ParkRightArmInCentered();
 			return;
 		}
 
-		// Otherwise activate/keep left as aimed.
-		ToggleAimingLeft();
+		FocusLeftArm();
 	}
 
 	void HandleScrollDown()
 	{
-		// Right already active: toggle right between aim and standby.
 		if (isAimingRight)
 		{
-			ToggleAimingRight();
+			RecenterRightArm();
 			return;
 		}
 
-		// Switching to a remembered standby right arm should keep it lowered.
-		if (!startedAimingRight && hasStoredRelativeAimRight)
+		if (isAimingLeft)
 		{
-			// Second scroll on already-selected lowered right arm should raise/aim it.
-			if (IsLoweredSideSelected(false))
+			if (startedAimingRight)
 			{
-				ToggleAimingRight();
+				FocusRightArm();
 				return;
 			}
 
-			SwitchToLoweredSide(false);
+			ParkLeftArmInCentered();
 			return;
 		}
 
-		// Otherwise activate/keep right as aimed.
-		ToggleAimingRight();
+		FocusRightArm();
 	}
 
 	void HandleMiddleClick()
@@ -2185,6 +2177,19 @@ public class BodyController : MonoBehaviour
 
 	private void DoReload()
 	{
+		if (!isAI && IsPlayerCenteredAim())
+		{
+			if (guns != null && guns.ActiveGun1 != null)
+			{
+				guns.ActiveGun1.StartReload();
+			}
+			if (gunsL != null && gunsL.ActiveGun1 != null)
+			{
+				gunsL.ActiveGun1.StartReload();
+			}
+			return;
+		}
+
 		if (IsActiveArmLeft())
 		{
 			if (gunsL != null && gunsL.ActiveGun1 != null)
@@ -2491,12 +2496,15 @@ public class BodyController : MonoBehaviour
 			}
 			else
 			{
+				RestoreMovementStandbyVisualAimPoints();
 				ExecutePhysicsBasedInputs();
 				GetAimPoint();
 				ApplyOffhandMirrorAimPoint();
 				DoRotation();
 				UpdatePendingMoveAimYaw();
 				UpdateAimSwapBlend();
+				ApplyMovementStandbyVisualPose();
+				SyncHeadAimTargetProxies();
 				UpdateStandbyElbowTargets();
 			}
 			doSiphoning();
@@ -2534,9 +2542,7 @@ public class BodyController : MonoBehaviour
 
 	private void ExecutePhysicsBasedInputs()
 	{
-		bool isActiveArmAiming = !isAI && IsActiveArmAiming();
-		bool isSlowWalking = isActiveArmAiming;
-		legs.speedMultiplier = isAI ? 1f : (isSlowWalking ? SlowMoveSpeedMultiplier : 1f);
+		legs.speedMultiplier = 1f;
 
 		if (legs.isCurrentVelocityLessThanMax())
 		{
@@ -2547,7 +2553,7 @@ public class BodyController : MonoBehaviour
 		}
 
 		float maxSpeed = legs.baseWalkSpeed * legs.getMoveSpeed();
-		float maxFireSpeed = maxSpeed * 0.5f;
+		float maxFireSpeed = maxSpeed * 0.7f;
 		if (rb.velocity.magnitude < maxFireSpeed)
 		{
 			if (input.getFire1()) FireWeapon1();
@@ -2757,6 +2763,67 @@ public class BodyController : MonoBehaviour
 		UpdateStandbyElbowTarget(elbowTargetL, weaponStandbyPointL, -1f, bodyRight, bodyForward);
 	}
 
+	private void ApplyMovementStandbyVisualPose()
+	{
+		if (!ShouldUseMovementStandbyVisualPose())
+		{
+			RestoreMovementStandbyVisualAimPoints();
+			return;
+		}
+
+		bool appliedAny = false;
+		if (weaponAimPoint != null && weaponStandbyPointR != null)
+		{
+			movementStandbyStoredAimRight = weaponAimPoint.position;
+			hasMovementStandbyStoredAimRight = true;
+			SetWeaponAimPointR(weaponStandbyPointR.position);
+			appliedAny = true;
+		}
+
+		if (weaponAimPointL != null && weaponStandbyPointL != null)
+		{
+			movementStandbyStoredAimLeft = weaponAimPointL.position;
+			hasMovementStandbyStoredAimLeft = true;
+			SetWeaponAimPointL(weaponStandbyPointL.position);
+			appliedAny = true;
+		}
+
+		movementStandbyVisualActive = appliedAny;
+	}
+
+	private void RestoreMovementStandbyVisualAimPoints()
+	{
+		if (!movementStandbyVisualActive)
+		{
+			return;
+		}
+
+		if (hasMovementStandbyStoredAimRight && weaponAimPoint != null)
+		{
+			SetWeaponAimPointR(movementStandbyStoredAimRight);
+		}
+		if (hasMovementStandbyStoredAimLeft && weaponAimPointL != null)
+		{
+			SetWeaponAimPointL(movementStandbyStoredAimLeft);
+		}
+
+		movementStandbyVisualActive = false;
+		hasMovementStandbyStoredAimRight = false;
+		hasMovementStandbyStoredAimLeft = false;
+	}
+
+	private bool ShouldUseMovementStandbyVisualPose()
+	{
+		if (isAI || !useStandbyPoseWhileMoving || rb == null || legs == null)
+		{
+			return false;
+		}
+
+		float maxSpeed = legs.baseWalkSpeed * legs.getMoveSpeed();
+		float maxFireSpeed = maxSpeed * 0.7f;
+		return rb.velocity.magnitude >= maxFireSpeed;
+	}
+
 	private void UpdateStandbyElbowTarget(Transform elbowTarget, Transform standbyTarget, float sideSign, Vector3 bodyRight, Vector3 bodyForward)
 	{
 		if (elbowTarget == null || standbyTarget == null)
@@ -2786,6 +2853,28 @@ public class BodyController : MonoBehaviour
 		}
 
 		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
+		return headObjectTransformCache.position + (combinedRot * Vector3.forward) * 20f;
+	}
+
+	private Vector3 GetBreakoutStartAimPoint(bool useLeft)
+	{
+		if (headObjectTransformCache == null)
+		{
+			float fallbackSign = useLeft ? -1f : 1f;
+			Quaternion fallbackYaw = Quaternion.Euler(0f, fallbackSign * breakoutAimYawOffset, 0f);
+			return transform.position + (fallbackYaw * transform.forward) * 20f;
+		}
+
+		float pitch = 0f;
+		if (aimCam != null)
+		{
+			pitch = aimCam.transform.localEulerAngles.x;
+			if (pitch > 180f) pitch -= 360f;
+		}
+
+		float sideSign = useLeft ? -1f : 1f;
+		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y + (sideSign * breakoutAimYawOffset), 0f);
 		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
 		return headObjectTransformCache.position + (combinedRot * Vector3.forward) * 20f;
 	}

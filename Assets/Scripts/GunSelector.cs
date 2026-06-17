@@ -357,6 +357,11 @@ public class GunSelector : MonoBehaviour
 			}
 		}
 
+		if (bodyController.IsCenteredAim)
+		{
+			return text;
+		}
+
 		bool selectedArmIsLeft = IsSelectedArmLeft();
 		if (bodyController.guns == this && !selectedArmIsLeft)
 		{
