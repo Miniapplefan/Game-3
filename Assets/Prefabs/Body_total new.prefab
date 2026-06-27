@@ -7419,7 +7419,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: field of view
-      value: 143.20163
+      value: 143.19614
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: near clip plane
@@ -9073,6 +9073,8 @@ MonoBehaviour:
   TimeToAim: 0
   isAimed: 0
   hitStunAmount: 0
+  hitStunDecayDelay: 0.1
+  FireReadinessState: 0
   headCollider: {fileID: 2857187715870912187}
   rightArm: {fileID: 2857187715870912128}
   rightLeg: {fileID: 2857187715870912173}
@@ -9159,6 +9161,7 @@ MonoBehaviour:
   dollarsIndicator: {fileID: 3031657074352096820}
   healthIndicator: {fileID: 5800292752704381977}
   overheatIndicator: {fileID: 5393581778885395106}
+  auraGripGauge: {fileID: 0}
 --- !u!114 &5359900809183358901
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9171,10 +9174,61 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3e7ad582351aa49bd8c614bea8131fce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseAuraTenth: 10
-  auraTenth: 10
-  auraDecayPerTickTenth: 1
-  auraDecayTick: 2
+  baseAura: 1
+  currentAura: 1
+  auraDecayRateCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.05
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0.05
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  currentAuraGrip: 0
+  maxAuraGrip: 3
+  auraGripGainMultiplier: 1
+  gripHalfLifeByAura:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 1
+      value: 3
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 4
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  gripDepletedThreshold: 0.01
+  minGripHalfLife: 0.01
 --- !u!54 &7396135337298073847 stripped
 Rigidbody:
   m_CorrespondingSourceObject: {fileID: 1214583892469341285, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}

@@ -18,6 +18,7 @@ public class Bullet : MonoBehaviour
     [SerializeField] float telegraphRadiusMultiplier = 1.1f;
     [SerializeField] int marchingCubesDamage = 1;
     [SerializeField] float telegraphMaxDistance = 0f;
+    [SerializeField] private BulletTimeChannel bulletTimeChannel = BulletTimeChannel.EnemyBullet;
 
     bool shouldTelegraph = false;
     bool isTelegraph = false;
@@ -69,7 +70,8 @@ public class Bullet : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        lifeTimer -= Time.deltaTime;
+        float deltaTime = BulletTimeManager.GetDeltaTime(bulletTimeChannel);
+        lifeTimer -= deltaTime;
         if (lifeTimer <= 0f)
         {
             Release();
@@ -77,7 +79,7 @@ public class Bullet : MonoBehaviour
         }
 
         Vector3 startPosition = transform.position;
-        Vector3 step = transform.forward * speed * Time.deltaTime;
+        Vector3 step = transform.forward * speed * deltaTime;
         Vector3 endPosition = startPosition + step;
 
         if (HandleCollision(startPosition, endPosition))

@@ -172,12 +172,14 @@ public class NPCBrain : MonoBehaviour
 
 		if (bodyState.hitStunAmount > 0f)
 		{
-			if (bodyState.TickHitStunDecayDelay(Time.deltaTime))
+			float hitReactionDeltaTime = BulletTimeManager.GetDeltaTime(BulletTimeChannel.EnemyHitReaction);
+			float hitReactionScale = BulletTimeManager.GetScale(BulletTimeChannel.EnemyHitReaction);
+			if (bodyState.TickHitStunDecayDelay(hitReactionDeltaTime))
 			{
 				return;
 			}
 
-			bodyState.hitStunAmount = Mathf.Max(0f, bodyState.hitStunAmount - 0.015f);
+			bodyState.hitStunAmount = Mathf.Max(0f, bodyState.hitStunAmount - 0.015f * hitReactionScale);
 			if (bodyState.hitStunAmount <= 0.01f)
 			{
 				bodyState.hitStunAmount = 0f;

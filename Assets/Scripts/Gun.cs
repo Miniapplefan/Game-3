@@ -180,7 +180,7 @@ public class Gun : MonoBehaviour
 			isFiringBurst = true;
 			if (SingleShot())
 			{
-				yield return new WaitForSeconds(gunData.shootConfig.burst_delayBetweenShots);
+				yield return WaitForWeaponSeconds(gunData.shootConfig.burst_delayBetweenShots);
 			}
 			else
 			{
@@ -503,7 +503,7 @@ public class Gun : MonoBehaviour
 	{
 		if (reloadTimeCache > 0)
 		{
-			reloadTimeCache -= Time.fixedDeltaTime;
+			reloadTimeCache -= GetWeaponDeltaTime();
 		}
 		else
 		{
@@ -534,6 +534,7 @@ public class Gun : MonoBehaviour
 		if (limb != null)
 		{
 			Vector3 impulse = shootSystem.transform.forward * gunData.shootConfig.impactForce;
+			float hitReactionScale = GetHitReactionScale(targetBodyController);
 			//Debug.Log("hit limb");
 			BodyController sourceBodyController = GetOwnerBodyController();
 			float damageAmount = gunData.shootConfig.rawDamage;
@@ -549,11 +550,11 @@ public class Gun : MonoBehaviour
 			limb.TakeDamage(damageInfo);
 			if (limb.limb.specificLimb == Limb.LimbID.rightArm)
 			{
-				hitRb.AddForce(impulse * 0.75f, ForceMode.Impulse);
+				hitRb.AddForce(impulse * 0.75f * hitReactionScale, ForceMode.Impulse);
 			}
 			else
 			{
-				hitRb.AddForce(impulse * 5f, ForceMode.Impulse);
+				hitRb.AddForce(impulse * 5f * hitReactionScale, ForceMode.Impulse);
 			}
 			// StartCoroutine(
 			// 		PlayHitParticles(hit));
@@ -563,7 +564,7 @@ public class Gun : MonoBehaviour
 		{
 			//Debug.Log("hit rb");
 			Vector3 impulse = shootSystem.transform.forward * gunData.shootConfig.impactForce;
-			hitRb.AddForce(impulse * 2.5f, ForceMode.Impulse);
+			hitRb.AddForce(impulse * 2.5f * GetHitReactionScale(targetBodyController), ForceMode.Impulse);
 		}
 		if (marchingCubes != null)
 		{
@@ -606,7 +607,7 @@ public class Gun : MonoBehaviour
 				EndPoint,
 				Mathf.Clamp01(1 - (remainingDistance / distance))
 			);
-			remainingDistance -= gunData.trailConfig.SimulationSpeed * Time.deltaTime;
+			remainingDistance -= gunData.trailConfig.SimulationSpeed * GetWeaponDeltaTime();
 
 			yield return null;
 		}
@@ -624,7 +625,7 @@ public class Gun : MonoBehaviour
 			//);
 		}
 
-		yield return new WaitForSeconds(gunData.trailConfig.Duration);
+		yield return WaitForWeaponSeconds(gunData.trailConfig.Duration);
 		yield return null;
 		instance.emitting = false;
 		instance.gameObject.SetActive(false);
@@ -642,7 +643,7 @@ public class Gun : MonoBehaviour
 		yield return null;
 		instance.Play();
 
-		yield return new WaitForSeconds(gunData.trailConfig.Duration);
+		yield return WaitForWeaponSeconds(gunData.trailConfig.Duration);
 		yield return null;
 		instance.gameObject.SetActive(false);
 		HitParticlePool.Release(instance);
@@ -687,7 +688,7 @@ public class Gun : MonoBehaviour
 		//Debug.Log(chargeTimeLeftCache);
 		if (chargeTimeLeftCache > 0)
 		{
-			chargeTimeLeftCache -= Time.deltaTime;
+			chargeTimeLeftCache -= GetWeaponDeltaTime();
 		}
 
 		if (isPowered && prepTimeLeftCache > 0 && isFiring)
@@ -698,7 +699,7 @@ public class Gun : MonoBehaviour
 				prepInd.localScale *= 1.05f;
 			}
 
-			prepTimeLeftCache -= Time.deltaTime;
+			prepTimeLeftCache -= GetWeaponDeltaTime();
 			Shoot();
 		}
 
@@ -720,6 +721,39 @@ public class Gun : MonoBehaviour
 		{
 			DrawLaser(shootSystem.transform.position, shootSystem.transform.position);
 		}
+	}
+
+	private BulletTimeChannel GetFireRateChannel()
+	{
+		return isAI ? BulletTimeChannel.EnemyFireRate : BulletTimeChannel.PlayerFireRate;
+	}
+
+	private float GetWeaponDeltaTime()
+	{
+		return BulletTimeManager.GetDeltaTime(GetFireRateChannel());
+	}
+
+	private IEnumerator WaitForWeaponSeconds(float seconds)
+	{
+		float elapsed = 0f;
+		float targetSeconds = Mathf.Max(0f, seconds);
+		while (elapsed < targetSeconds)
+		{
+			elapsed += GetWeaponDeltaTime();
+			yield return null;
+		}
+	}
+
+	private float GetHitReactionScale(BodyController targetBodyController)
+	{
+		if (targetBodyController == null)
+		{
+			return 1f;
+		}
+
+		return BulletTimeManager.GetScale(targetBodyController.isAI
+			? BulletTimeChannel.EnemyHitReaction
+			: BulletTimeChannel.PlayerActiveRagdoll);
 	}
 
 }

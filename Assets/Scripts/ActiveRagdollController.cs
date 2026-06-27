@@ -194,7 +194,7 @@ public class ActiveRagdollController : MonoBehaviour
 		if (Mathf.Abs(currentVelocity.x - lastVelocity.x) > Mathf.Epsilon)
 		{
 			// Apply a force to the head in the direction of the player's movement
-			RagdollHead.AddForce(currentVelocity * headStabilizerForce, ForceMode.Acceleration);
+			RagdollHead.AddForce(currentVelocity * headStabilizerForce * GetActiveRagdollScale(), ForceMode.Acceleration);
 		}
 
 		lastVelocity = currentVelocity;
@@ -260,24 +260,25 @@ public class ActiveRagdollController : MonoBehaviour
 		var rot = Quaternion.FromToRotation(RagdollSpineLowerRb.transform.up,
 											 Vector3.up).normalized;
 
+		float ragdollScale = GetActiveRagdollScale();
 		RagdollSpineLowerRb.AddTorque(new Vector3(0, rot.y, 0)
-															* uprightTorque * balancePercent);
+															* uprightTorque * balancePercent * ragdollScale);
 		// RagdollSpineLowerRb.AddTorque(new Vector3(rot.x, rot.y, rot.z)
 		// 											* uprightTorque * balancePercent);
 
 		var directionAnglePercent = Vector3.SignedAngle(RagdollSpineLowerRb.transform.forward,
 							TargetDirection, Vector3.up) / 180;
-		RagdollSpineLowerRb.AddRelativeTorque(0, directionAnglePercent * rotationTorque, 0);
+		RagdollSpineLowerRb.AddRelativeTorque(0, directionAnglePercent * rotationTorque * ragdollScale, 0);
 
 		if (RagdollSpineLowerRb.position.y < 1.31f)
 		{
-			RagdollSpineLowerRb.AddForce(new Vector3(0, upwardStabilizerForce, 0), ForceMode.Acceleration);
+			RagdollSpineLowerRb.AddForce(new Vector3(0, upwardStabilizerForce * ragdollScale, 0), ForceMode.Acceleration);
 
 			// RagdollSpineLowerRb.AddForce(new Vector3(0, 7000, 0), ForceMode.Force);
 		}
 		else if (RagdollSpineLowerRb.position.y < 1.32f)
 		{
-			RagdollSpineLowerRb.AddForce(new Vector3(0, -downwardStabilizerForce, 0), ForceMode.Acceleration);
+			RagdollSpineLowerRb.AddForce(new Vector3(0, -downwardStabilizerForce * ragdollScale, 0), ForceMode.Acceleration);
 		}
 	}
 
@@ -415,7 +416,7 @@ public class ActiveRagdollController : MonoBehaviour
 
 	private void UpdateMovementAimError(bool hasAimedArm)
 	{
-		float deltaTime = Mathf.Max(Time.deltaTime, 0.0001f);
+		float deltaTime = Mathf.Max(GetActiveRagdollDeltaTime(), 0.0001f);
 		if (!ShouldUseMovementAimError(hasAimedArm))
 		{
 			SettleMovementAimError(deltaTime);
@@ -447,7 +448,7 @@ public class ActiveRagdollController : MonoBehaviour
 
 	private void UpdateMovementShotError(bool hasAimedArm)
 	{
-		float deltaTime = Mathf.Max(Time.deltaTime, 0.0001f);
+		float deltaTime = Mathf.Max(GetActiveRagdollDeltaTime(), 0.0001f);
 		if (!ShouldUpdateMovementShotError(hasAimedArm))
 		{
 			SettleMovementShotError(deltaTime);
@@ -574,7 +575,22 @@ public class ActiveRagdollController : MonoBehaviour
 	private float GetAimFollowT(float followSpeed)
 	{
 		followSpeed = Mathf.Max(0f, followSpeed);
-		return Mathf.Clamp01(1f - Mathf.Exp(-followSpeed * Time.deltaTime));
+		return Mathf.Clamp01(1f - Mathf.Exp(-followSpeed * GetActiveRagdollDeltaTime()));
+	}
+
+	private BulletTimeChannel GetActiveRagdollChannel()
+	{
+		return ownerIsPlayer ? BulletTimeChannel.PlayerActiveRagdoll : BulletTimeChannel.EnemyHitReaction;
+	}
+
+	private float GetActiveRagdollScale()
+	{
+		return BulletTimeManager.GetScale(GetActiveRagdollChannel());
+	}
+
+	private float GetActiveRagdollDeltaTime()
+	{
+		return BulletTimeManager.GetDeltaTime(GetActiveRagdollChannel());
 	}
 
 	private bool TryGetAimRotation(Vector3 direction, Vector3 up, Quaternion fallback, out Quaternion rotation)

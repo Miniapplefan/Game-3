@@ -4,6 +4,12 @@ using UnityEngine;
 
 public class AuraManager : MonoBehaviour
 {
+    private enum AuraGripDrainMode
+    {
+        HalfLife,
+        Linear
+    }
+
     [SerializeField] private float baseAura = 1f;
     [SerializeField] private float currentAura = 1f;
     [SerializeField] private AnimationCurve auraDecayRateCurve = new AnimationCurve(
@@ -16,6 +22,11 @@ public class AuraManager : MonoBehaviour
     [SerializeField] private AnimationCurve gripHalfLifeByAura = new AnimationCurve(
         new Keyframe(1f, 3f),
         new Keyframe(4f, 1f)
+    );
+    [SerializeField] private AuraGripDrainMode auraGripDrainMode = AuraGripDrainMode.HalfLife;
+    [SerializeField] private AnimationCurve linearGripDrainRateByAura = new AnimationCurve(
+        new Keyframe(1f, 0.7f),
+        new Keyframe(4f, 2.1f)
     );
     [SerializeField] private float gripDepletedThreshold = 0.01f;
     [SerializeField] private float minGripHalfLife = 0.01f;
@@ -71,7 +82,8 @@ public class AuraManager : MonoBehaviour
             return;
         }
 
-        timeSinceLastAuraGain += Time.deltaTime;
+        float auraDeltaTime = BulletTimeManager.GetDeltaTime(BulletTimeChannel.PlayerAura);
+        timeSinceLastAuraGain += auraDeltaTime;
 
         if (currentAura <= baseAura)
         {
@@ -80,15 +92,42 @@ public class AuraManager : MonoBehaviour
         }
 
         float decayRate = Mathf.Max(0f, EvaluateDecayRate());
-        currentAura = Mathf.Max(baseAura, currentAura - decayRate * Time.deltaTime);
+        currentAura = Mathf.Max(baseAura, currentAura - decayRate * auraDeltaTime);
     }
 
     private void DecayAuraGrip()
     {
-        float halfLife = Mathf.Max(minGripHalfLife, EvaluateGripHalfLife());
-        float decayMultiplier = Mathf.Pow(0.5f, Time.deltaTime / halfLife);
-        currentAuraGrip *= decayMultiplier;
+        float auraGripDeltaTime = BulletTimeManager.GetDeltaTime(BulletTimeChannel.PlayerAuraGrip);
 
+        switch (auraGripDrainMode)
+        {
+            case AuraGripDrainMode.Linear:
+                DecayAuraGripLinear(auraGripDeltaTime);
+                break;
+            case AuraGripDrainMode.HalfLife:
+            default:
+                DecayAuraGripHalfLife(auraGripDeltaTime);
+                break;
+        }
+
+        ClearAuraGripIfDepleted();
+    }
+
+    private void DecayAuraGripHalfLife(float auraGripDeltaTime)
+    {
+        float halfLife = Mathf.Max(minGripHalfLife, EvaluateGripHalfLife());
+        float decayMultiplier = Mathf.Pow(0.5f, auraGripDeltaTime / halfLife);
+        currentAuraGrip *= decayMultiplier;
+    }
+
+    private void DecayAuraGripLinear(float auraGripDeltaTime)
+    {
+        float drainRate = Mathf.Max(0f, EvaluateLinearGripDrainRate());
+        currentAuraGrip -= drainRate * auraGripDeltaTime;
+    }
+
+    private void ClearAuraGripIfDepleted()
+    {
         if (currentAuraGrip <= gripDepletedThreshold)
         {
             currentAuraGrip = 0f;
@@ -116,6 +155,16 @@ public class AuraManager : MonoBehaviour
         return gripHalfLifeByAura.Evaluate(gripDecayAuraSnapshot);
     }
 
+    private float EvaluateLinearGripDrainRate()
+    {
+        if (linearGripDrainRateByAura == null || linearGripDrainRateByAura.length == 0)
+        {
+            return 0f;
+        }
+
+        return linearGripDrainRateByAura.Evaluate(gripDecayAuraSnapshot);
+    }
+
     private void ConfigureDecayCurveWrapMode()
     {
         if (auraDecayRateCurve != null)
@@ -126,6 +175,11 @@ public class AuraManager : MonoBehaviour
         if (gripHalfLifeByAura != null)
         {
             gripHalfLifeByAura.postWrapMode = WrapMode.ClampForever;
+        }
+
+        if (linearGripDrainRateByAura != null)
+        {
+            linearGripDrainRateByAura.postWrapMode = WrapMode.ClampForever;
         }
     }
 }

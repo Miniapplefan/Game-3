@@ -83,7 +83,9 @@ public class AgentMoveBehavior : MonoBehaviour
 		//NavMeshAgent.acceleration = bodyController.legs.getMoveSpeed() * (bodyController.legs.moveAcceleration / 5) * Time.deltaTime;
 		//NavMeshAgent.speed = 3.5f * bodyController.legs.getMoveSpeed();
 
-		NavMeshAgent.speed = 3.5f * bodyController.legs.getMoveSpeed();
+		NavMeshAgent.speed = 3.5f
+			* bodyController.legs.getMoveSpeed()
+			* BulletTimeManager.GetScale(BulletTimeChannel.EnemyMovement);
 
 		// Vector3 vel = NavMeshAgent.velocity * (bodyController.legs.getMoveSpeed() / 5);
 

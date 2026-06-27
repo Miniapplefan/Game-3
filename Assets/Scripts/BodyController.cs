@@ -142,12 +142,33 @@ public class BodyController : MonoBehaviour
 	[Header("Aim Start Hold")]
 	public float aimStartHoldDuration = 0.05f;
 	[SerializeField] private float breakoutAimYawOffset = 45f;
+	[SerializeField] private bool breakoutAimAssistEnabled = true;
+	[SerializeField] private LayerMask breakoutAimAssistLayerMask = 1 << 6;
+	[SerializeField, Min(0f)] private float breakoutAimAssistBoxSideWidth = 12f;
+	[SerializeField, Min(0f)] private float breakoutAimAssistBoxDepth = 20f;
+	[SerializeField, Min(0f)] private float breakoutAimAssistBoxHeight = 4f;
+	[SerializeField] private float breakoutAimAssistForwardOffset = 6f;
+	[SerializeField, Min(0f)] private float breakoutAimAssistSideOffset = 6f;
+	[SerializeField, Min(1)] private int breakoutAimAssistMaxTargets = 16;
+	[SerializeField] private bool breakoutAimAssistRequireLineOfSight = false;
+	[SerializeField] private LayerMask breakoutAimAssistObstructionMask = 1 << 9;
+	[Header("Breakout Aim Assist Debug")]
+	[SerializeField] private bool showBreakoutAimAssistDebugVolumes = true;
+	[SerializeField, Range(0f, 1f)] private float breakoutAimAssistDebugAlpha = 0.12f;
+	[SerializeField] private Color breakoutAimAssistDebugLeftColor = new Color(0.2f, 0.7f, 1f, 0.12f);
+	[SerializeField] private Color breakoutAimAssistDebugRightColor = new Color(1f, 0.5f, 0.2f, 0.12f);
 	private float aimStartHoldTimerRight = 0f;
 	private float aimStartHoldTimerLeft = 0f;
 	private Vector3 aimStartHoldPointRight;
 	private Vector3 aimStartHoldPointLeft;
 	private bool holdAimStartRightUntilInput = false;
 	private bool holdAimStartLeftUntilInput = false;
+	private Collider[] breakoutAimAssistColliders;
+	private readonly List<BodyController> breakoutAimAssistBodies = new List<BodyController>();
+	private GameObject breakoutAimAssistDebugLeftVolume;
+	private GameObject breakoutAimAssistDebugRightVolume;
+	private Material breakoutAimAssistDebugLeftMaterial;
+	private Material breakoutAimAssistDebugRightMaterial;
 	[Header("Aim Swap Blend")]
 	public float aimSwapDuration = 0.1f;
 	public AnimationCurve aimSwapCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
@@ -155,6 +176,8 @@ public class BodyController : MonoBehaviour
 	private float aimSwapElapsed = 0f;
 	private Vector3 aimSwapStartWeights;
 	private Vector3 aimSwapTargetWeights;
+	private bool bulletTimeTriggerPending = false;
+	private bool bulletTimeTriggeredForAimSwap = false;
 	[Header("Aim Yaw Clamp")]
 	public float aimYawLimit = 90f;
 	public float aimYawFollowSpeedMin = 60f;
@@ -902,6 +925,7 @@ public class BodyController : MonoBehaviour
 
 		bool wasBrokenOut = startedAimingRight;
 		bool restoringParkedAim = wasBrokenOut || hasStoredRelativeAimRight;
+		bool shouldTriggerBulletTime = false;
 		if (!startedAimingRight)
 		{
 			startedAimingRight = true;
@@ -910,7 +934,8 @@ public class BodyController : MonoBehaviour
 		if (!wasBrokenOut && !hasStoredRelativeAimRight)
 		{
 			forceAimToTorsoRight = true;
-			aimStartHoldPointRight = GetBreakoutStartAimPoint(false);
+			aimStartHoldPointRight = GetBreakoutStartAimPoint(false, out bool foundBreakoutAimAssistTarget, out _);
+			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
 			aimStartHoldTimerRight = aimStartHoldDuration;
 			holdAimStartRightUntilInput = true;
 			SetWeaponAimPointR(aimStartHoldPointRight);
@@ -921,7 +946,18 @@ public class BodyController : MonoBehaviour
 			forceAimToTorsoRight = false;
 			aimStartHoldTimerRight = 0f;
 			holdAimStartRightUntilInput = false;
-			ApplyRelativeAimRight();
+			if (TryGetAssistedBreakoutStartAimPoint(false, out Vector3 assistedAimPoint, out bool foundBreakoutAimAssistTarget))
+			{
+				aimStartHoldPointRight = assistedAimPoint;
+				aimStartHoldTimerRight = aimStartHoldDuration;
+				holdAimStartRightUntilInput = true;
+				SetWeaponAimPointR(aimStartHoldPointRight);
+			}
+			else
+			{
+				ApplyRelativeAimRight();
+			}
+			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
 			if (restoringParkedAim)
 			{
 				AlignHeadAnchorToAimPoint(false);
@@ -929,6 +965,10 @@ public class BodyController : MonoBehaviour
 		}
 
 		StartAimSwapBlend(0f, 1f, startedAimingLeft ? 0.7f : 0f);
+		if (shouldTriggerBulletTime)
+		{
+			QueueBulletTimeTriggerForAimSwap();
+		}
 	}
 
 	private void FocusLeftArm()
@@ -948,6 +988,7 @@ public class BodyController : MonoBehaviour
 
 		bool wasBrokenOut = startedAimingLeft;
 		bool restoringParkedAim = wasBrokenOut || hasStoredRelativeAimLeft;
+		bool shouldTriggerBulletTime = false;
 		if (!startedAimingLeft)
 		{
 			startedAimingLeft = true;
@@ -962,7 +1003,8 @@ public class BodyController : MonoBehaviour
 					headObjectTransformCache.position,
 					GetTorsoYawPitchRotation());
 			}
-			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true);
+			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true, out bool foundBreakoutAimAssistTarget, out _);
+			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
 			aimStartHoldTimerLeft = aimStartHoldDuration;
 			holdAimStartLeftUntilInput = true;
 			SetWeaponAimPointL(aimStartHoldPointLeft);
@@ -973,7 +1015,18 @@ public class BodyController : MonoBehaviour
 			forceAimToTorsoLeft = false;
 			aimStartHoldTimerLeft = 0f;
 			holdAimStartLeftUntilInput = false;
-			ApplyRelativeAimLeft();
+			if (TryGetAssistedBreakoutStartAimPoint(true, out Vector3 assistedAimPoint, out bool foundBreakoutAimAssistTarget))
+			{
+				aimStartHoldPointLeft = assistedAimPoint;
+				aimStartHoldTimerLeft = aimStartHoldDuration;
+				holdAimStartLeftUntilInput = true;
+				SetWeaponAimPointL(aimStartHoldPointLeft);
+			}
+			else
+			{
+				ApplyRelativeAimLeft();
+			}
+			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
 			if (restoringParkedAim)
 			{
 				AlignHeadAnchorToAimPoint(true);
@@ -981,6 +1034,10 @@ public class BodyController : MonoBehaviour
 		}
 
 		StartAimSwapBlend(0f, startedAimingRight ? 0.7f : 0f, 1f);
+		if (shouldTriggerBulletTime)
+		{
+			QueueBulletTimeTriggerForAimSwap();
+		}
 	}
 
 	private void RecenterRightArm()
@@ -1037,6 +1094,8 @@ public class BodyController : MonoBehaviour
 		isAimingLeft = false;
 		keepCameraAimWithoutArm = false;
 		keepCameraAimUsesLeft = false;
+		bulletTimeTriggerPending = false;
+		bulletTimeTriggeredForAimSwap = false;
 		if (!startedAimingRight)
 		{
 			hasStoredRelativeAimRight = false;
@@ -1842,7 +1901,7 @@ public class BodyController : MonoBehaviour
 	{
 		if (isAimingLeft)
 		{
-			RecenterLeftArm();
+			TriggerBulletTimeForVisibleBreakoutTargets(true);
 			return;
 		}
 
@@ -1854,7 +1913,7 @@ public class BodyController : MonoBehaviour
 				return;
 			}
 
-			ParkRightArmInCentered();
+			FocusLeftArm();
 			return;
 		}
 
@@ -1865,7 +1924,7 @@ public class BodyController : MonoBehaviour
 	{
 		if (isAimingRight)
 		{
-			RecenterRightArm();
+			TriggerBulletTimeForVisibleBreakoutTargets(false);
 			return;
 		}
 
@@ -1877,7 +1936,7 @@ public class BodyController : MonoBehaviour
 				return;
 			}
 
-			ParkLeftArmInCentered();
+			FocusRightArm();
 			return;
 		}
 
@@ -1962,6 +2021,7 @@ public class BodyController : MonoBehaviour
 		float knockbackScale = !backTooCloseToWall ? 1f / 6f : 1f / 8f;
 		Vector3 knockbackForce = force * knockbackScale * (1 - legs.getTagging()) * GetKnockbackFromLimb(l);
 		knockbackForce += GetRandomPerpendicularKnockbackForce(knockbackForce);
+		knockbackForce *= BulletTimeManager.GetScale(isAI ? BulletTimeChannel.EnemyHitReaction : BulletTimeChannel.PlayerActiveRagdoll);
 		rb.AddForce(knockbackForce);
 		knockbackTimer = minKnockbackDuration;
 	}
@@ -2208,17 +2268,18 @@ public class BodyController : MonoBehaviour
 	private void setJointStrength()
 	{
 		// float overheated = 1f;
+		float ragdollScale = BulletTimeManager.GetScale(BulletTimeChannel.EnemyHitReaction);
 
 		tempJoint = upperTorsoJoint.slerpDrive;
-		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 100000) + 2000, 1000, 100000);
+		tempJoint.positionSpring = Mathf.Clamp((((1 - bodyState.hitStunAmount) * 100000) + 2000) * ragdollScale, 1000, 100000);
 		upperTorsoJoint.slerpDrive = tempJoint;
 
 		tempJoint = middleTorsoJoint.slerpDrive;
-		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 100000) + 2000, 1000, 100000);
+		tempJoint.positionSpring = Mathf.Clamp((((1 - bodyState.hitStunAmount) * 100000) + 2000) * ragdollScale, 1000, 100000);
 		middleTorsoJoint.slerpDrive = tempJoint;
 
 		tempJoint = upperRightArmJoint.slerpDrive;
-		tempJoint.positionSpring = Mathf.Clamp(((1 - bodyState.hitStunAmount) * 200000) + 2000, 1000, 100000);
+		tempJoint.positionSpring = Mathf.Clamp((((1 - bodyState.hitStunAmount) * 200000) + 2000) * ragdollScale, 1000, 100000);
 		upperRightArmJoint.slerpDrive = tempJoint;
 
 		//TODO Temporary tagging gauge visual
@@ -2480,6 +2541,7 @@ public class BodyController : MonoBehaviour
 	// Update is called once per frame
 	void Update()
 	{
+		UpdateBreakoutAimAssistDebugVolumes();
 	}
 
 	private void FixedUpdate()
@@ -2542,7 +2604,7 @@ public class BodyController : MonoBehaviour
 
 	private void ExecutePhysicsBasedInputs()
 	{
-		legs.speedMultiplier = 1f;
+		legs.speedMultiplier = BulletTimeManager.GetScale(BulletTimeChannel.PlayerMovement);
 
 		if (legs.isCurrentVelocityLessThanMax())
 		{
@@ -2857,15 +2919,22 @@ public class BodyController : MonoBehaviour
 		return headObjectTransformCache.position + (combinedRot * Vector3.forward) * 20f;
 	}
 
-	private Vector3 GetBreakoutStartAimPoint(bool useLeft)
+	private Vector3 GetBreakoutStartAimPoint(bool useLeft, out bool foundAimAssistTarget, out bool usedAimAssist)
 	{
-		if (headObjectTransformCache == null)
-		{
-			float fallbackSign = useLeft ? -1f : 1f;
-			Quaternion fallbackYaw = Quaternion.Euler(0f, fallbackSign * breakoutAimYawOffset, 0f);
-			return transform.position + (fallbackYaw * transform.forward) * 20f;
-		}
+		float sideSign = useLeft ? -1f : 1f;
+		Quaternion baseTorsoYaw = GetBreakoutAimAssistYawRotation();
+		usedAimAssist = TryGetBreakoutAimAssistYaw(
+			useLeft,
+			baseTorsoYaw,
+			out float assistedYawOffset,
+			out foundAimAssistTarget,
+			out int unusedVisibleTargetCount);
+		float yawOffset = usedAimAssist ? assistedYawOffset : sideSign * breakoutAimYawOffset;
+		return GetBreakoutStartAimPointFromYawOffset(yawOffset);
+	}
 
+	private Vector3 GetBreakoutStartAimPointFromYawOffset(float yawOffset)
+	{
 		float pitch = 0f;
 		if (aimCam != null)
 		{
@@ -2873,10 +2942,423 @@ public class BodyController : MonoBehaviour
 			if (pitch > 180f) pitch -= 360f;
 		}
 
-		float sideSign = useLeft ? -1f : 1f;
-		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y + (sideSign * breakoutAimYawOffset), 0f);
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
+		Quaternion torsoYaw = GetBreakoutAimAssistYawRotation() * Quaternion.Euler(0f, yawOffset, 0f);
 		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
-		return headObjectTransformCache.position + (combinedRot * Vector3.forward) * 20f;
+		return origin + (combinedRot * Vector3.forward) * 20f;
+	}
+
+	private bool TryGetAssistedBreakoutStartAimPoint(bool useLeft, out Vector3 aimPoint, out bool foundAimAssistTarget)
+	{
+		aimPoint = GetBreakoutStartAimPoint(useLeft, out foundAimAssistTarget, out bool usedAimAssist);
+		return usedAimAssist;
+	}
+
+	private bool HasBreakoutAimAssistVisibleTarget(bool useLeft)
+	{
+		Quaternion baseTorsoYaw = GetBreakoutAimAssistYawRotation();
+		TryGetBreakoutAimAssistYaw(
+			useLeft,
+			baseTorsoYaw,
+			out float unusedYawOffset,
+			out bool foundVisibleTarget,
+			out int unusedVisibleTargetCount);
+		return foundVisibleTarget;
+	}
+
+	private void TriggerBulletTimeForVisibleBreakoutTargets(bool useLeft)
+	{
+		if (!TryGetSameDirectionScrollBreakoutAssist(
+			useLeft,
+			out Vector3 assistedAimPoint,
+			out bool foundVisibleTarget,
+			out int visibleTargetCount))
+		{
+			if (foundVisibleTarget)
+			{
+				QueueBulletTimeTriggerForAimSwap();
+			}
+			return;
+		}
+
+		if (visibleTargetCount == 1)
+		{
+			if (useLeft)
+			{
+				aimStartHoldPointLeft = assistedAimPoint;
+				aimStartHoldTimerLeft = aimStartHoldDuration;
+				holdAimStartLeftUntilInput = true;
+				SetWeaponAimPointL(aimStartHoldPointLeft);
+				AlignHeadAnchorToAimPoint(true);
+			}
+			else
+			{
+				aimStartHoldPointRight = assistedAimPoint;
+				aimStartHoldTimerRight = aimStartHoldDuration;
+				holdAimStartRightUntilInput = true;
+				SetWeaponAimPointR(aimStartHoldPointRight);
+				AlignHeadAnchorToAimPoint(false);
+			}
+		}
+
+		QueueBulletTimeTriggerForAimSwap();
+	}
+
+	private bool TryGetSameDirectionScrollBreakoutAssist(
+		bool useLeft,
+		out Vector3 aimPoint,
+		out bool foundVisibleTarget,
+		out int visibleTargetCount)
+	{
+		aimPoint = Vector3.zero;
+		Quaternion baseTorsoYaw = GetBreakoutAimAssistYawRotation();
+		bool usedAimAssist = TryGetBreakoutAimAssistYaw(
+			useLeft,
+			baseTorsoYaw,
+			out float assistedYawOffset,
+			out foundVisibleTarget,
+			out visibleTargetCount);
+		if (!usedAimAssist)
+		{
+			return false;
+		}
+
+		aimPoint = GetBreakoutStartAimPointFromYawOffset(assistedYawOffset);
+		return true;
+	}
+
+	private Quaternion GetBreakoutAimAssistYawRotation()
+	{
+		return Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+	}
+
+	private bool TryGetBreakoutAimAssistYaw(
+		bool useLeft,
+		Quaternion torsoYaw,
+		out float yawOffset,
+		out bool foundVisibleTarget,
+		out int visibleTargetCount)
+	{
+		yawOffset = 0f;
+		foundVisibleTarget = false;
+		visibleTargetCount = 0;
+		if (isAI || !breakoutAimAssistEnabled || breakoutAimAssistLayerMask.value == 0)
+		{
+			return false;
+		}
+
+		EnsureBreakoutAimAssistBuffer();
+		if (!TryGetBreakoutAimAssistBox(useLeft, torsoYaw, out Vector3 boxCenter, out Vector3 halfExtents))
+		{
+			return false;
+		}
+
+		int count = Physics.OverlapBoxNonAlloc(
+			boxCenter,
+			halfExtents,
+			breakoutAimAssistColliders,
+			torsoYaw,
+			breakoutAimAssistLayerMask,
+			QueryTriggerInteraction.Collide);
+		if (count <= 0)
+		{
+			return false;
+		}
+
+		breakoutAimAssistBodies.Clear();
+		Vector3 origin = GetAimLockOrigin();
+		Vector3 directionSum = Vector3.zero;
+		for (int i = 0; i < count; i++)
+		{
+			BodyController targetBody = GetValidBreakoutAimAssistBody(breakoutAimAssistColliders[i]);
+			if (targetBody == null || breakoutAimAssistBodies.Contains(targetBody))
+			{
+				continue;
+			}
+
+			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(targetBody);
+			bool hasLineOfSight = !IsBreakoutAimAssistTargetObstructed(origin, targetPoint);
+			if (breakoutAimAssistRequireLineOfSight && !hasLineOfSight)
+			{
+				continue;
+			}
+
+			Vector3 direction = targetPoint - origin;
+			direction.y = 0f;
+			if (direction.sqrMagnitude <= 0.0001f)
+			{
+				continue;
+			}
+
+			Vector3 localTargetDirection = Quaternion.Inverse(torsoYaw) * direction;
+			if ((useLeft && localTargetDirection.x >= -0.01f) || (!useLeft && localTargetDirection.x <= 0.01f))
+			{
+				continue;
+			}
+
+			if (hasLineOfSight)
+			{
+				foundVisibleTarget = true;
+				visibleTargetCount++;
+			}
+
+			breakoutAimAssistBodies.Add(targetBody);
+			directionSum += direction.normalized;
+		}
+
+		breakoutAimAssistBodies.Clear();
+		if (directionSum.sqrMagnitude <= 0.0001f)
+		{
+			return false;
+		}
+
+		Vector3 localDirection = Quaternion.Inverse(torsoYaw) * directionSum.normalized;
+		localDirection.y = 0f;
+		if (localDirection.sqrMagnitude <= 0.0001f)
+		{
+			return false;
+		}
+
+		yawOffset = Mathf.Atan2(localDirection.x, localDirection.z) * Mathf.Rad2Deg;
+		if ((useLeft && yawOffset >= -0.01f) || (!useLeft && yawOffset <= 0.01f))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	private bool TryGetBreakoutAimAssistBox(
+		bool useLeft,
+		Quaternion yawRotation,
+		out Vector3 boxCenter,
+		out Vector3 halfExtents)
+	{
+		float sideSign = useLeft ? -1f : 1f;
+		Vector3 torsoForward = yawRotation * Vector3.forward;
+		Vector3 torsoRight = yawRotation * Vector3.right;
+		boxCenter = transform.position
+			+ Vector3.up * (Mathf.Max(0f, breakoutAimAssistBoxHeight) * 0.5f)
+			+ torsoForward * breakoutAimAssistForwardOffset
+			+ torsoRight * (sideSign * breakoutAimAssistSideOffset);
+		halfExtents = new Vector3(
+			Mathf.Max(0f, breakoutAimAssistBoxSideWidth) * 0.5f,
+			Mathf.Max(0f, breakoutAimAssistBoxHeight) * 0.5f,
+			Mathf.Max(0f, breakoutAimAssistBoxDepth) * 0.5f);
+		return halfExtents.x > 0f && halfExtents.y > 0f && halfExtents.z > 0f;
+	}
+
+	private void UpdateBreakoutAimAssistDebugVolumes()
+	{
+		if (isAI || !showBreakoutAimAssistDebugVolumes || !breakoutAimAssistEnabled)
+		{
+			SetBreakoutAimAssistDebugVolumesActive(false);
+			return;
+		}
+
+		EnsureBreakoutAimAssistDebugVolume(
+			ref breakoutAimAssistDebugLeftVolume,
+			ref breakoutAimAssistDebugLeftMaterial,
+			"Breakout Aim Assist Left Volume");
+		EnsureBreakoutAimAssistDebugVolume(
+			ref breakoutAimAssistDebugRightVolume,
+			ref breakoutAimAssistDebugRightMaterial,
+			"Breakout Aim Assist Right Volume");
+
+		Quaternion yawRotation = GetBreakoutAimAssistYawRotation();
+		UpdateBreakoutAimAssistDebugVolume(
+			breakoutAimAssistDebugLeftVolume,
+			breakoutAimAssistDebugLeftMaterial,
+			true,
+			yawRotation,
+			breakoutAimAssistDebugLeftColor);
+		UpdateBreakoutAimAssistDebugVolume(
+			breakoutAimAssistDebugRightVolume,
+			breakoutAimAssistDebugRightMaterial,
+			false,
+			yawRotation,
+			breakoutAimAssistDebugRightColor);
+	}
+
+	private void EnsureBreakoutAimAssistDebugVolume(
+		ref GameObject volumeObject,
+		ref Material volumeMaterial,
+		string volumeName)
+	{
+		if (volumeObject != null)
+		{
+			return;
+		}
+
+		volumeObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+		volumeObject.name = volumeName;
+		volumeObject.transform.SetParent(transform, true);
+
+		Collider volumeCollider = volumeObject.GetComponent<Collider>();
+		if (volumeCollider != null)
+		{
+			Destroy(volumeCollider);
+		}
+
+		Shader shader = Shader.Find("Standard");
+		if (shader == null)
+		{
+			shader = Shader.Find("Universal Render Pipeline/Lit");
+		}
+		if (shader == null)
+		{
+			shader = Shader.Find("Sprites/Default");
+		}
+		if (shader == null)
+		{
+			volumeObject.SetActive(false);
+			return;
+		}
+
+		volumeMaterial = new Material(shader);
+		ConfigureBreakoutAimAssistDebugMaterial(volumeMaterial, Color.white);
+
+		MeshRenderer renderer = volumeObject.GetComponent<MeshRenderer>();
+		if (renderer != null)
+		{
+			renderer.sharedMaterial = volumeMaterial;
+			renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+			renderer.receiveShadows = false;
+		}
+	}
+
+	private void UpdateBreakoutAimAssistDebugVolume(
+		GameObject volumeObject,
+		Material volumeMaterial,
+		bool useLeft,
+		Quaternion yawRotation,
+		Color color)
+	{
+		if (volumeObject == null)
+		{
+			return;
+		}
+
+		if (!TryGetBreakoutAimAssistBox(useLeft, yawRotation, out Vector3 boxCenter, out Vector3 halfExtents))
+		{
+			volumeObject.SetActive(false);
+			return;
+		}
+
+		volumeObject.SetActive(true);
+		volumeObject.transform.SetPositionAndRotation(boxCenter, yawRotation);
+		volumeObject.transform.localScale = halfExtents * 2f;
+		ConfigureBreakoutAimAssistDebugMaterial(volumeMaterial, color);
+	}
+
+	private void ConfigureBreakoutAimAssistDebugMaterial(Material material, Color color)
+	{
+		if (material == null)
+		{
+			return;
+		}
+
+		color.a = Mathf.Clamp01(breakoutAimAssistDebugAlpha);
+		material.color = color;
+		if (material.HasProperty("_BaseColor"))
+		{
+			material.SetColor("_BaseColor", color);
+		}
+		if (material.HasProperty("_Color"))
+		{
+			material.SetColor("_Color", color);
+		}
+		if (material.HasProperty("_Mode"))
+		{
+			material.SetFloat("_Mode", 3f);
+		}
+		if (material.HasProperty("_Surface"))
+		{
+			material.SetFloat("_Surface", 1f);
+		}
+
+		material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+		material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+		material.SetInt("_ZWrite", 0);
+		material.DisableKeyword("_ALPHATEST_ON");
+		material.EnableKeyword("_ALPHABLEND_ON");
+		material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+		material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+	}
+
+	private void SetBreakoutAimAssistDebugVolumesActive(bool active)
+	{
+		if (breakoutAimAssistDebugLeftVolume != null)
+		{
+			breakoutAimAssistDebugLeftVolume.SetActive(active);
+		}
+		if (breakoutAimAssistDebugRightVolume != null)
+		{
+			breakoutAimAssistDebugRightVolume.SetActive(active);
+		}
+	}
+
+	private void EnsureBreakoutAimAssistBuffer()
+	{
+		int targetCount = Mathf.Max(1, breakoutAimAssistMaxTargets);
+		if (breakoutAimAssistColliders == null || breakoutAimAssistColliders.Length != targetCount)
+		{
+			breakoutAimAssistColliders = new Collider[targetCount];
+		}
+	}
+
+	private BodyController GetValidBreakoutAimAssistBody(Collider candidateCollider)
+	{
+		if (candidateCollider == null)
+		{
+			return null;
+		}
+
+		BodyController targetBody = candidateCollider.GetComponentInParent<BodyController>();
+		if (targetBody == null
+			|| targetBody == this
+			|| !targetBody.isAI
+			|| targetBody.isDead
+			|| (targetBody.bodyState != null && targetBody.bodyState.isDead))
+		{
+			return null;
+		}
+
+		return targetBody;
+	}
+
+	private Vector3 GetBreakoutAimAssistTargetPoint(BodyController targetBody)
+	{
+		if (targetBody != null
+			&& targetBody.bodyState != null
+			&& targetBody.bodyState.headCollider != null)
+		{
+			return targetBody.bodyState.headCollider.bounds.center;
+		}
+
+		return targetBody != null ? targetBody.transform.position : Vector3.zero;
+	}
+
+	private bool IsBreakoutAimAssistTargetObstructed(Vector3 origin, Vector3 targetPoint)
+	{
+		if (breakoutAimAssistObstructionMask.value == 0)
+		{
+			return false;
+		}
+
+		Vector3 direction = targetPoint - origin;
+		float distance = direction.magnitude;
+		if (distance <= 0.0001f)
+		{
+			return false;
+		}
+
+		return Physics.Raycast(
+			origin,
+			direction / distance,
+			distance,
+			breakoutAimAssistObstructionMask,
+			QueryTriggerInteraction.Ignore);
 	}
 
 	private Quaternion GetTorsoYawPitchRotation()
@@ -3118,7 +3600,50 @@ public class BodyController : MonoBehaviour
 		{
 			ApplyAimSwapWeights(targetW0, targetW1, targetW2);
 			isAimSwapInProgress = false;
+			TryTriggerQueuedBulletTime(1f);
 		}
+	}
+
+	private void QueueBulletTimeTriggerForAimSwap()
+	{
+		if (isAI)
+		{
+			return;
+		}
+
+		bulletTimeTriggerPending = true;
+		bulletTimeTriggeredForAimSwap = false;
+		if (!isAimSwapInProgress || aimSwapDuration <= 0f)
+		{
+			TriggerQueuedBulletTime();
+		}
+	}
+
+	private void TryTriggerQueuedBulletTime(float aimSwapProgress)
+	{
+		if (!bulletTimeTriggerPending || bulletTimeTriggeredForAimSwap)
+		{
+			return;
+		}
+
+		if (aimSwapProgress < BulletTimeManager.TriggerBlendProgress)
+		{
+			return;
+		}
+
+		TriggerQueuedBulletTime();
+	}
+
+	private void TriggerQueuedBulletTime()
+	{
+		if (!bulletTimeTriggerPending || bulletTimeTriggeredForAimSwap)
+		{
+			return;
+		}
+
+		bulletTimeTriggeredForAimSwap = true;
+		bulletTimeTriggerPending = false;
+		BulletTimeManager.Trigger();
 	}
 
 	private void SetAimStandbyImmediate()
@@ -3152,6 +3677,7 @@ public class BodyController : MonoBehaviour
 
 		aimSwapElapsed += Time.deltaTime;
 		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
+		TryTriggerQueuedBulletTime(t);
 		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
 		Vector3 w = Vector3.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
 		ApplyAimSwapWeights(w.x, w.y, w.z);
