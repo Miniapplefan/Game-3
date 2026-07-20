@@ -141,6 +141,7 @@ public class BodyController : MonoBehaviour
 	private bool offhandMirrorRestoreOffhandOnRelease = true;
 	[Header("Aim Start Hold")]
 	public float aimStartHoldDuration = 0.05f;
+	[SerializeField, Min(0f)] private float aimStartReleaseInputDeadzone = 0.01f;
 	[SerializeField] private float breakoutAimYawOffset = 45f;
 	[SerializeField] private bool breakoutAimAssistEnabled = true;
 	[SerializeField] private LayerMask breakoutAimAssistLayerMask = 1 << 6;
@@ -152,6 +153,7 @@ public class BodyController : MonoBehaviour
 	[SerializeField, Min(1)] private int breakoutAimAssistMaxTargets = 16;
 	[SerializeField] private bool breakoutAimAssistRequireLineOfSight = false;
 	[SerializeField] private LayerMask breakoutAimAssistObstructionMask = 1 << 9;
+	private Vector2 fixedTickHeadRotation;
 	[Header("Breakout Aim Assist Debug")]
 	[SerializeField] private bool showBreakoutAimAssistDebugVolumes = true;
 	[SerializeField, Range(0f, 1f)] private float breakoutAimAssistDebugAlpha = 0.12f;
@@ -835,7 +837,16 @@ public class BodyController : MonoBehaviour
 
 	private void DoRotation()
 	{
-		Vector2 headRot = input.getHeadRotation();
+		Vector2 headRot = fixedTickHeadRotation;
+		if ((IsAimSourceRight() && holdAimStartRightUntilInput)
+			|| (IsAimSourceLeft() && holdAimStartLeftUntilInput))
+		{
+			// The assisted direction is the manual-aim baseline. Do not let moving-yaw
+			// smoothing or head input drift away from it before the handoff occurs.
+			lastHeadRotation = Vector2.zero;
+			smoothedMovingAimYaw = 0f;
+			return;
+		}
 		lastHeadRotation = headRot;
 		bool isArmAiming = isAimingRight || isAimingLeft;
 		if (isArmAiming || keepCameraAimWithoutArm)
@@ -936,10 +947,7 @@ public class BodyController : MonoBehaviour
 			forceAimToTorsoRight = true;
 			aimStartHoldPointRight = GetBreakoutStartAimPoint(false, out bool foundBreakoutAimAssistTarget, out _);
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
-			aimStartHoldTimerRight = aimStartHoldDuration;
-			holdAimStartRightUntilInput = true;
-			SetWeaponAimPointR(aimStartHoldPointRight);
-			AlignHeadAnchorToAimPoint(false);
+			BeginAimStartHold(false, aimStartHoldPointRight);
 		}
 		else
 		{
@@ -949,9 +957,7 @@ public class BodyController : MonoBehaviour
 			if (TryGetAssistedBreakoutStartAimPoint(false, out Vector3 assistedAimPoint, out bool foundBreakoutAimAssistTarget))
 			{
 				aimStartHoldPointRight = assistedAimPoint;
-				aimStartHoldTimerRight = aimStartHoldDuration;
-				holdAimStartRightUntilInput = true;
-				SetWeaponAimPointR(aimStartHoldPointRight);
+				BeginAimStartHold(false, aimStartHoldPointRight);
 			}
 			else
 			{
@@ -1005,10 +1011,7 @@ public class BodyController : MonoBehaviour
 			}
 			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true, out bool foundBreakoutAimAssistTarget, out _);
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
-			aimStartHoldTimerLeft = aimStartHoldDuration;
-			holdAimStartLeftUntilInput = true;
-			SetWeaponAimPointL(aimStartHoldPointLeft);
-			AlignHeadAnchorToAimPoint(true);
+			BeginAimStartHold(true, aimStartHoldPointLeft);
 		}
 		else
 		{
@@ -1018,9 +1021,7 @@ public class BodyController : MonoBehaviour
 			if (TryGetAssistedBreakoutStartAimPoint(true, out Vector3 assistedAimPoint, out bool foundBreakoutAimAssistTarget))
 			{
 				aimStartHoldPointLeft = assistedAimPoint;
-				aimStartHoldTimerLeft = aimStartHoldDuration;
-				holdAimStartLeftUntilInput = true;
-				SetWeaponAimPointL(aimStartHoldPointLeft);
+				BeginAimStartHold(true, aimStartHoldPointLeft);
 			}
 			else
 			{
@@ -1160,22 +1161,23 @@ public class BodyController : MonoBehaviour
 				if (aimStartHoldTimerRight > 0f)
 				{
 					aimStartHoldTimerRight -= Time.deltaTime;
-					SetWeaponAimPointR(aimStartHoldPointRight);
+					MaintainAimStartHoldAlignment(false);
 					torsoAimPoint.position = centeredTarget;
 					return;
 				}
 
 				if (holdAimStartRightUntilInput)
 				{
-					Vector2 headInput = input != null ? input.getHeadRotation() : Vector2.zero;
-					if (headInput.sqrMagnitude < 0.0001f)
+					if (!HasAimStartReleaseInput())
 					{
-						SetWeaponAimPointR(aimStartHoldPointRight);
+						MaintainAimStartHoldAlignment(false);
 						torsoAimPoint.position = centeredTarget;
 						return;
 					}
-					holdAimStartRightUntilInput = false;
-					forceAimToTorsoRight = false;
+
+					ReleaseAimStartHold(false);
+					torsoAimPoint.position = centeredTarget;
+					return;
 				}
 			}
 
@@ -1184,24 +1186,22 @@ public class BodyController : MonoBehaviour
 				if (aimStartHoldTimerLeft > 0f)
 				{
 					aimStartHoldTimerLeft -= Time.deltaTime;
-					SetWeaponAimPointL(aimStartHoldPointLeft);
+					MaintainAimStartHoldAlignment(true);
 					torsoAimPoint.position = centeredTarget;
 					return;
 				}
 
 				if (holdAimStartLeftUntilInput)
 				{
-					Vector2 headInput = input != null ? input.getHeadRotation() : Vector2.zero;
-					if (headInput.sqrMagnitude < 0.0001f)
+					if (!HasAimStartReleaseInput())
 					{
-						SetWeaponAimPointL(aimStartHoldPointLeft);
+						MaintainAimStartHoldAlignment(true);
 						torsoAimPoint.position = centeredTarget;
 						return;
 					}
-					SetWeaponAimPointL(aimStartHoldPointLeft);
+
+					ReleaseAimStartHold(true);
 					torsoAimPoint.position = centeredTarget;
-					holdAimStartLeftUntilInput = false;
-					forceAimToTorsoLeft = false;
 					return;
 				}
 			}
@@ -1259,14 +1259,6 @@ public class BodyController : MonoBehaviour
 
 			Quaternion cameraRot = Quaternion.Euler(aimCam.transform.eulerAngles.x, aimCam.transform.eulerAngles.y, 0f);
 			Vector3 rayForward = cameraRot * Vector3.forward;
-			if (aimSourceLeft && holdAimStartLeftUntilInput)
-			{
-				rayForward = (aimStartHoldPointLeft - physicalHead.transform.position).normalized;
-			}
-			if (aimSourceRight && holdAimStartRightUntilInput)
-			{
-				rayForward = (aimStartHoldPointRight - physicalHead.transform.position).normalized;
-			}
 			Vector3 cameraFallback = origin + rayForward * 20f;
 			Vector3 cameraTarget = ResolveAimPoint(rayForward, cameraFallback);
 			if (aimSourceRight)
@@ -1496,6 +1488,71 @@ public class BodyController : MonoBehaviour
 		Vector3 origin = GetAimLockOrigin();
 		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
 		SetWeaponAimPointL(origin + (torsoYaw * storedRelativeAimLeftLocal));
+	}
+
+	private void BeginAimStartHold(bool useLeft, Vector3 aimPoint)
+	{
+		if (useLeft)
+		{
+			aimStartHoldPointLeft = aimPoint;
+			aimStartHoldTimerLeft = aimStartHoldDuration;
+			holdAimStartLeftUntilInput = true;
+		}
+		else
+		{
+			aimStartHoldPointRight = aimPoint;
+			aimStartHoldTimerRight = aimStartHoldDuration;
+			holdAimStartRightUntilInput = true;
+		}
+
+		smoothedMovingAimYaw = 0f;
+		MaintainAimStartHoldAlignment(useLeft);
+		ApplyCameraImmediateForAimSwap();
+	}
+
+	private void MaintainAimStartHoldAlignment(bool useLeft)
+	{
+		Vector3 aimPoint = useLeft ? aimStartHoldPointLeft : aimStartHoldPointRight;
+		if (useLeft)
+		{
+			SetWeaponAimPointL(aimPoint);
+		}
+		else
+		{
+			SetWeaponAimPointR(aimPoint);
+		}
+
+		AlignHeadAnchorToAimPoint(useLeft);
+		if (sensors != null)
+		{
+			sensors.SyncHeadPitchFromCurrentTransform(useLeft);
+		}
+	}
+
+	private bool HasAimStartReleaseInput()
+	{
+		float deadzone = Mathf.Max(0f, aimStartReleaseInputDeadzone);
+		return fixedTickHeadRotation.sqrMagnitude > deadzone * deadzone;
+	}
+
+	private void ReleaseAimStartHold(bool useLeft)
+	{
+		// Rebase the manual controller and camera to the assisted direction before
+		// the sampled mouse delta is applied later in this FixedUpdate.
+		MaintainAimStartHoldAlignment(useLeft);
+		ApplyCameraImmediateForAimSwap();
+		smoothedMovingAimYaw = 0f;
+
+		if (useLeft)
+		{
+			holdAimStartLeftUntilInput = false;
+			forceAimToTorsoLeft = false;
+		}
+		else
+		{
+			holdAimStartRightUntilInput = false;
+			forceAimToTorsoRight = false;
+		}
 	}
 
 	private void AlignHeadAnchorToAimPoint(bool useLeft)
@@ -2558,6 +2615,7 @@ public class BodyController : MonoBehaviour
 			}
 			else
 			{
+				fixedTickHeadRotation = input != null ? input.getHeadRotation() : Vector2.zero;
 				RestoreMovementStandbyVisualAimPoints();
 				ExecutePhysicsBasedInputs();
 				GetAimPoint();
@@ -3010,18 +3068,12 @@ public class BodyController : MonoBehaviour
 		if (useLeft)
 		{
 			aimStartHoldPointLeft = assistedAimPoint;
-			aimStartHoldTimerLeft = aimStartHoldDuration;
-			holdAimStartLeftUntilInput = true;
-			SetWeaponAimPointL(aimStartHoldPointLeft);
-			AlignHeadAnchorToAimPoint(true);
+			BeginAimStartHold(true, aimStartHoldPointLeft);
 			return;
 		}
 
 		aimStartHoldPointRight = assistedAimPoint;
-		aimStartHoldTimerRight = aimStartHoldDuration;
-		holdAimStartRightUntilInput = true;
-		SetWeaponAimPointR(aimStartHoldPointRight);
-		AlignHeadAnchorToAimPoint(false);
+		BeginAimStartHold(false, aimStartHoldPointRight);
 	}
 
 	private bool TryGetSameDirectionScrollBreakoutAssist(
@@ -3561,6 +3613,7 @@ public class BodyController : MonoBehaviour
 		{
 			return;
 		}
+		bool wasAlreadyOutsideLimit = Mathf.Abs(delta) > aimYawLimit;
 
 		float clampedDelta = Mathf.Sign(desiredDelta) * aimYawLimit;
 		float overflow = desiredDelta - clampedDelta;
@@ -3568,6 +3621,23 @@ public class BodyController : MonoBehaviour
 		float maxStep = followSpeed * Time.deltaTime;
 		float torsoStep = Mathf.Clamp(overflow, -maxStep, maxStep);
 		transform.Rotate(0f, torsoStep, 0f, Space.World);
+
+		if (wasAlreadyOutsideLimit)
+		{
+			// Aim assist can establish a valid world-space direction beyond the normal
+			// manual yaw limit. Do not project that existing direction back to the limit
+			// when input begins. Block only additional outward yaw, and counter-rotate
+			// the head by the torso-follow step so the current world aim is preserved.
+			bool inputMovesFartherOutward = Mathf.Abs(headRot.y) > 0.0001f
+				&& Mathf.Sign(headRot.y) == Mathf.Sign(delta);
+			if (inputMovesFartherOutward)
+			{
+				headRot.y = 0f;
+			}
+
+			headRot.y -= torsoStep;
+			return;
+		}
 
 		float newDelta = delta - torsoStep;
 		float finalDesiredDelta = newDelta + headRot.y;

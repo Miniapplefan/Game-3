@@ -49,4 +49,12 @@ public class SensorsModel : SystemModel
             cmd.ResetPitch();
         }
     }
+
+    public void SyncHeadPitchFromCurrentTransform(bool useLeft)
+    {
+        if (lookCommand is RotateHeadCommand cmd)
+        {
+            cmd.SyncPitchFromCurrentTransform(useLeft);
+        }
+    }
 }

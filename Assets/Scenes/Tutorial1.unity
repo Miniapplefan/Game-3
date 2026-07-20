@@ -625,7 +625,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &229631144
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19909,10 +19909,6 @@ PrefabInstance:
     - target: {fileID: 1133274928165910862, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2857187715870912186, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_AngularZLimit.limit
-      value: 138.12396
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view

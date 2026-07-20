@@ -29,6 +29,26 @@ public class RotateHeadCommand : ICommand
         xRotationRight = 0f;
         xRotationLeft = 0f;
     }
+
+    public void SyncPitchFromCurrentTransform(bool useLeft)
+    {
+        GameObject activeHead = useLeft ? sensors.headL : sensors.head;
+        if (activeHead == null)
+        {
+            return;
+        }
+
+        float pitch = Mathf.DeltaAngle(0f, activeHead.transform.localEulerAngles.x);
+        if (useLeft)
+        {
+            xRotationLeft = Mathf.Clamp(pitch, -90f, 90f);
+        }
+        else
+        {
+            xRotationRight = Mathf.Clamp(pitch, -90f, 90f);
+        }
+    }
+
     public void Execute()
     {
         bool useLeftHead = sensors.bodyController.isAimingLeft
