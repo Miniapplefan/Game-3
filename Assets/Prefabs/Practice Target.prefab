@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4820221345076662740}
   - component: {fileID: 6646818631809479237}
-  m_Layer: 0
+  m_Layer: 14
   m_Name: Practice Target
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -69,7 +69,7 @@ GameObject:
   - component: {fileID: 2576968819093031640}
   - component: {fileID: 328330371571143867}
   - component: {fileID: 349733567845175322}
-  m_Layer: 9
+  m_Layer: 6
   m_Name: Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -213,6 +213,14 @@ PrefabInstance:
     - target: {fileID: 8875428729198278462, guid: b2101cf2502c046129710ef17829d234, type: 3}
       propertyPath: m_Name
       value: Shot Indicator
+      objectReference: {fileID: 0}
+    - target: {fileID: 8875428729198278462, guid: b2101cf2502c046129710ef17829d234, type: 3}
+      propertyPath: m_Layer
+      value: 14
+      objectReference: {fileID: 0}
+    - target: {fileID: 9023498477444166032, guid: b2101cf2502c046129710ef17829d234, type: 3}
+      propertyPath: m_Layer
+      value: 14
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

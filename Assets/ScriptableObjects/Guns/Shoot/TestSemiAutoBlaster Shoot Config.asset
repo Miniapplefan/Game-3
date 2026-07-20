@@ -32,7 +32,7 @@ MonoBehaviour:
   burst_delayBetweenShots: 0.2
   bulletsPerShot: 1
   magSize: 8
-  reloadTime: 3
+  reloadTime: 1.5
   prepTime: 0
   prepIndicator: {fileID: 0}
   fireRate: 0.2

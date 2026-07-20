@@ -11,7 +11,8 @@ public enum BulletTimeChannel
 	PlayerFireRate,
 	PlayerActiveRagdoll,
 	PlayerAura,
-	PlayerAuraGrip
+	PlayerAuraGrip,
+	PlayerPulseRecharge
 }
 
 public class BulletTimeManager : MonoBehaviour
@@ -46,11 +47,25 @@ public class BulletTimeManager : MonoBehaviour
 	[SerializeField, Range(0f, 1f)] private float playerAuraScale = 0.25f;
 	[SerializeField] private bool affectPlayerAuraGrip = false;
 	[SerializeField, Range(0f, 1f)] private float playerAuraGripScale = 0.25f;
+	[SerializeField] private bool affectPlayerPulseRecharge = true;
+	[SerializeField, Range(0f, 1f)] private float playerPulseRechargeScale = 0.25f;
 
 	private float elapsed;
 	private bool active;
+	private int triggerVersion;
 
 	public static float TriggerBlendProgress => Mathf.Clamp01(EnsureInstance().triggerBlendProgress);
+	public static bool IsActive => EnsureInstance().active;
+	public static float Duration => Mathf.Max(0f, EnsureInstance().duration);
+	public static float RemainingTime
+	{
+		get
+		{
+			BulletTimeManager manager = EnsureInstance();
+			return manager.active ? Mathf.Max(0f, manager.duration - manager.elapsed) : 0f;
+		}
+	}
+	public static int TriggerVersion => EnsureInstance().triggerVersion;
 
 	private void Awake()
 	{
@@ -134,6 +149,10 @@ public class BulletTimeManager : MonoBehaviour
 	{
 		elapsed = 0f;
 		active = duration > 0f;
+		if (active)
+		{
+			triggerVersion++;
+		}
 	}
 
 	private bool IsChannelEnabled(BulletTimeChannel channel)
@@ -158,6 +177,8 @@ public class BulletTimeManager : MonoBehaviour
 				return affectPlayerAura;
 			case BulletTimeChannel.PlayerAuraGrip:
 				return affectPlayerAuraGrip;
+			case BulletTimeChannel.PlayerPulseRecharge:
+				return affectPlayerPulseRecharge;
 			default:
 				return false;
 		}
@@ -185,6 +206,8 @@ public class BulletTimeManager : MonoBehaviour
 				return Mathf.Clamp01(playerAuraScale);
 			case BulletTimeChannel.PlayerAuraGrip:
 				return Mathf.Clamp01(playerAuraGripScale);
+			case BulletTimeChannel.PlayerPulseRecharge:
+				return Mathf.Clamp01(playerPulseRechargeScale);
 			default:
 				return Mathf.Clamp01(defaultScale);
 		}

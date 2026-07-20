@@ -2930,10 +2930,10 @@ public class BodyController : MonoBehaviour
 			out foundAimAssistTarget,
 			out int unusedVisibleTargetCount);
 		float yawOffset = usedAimAssist ? assistedYawOffset : sideSign * breakoutAimYawOffset;
-		return GetBreakoutStartAimPointFromYawOffset(yawOffset);
+		return GetBreakoutStartAimPointFromYawOffset(yawOffset, usedAimAssist);
 	}
 
-	private Vector3 GetBreakoutStartAimPointFromYawOffset(float yawOffset)
+	private Vector3 GetBreakoutStartAimPointFromYawOffset(float yawOffset, bool resolveWithAimRaycast = false)
 	{
 		float pitch = 0f;
 		if (aimCam != null)
@@ -2945,7 +2945,9 @@ public class BodyController : MonoBehaviour
 		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
 		Quaternion torsoYaw = GetBreakoutAimAssistYawRotation() * Quaternion.Euler(0f, yawOffset, 0f);
 		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
-		return origin + (combinedRot * Vector3.forward) * 20f;
+		Vector3 forward = combinedRot * Vector3.forward;
+		Vector3 fallback = origin + forward * 20f;
+		return resolveWithAimRaycast ? ResolveAimPoint(forward, fallback) : fallback;
 	}
 
 	private bool TryGetAssistedBreakoutStartAimPoint(bool useLeft, out Vector3 aimPoint, out bool foundAimAssistTarget)
@@ -2968,11 +2970,25 @@ public class BodyController : MonoBehaviour
 
 	private void TriggerBulletTimeForVisibleBreakoutTargets(bool useLeft)
 	{
-		if (!TryGetSameDirectionScrollBreakoutAssist(
+		bool usedAimAssist = TryGetSameDirectionScrollBreakoutAssist(
 			useLeft,
 			out Vector3 assistedAimPoint,
 			out bool foundVisibleTarget,
-			out int visibleTargetCount))
+			out int visibleTargetCount);
+
+		if (visibleTargetCount > 1)
+		{
+			if (!IsFocusedArmAimedAtTarget(useLeft)
+				&& TryGetClosestVisibleBreakoutTargetAimPoint(useLeft, out Vector3 closestTargetAimPoint))
+			{
+				ApplySameDirectionScrollAimAssist(useLeft, closestTargetAimPoint);
+			}
+
+			QueueBulletTimeTriggerForAimSwap();
+			return;
+		}
+
+		if (!usedAimAssist)
 		{
 			if (foundVisibleTarget)
 			{
@@ -2983,25 +2999,29 @@ public class BodyController : MonoBehaviour
 
 		if (visibleTargetCount == 1)
 		{
-			if (useLeft)
-			{
-				aimStartHoldPointLeft = assistedAimPoint;
-				aimStartHoldTimerLeft = aimStartHoldDuration;
-				holdAimStartLeftUntilInput = true;
-				SetWeaponAimPointL(aimStartHoldPointLeft);
-				AlignHeadAnchorToAimPoint(true);
-			}
-			else
-			{
-				aimStartHoldPointRight = assistedAimPoint;
-				aimStartHoldTimerRight = aimStartHoldDuration;
-				holdAimStartRightUntilInput = true;
-				SetWeaponAimPointR(aimStartHoldPointRight);
-				AlignHeadAnchorToAimPoint(false);
-			}
+			ApplySameDirectionScrollAimAssist(useLeft, assistedAimPoint);
 		}
 
 		QueueBulletTimeTriggerForAimSwap();
+	}
+
+	private void ApplySameDirectionScrollAimAssist(bool useLeft, Vector3 assistedAimPoint)
+	{
+		if (useLeft)
+		{
+			aimStartHoldPointLeft = assistedAimPoint;
+			aimStartHoldTimerLeft = aimStartHoldDuration;
+			holdAimStartLeftUntilInput = true;
+			SetWeaponAimPointL(aimStartHoldPointLeft);
+			AlignHeadAnchorToAimPoint(true);
+			return;
+		}
+
+		aimStartHoldPointRight = assistedAimPoint;
+		aimStartHoldTimerRight = aimStartHoldDuration;
+		holdAimStartRightUntilInput = true;
+		SetWeaponAimPointR(aimStartHoldPointRight);
+		AlignHeadAnchorToAimPoint(false);
 	}
 
 	private bool TryGetSameDirectionScrollBreakoutAssist(
@@ -3023,8 +3043,150 @@ public class BodyController : MonoBehaviour
 			return false;
 		}
 
-		aimPoint = GetBreakoutStartAimPointFromYawOffset(assistedYawOffset);
+		aimPoint = GetBreakoutStartAimPointFromYawOffset(assistedYawOffset, true);
 		return true;
+	}
+
+	private bool IsFocusedArmAimedAtTarget(bool useLeft)
+	{
+		GunSelector selector = useLeft ? gunsL : guns;
+		Gun primaryGun = selector != null ? selector.ActiveGun1 : null;
+		Transform muzzle = primaryGun != null ? primaryGun.MuzzleTransform : null;
+		if (muzzle == null)
+		{
+			return false;
+		}
+
+		ShootConfigScriptableObject shootConfig = primaryGun.gunData != null
+			? primaryGun.gunData.shootConfig
+			: null;
+		LayerMask hitMask = shootConfig != null ? shootConfig.HitMask : aimMask;
+		float maxRange = shootConfig != null ? Mathf.Max(0f, shootConfig.maxRange) : Mathf.Infinity;
+		if (!Physics.Raycast(
+			muzzle.position,
+			muzzle.forward,
+			out RaycastHit hit,
+			maxRange,
+			hitMask,
+			QueryTriggerInteraction.Ignore))
+		{
+			return false;
+		}
+
+		return GetValidBreakoutAimAssistBody(hit.collider) != null;
+	}
+
+	private bool TryGetClosestVisibleBreakoutTargetAimPoint(bool useLeft, out Vector3 aimPoint)
+	{
+		aimPoint = Vector3.zero;
+		Quaternion torsoYaw = GetBreakoutAimAssistYawRotation();
+		if (isAI || !breakoutAimAssistEnabled || breakoutAimAssistLayerMask.value == 0)
+		{
+			return false;
+		}
+
+		EnsureBreakoutAimAssistBuffer();
+		if (!TryGetBreakoutAimAssistBox(useLeft, torsoYaw, out Vector3 boxCenter, out Vector3 halfExtents))
+		{
+			return false;
+		}
+
+		int count = Physics.OverlapBoxNonAlloc(
+			boxCenter,
+			halfExtents,
+			breakoutAimAssistColliders,
+			torsoYaw,
+			breakoutAimAssistLayerMask,
+			QueryTriggerInteraction.Collide);
+		if (count <= 0)
+		{
+			return false;
+		}
+
+		GetFocusedArmAimRay(useLeft, out Vector3 referenceOrigin, out Vector3 referenceForward);
+		Vector3 aimLockOrigin = GetAimLockOrigin();
+		Vector3 bestTargetPoint = Vector3.zero;
+		float bestAlignment = float.NegativeInfinity;
+		bool foundTarget = false;
+
+		breakoutAimAssistBodies.Clear();
+		for (int i = 0; i < count; i++)
+		{
+			BodyController targetBody = GetValidBreakoutAimAssistBody(breakoutAimAssistColliders[i]);
+			if (targetBody == null || breakoutAimAssistBodies.Contains(targetBody))
+			{
+				continue;
+			}
+
+			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(targetBody);
+			if (IsBreakoutAimAssistTargetObstructed(aimLockOrigin, targetPoint))
+			{
+				continue;
+			}
+
+			Vector3 horizontalDirection = targetPoint - aimLockOrigin;
+			horizontalDirection.y = 0f;
+			if (horizontalDirection.sqrMagnitude <= 0.0001f)
+			{
+				continue;
+			}
+
+			Vector3 localTargetDirection = Quaternion.Inverse(torsoYaw) * horizontalDirection;
+			if ((useLeft && localTargetDirection.x >= -0.01f) || (!useLeft && localTargetDirection.x <= 0.01f))
+			{
+				continue;
+			}
+
+			breakoutAimAssistBodies.Add(targetBody);
+			Vector3 referenceDirection = targetPoint - referenceOrigin;
+			if (referenceDirection.sqrMagnitude <= 0.0001f)
+			{
+				continue;
+			}
+
+			float alignment = Vector3.Dot(referenceForward, referenceDirection.normalized);
+			if (!foundTarget || alignment > bestAlignment)
+			{
+				bestAlignment = alignment;
+				bestTargetPoint = targetPoint;
+				foundTarget = true;
+			}
+		}
+		breakoutAimAssistBodies.Clear();
+
+		if (!foundTarget)
+		{
+			return false;
+		}
+
+		Vector3 selectedDirection = bestTargetPoint - aimLockOrigin;
+		selectedDirection.y = 0f;
+		Vector3 localDirection = Quaternion.Inverse(torsoYaw) * selectedDirection.normalized;
+		float yawOffset = Mathf.Atan2(localDirection.x, localDirection.z) * Mathf.Rad2Deg;
+		aimPoint = GetBreakoutStartAimPointFromYawOffset(yawOffset, true);
+		return true;
+	}
+
+	private void GetFocusedArmAimRay(bool useLeft, out Vector3 origin, out Vector3 forward)
+	{
+		GunSelector selector = useLeft ? gunsL : guns;
+		Gun primaryGun = selector != null ? selector.ActiveGun1 : null;
+		Transform muzzle = primaryGun != null ? primaryGun.MuzzleTransform : null;
+		if (muzzle != null)
+		{
+			origin = muzzle.position;
+			forward = muzzle.forward.normalized;
+			return;
+		}
+
+		origin = GetAimLockOrigin();
+		Transform currentAimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
+		Vector3 fallbackDirection = currentAimPoint != null
+			? currentAimPoint.position - origin
+			: transform.forward;
+		forward = fallbackDirection.sqrMagnitude > 0.0001f
+			? fallbackDirection.normalized
+			: transform.forward;
 	}
 
 	private Quaternion GetBreakoutAimAssistYawRotation()
@@ -3643,6 +3805,17 @@ public class BodyController : MonoBehaviour
 
 		bulletTimeTriggeredForAimSwap = true;
 		bulletTimeTriggerPending = false;
+
+		if (auraManager == null)
+		{
+			auraManager = GetComponent<AuraManager>();
+		}
+
+		if (auraManager == null || !auraManager.TryConsumeBulletTimePulse())
+		{
+			return;
+		}
+
 		BulletTimeManager.Trigger();
 	}
 
