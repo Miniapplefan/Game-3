@@ -594,6 +594,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3098141608713087775}
   - component: {fileID: 5805291207267878260}
+  - component: {fileID: 4420719766650349588}
   m_Layer: 0
   m_Name: PlayerCamera
   m_TagString: Untagged
@@ -630,6 +631,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   player: {fileID: 6703837814607108177}
+--- !u!81 &4420719766650349588
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4008368662738215612}
+  m_Enabled: 1
 --- !u!1 &4521547538824441052
 GameObject:
   m_ObjectHideFlags: 0
@@ -1748,6 +1757,26 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2407845242657379070}
     m_Modifications:
+    - target: {fileID: 5897900684698878936, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900684781831188, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900684962727951, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685147646418, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685539058853, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 1214583892469341285, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_CollisionDetection
       value: 3

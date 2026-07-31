@@ -5317,6 +5317,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7830670303989107235}
   - component: {fileID: 6893741752400547624}
+  - component: {fileID: 949904611885806462}
   m_Layer: 0
   m_Name: PlayerCamera
   m_TagString: Untagged
@@ -5355,6 +5356,14 @@ MonoBehaviour:
   player: {fileID: 2857187716010249589}
   playerL: {fileID: 449992093704526313}
   bodyController: {fileID: 3957327853304994012}
+--- !u!81 &949904611885806462
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6224816993365753265}
+  m_Enabled: 1
 --- !u!1 &6296828136935364747
 GameObject:
   m_ObjectHideFlags: 0
@@ -6621,6 +6630,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e4dc899535db14847bb9e441a9ccead7, type: 2}
   weapon: {fileID: 2857187715870912185}
   ammoIndicator: {fileID: 5490793076457762896}
+  ammoBar: {fileID: 0}
   minPrimaryAimDistance: 0.38
   forearmForwardFallback: {fileID: 6322084844445424364}
   ActiveGun1: {fileID: 0}
@@ -8303,7 +8313,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: breakoutAimAssistForwardOffset
-      value: 4
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: breakoutAimAssistLayerMask.m_Bits
@@ -8465,6 +8475,10 @@ PrefabInstance:
       propertyPath: target
       value: 
       objectReference: {fileID: 3426697725290642155}
+    - target: {fileID: 5897900684698878936, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_HDR
       value: 0
@@ -8520,6 +8534,10 @@ PrefabInstance:
     - target: {fileID: 5897900684770147972, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_IsActive
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900684781831188, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684810944710, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Enabled
@@ -8617,6 +8635,10 @@ PrefabInstance:
       propertyPath: m_Data.m_SourceObjects.m_Item0.transform
       value: 
       objectReference: {fileID: 1436198879887788415}
+    - target: {fileID: 5897900684962727951, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900685060609474, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Data.m_UpAxis
       value: 0
@@ -8649,6 +8671,10 @@ PrefabInstance:
       propertyPath: m_Data.m_SourceObjects.m_Item0.transform
       value: 
       objectReference: {fileID: 3426697725290642155}
+    - target: {fileID: 5897900685147646418, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900685153456530, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Data.m_SourceObjects.m_Item0.transform
       value: 
@@ -9209,6 +9235,10 @@ PrefabInstance:
       propertyPath: m_Data.m_Target
       value: 
       objectReference: {fileID: 3426697725290642155}
+    - target: {fileID: 5897900685539058853, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900685543239738, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Enabled
       value: 0
@@ -10456,7 +10486,7 @@ MonoBehaviour:
     m_RotationOrder: 4
   gripDepletedThreshold: 0.01
   minGripHalfLife: 0.018
-  enableBulletTimePulses: 0
+  enableBulletTimePulses: 1
   pulseRechargeDuration: 0.5
   threshold1Pulse:
     normalizedThreshold: 0.25

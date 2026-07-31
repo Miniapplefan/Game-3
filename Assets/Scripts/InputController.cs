@@ -14,6 +14,8 @@ public interface InputController
     public bool getFire1();
     public bool getFire2();
     public bool getFire3();
+    public bool getFire1Down();
+    public bool getFire2Down();
 
     public bool getScroll();
     public bool getScrollUp();

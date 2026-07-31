@@ -1,14 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 
 [DisallowMultipleComponent]
 public class GunSelector : MonoBehaviour
 {
-	private const int ReloadBarWidth = 6;
 	private const string ActiveAimMarker = "●";
+	private const string ReloadIndicatorText = "RLD";
 	private static readonly Quaternion AmmoIndicatorFacingOffset = Quaternion.Euler(0f, 180f, 0f);
-	private static readonly string[] ReloadIndicatorTexts = BuildReloadIndicatorTexts();
 
 	[SerializeField]
 	private GunType Gun1;
@@ -28,6 +28,7 @@ public class GunSelector : MonoBehaviour
 	private Rigidbody weapon;
 	private LineRenderer laser;
 	public TMP_Text ammoIndicator;
+	public Image ammoBar;
 	private Vector3 raycastPoint;
 	private bool hasRaycastPoint;
 	private Quaternion initialLocalRotation;
@@ -36,7 +37,6 @@ public class GunSelector : MonoBehaviour
 	private bool hasAmmoIndicatorState;
 	private bool lastAmmoIndicatorReloading;
 	private int lastDisplayedAmmoCount;
-	private int lastDisplayedReloadBarCount = -1;
 	private string lastDisplayedAmmoIndicatorText;
 	private bool lastSelectedArmIsLeft;
 	private bool laserVisible = true;
@@ -293,34 +293,23 @@ public class GunSelector : MonoBehaviour
 
 	private void UpdateAmmoIndicator()
 	{
-		if (ammoIndicator == null || ActiveGun1 == null) return;
+		if (ActiveGun1 == null) return;
+
+		UpdateAmmoBar();
+		if (ammoIndicator == null) return;
 
 		if (ActiveGun1.isReloading)
 		{
-			float full = ActiveGun1.gunData.shootConfig.reloadTime;
-			float remaining = ActiveGun1.reloadTimeCache;
-
-			// Safety
-			if (full <= 0f) full = 0.0001f;
-
-			// 0..1 where 0 = just started, 1 = finished
-			float progress01 = 1f - Mathf.Clamp01(remaining / full);
-
-			int filled = Mathf.RoundToInt(progress01 * ReloadBarWidth);
-			filled = Mathf.Clamp(filled, 0, ReloadBarWidth);
-
 			bool selectedArmIsLeft = IsSelectedArmLeft();
-			string displayText = FormatAmmoIndicatorText(ReloadIndicatorTexts[filled]);
+			string displayText = FormatAmmoIndicatorText(ReloadIndicatorText);
 			if (!hasAmmoIndicatorState
 				|| !lastAmmoIndicatorReloading
-				|| lastDisplayedReloadBarCount != filled
 				|| lastDisplayedAmmoIndicatorText != displayText
 				|| lastSelectedArmIsLeft != selectedArmIsLeft)
 			{
 				ammoIndicator.text = displayText;
 				hasAmmoIndicatorState = true;
 				lastAmmoIndicatorReloading = true;
-				lastDisplayedReloadBarCount = filled;
 				lastDisplayedAmmoIndicatorText = displayText;
 				lastSelectedArmIsLeft = selectedArmIsLeft;
 			}
@@ -344,6 +333,34 @@ public class GunSelector : MonoBehaviour
 				lastSelectedArmIsLeft = selectedArmIsLeft;
 			}
 		}
+	}
+
+	private void UpdateAmmoBar()
+	{
+		if (ammoBar == null)
+		{
+			return;
+		}
+
+		if (ActiveGun1.gunData == null || ActiveGun1.gunData.shootConfig == null)
+		{
+			ammoBar.fillAmount = 0f;
+			return;
+		}
+
+		ShootConfigScriptableObject shootConfig = ActiveGun1.gunData.shootConfig;
+		if (ActiveGun1.isReloading)
+		{
+			float reloadDuration = shootConfig.reloadTime;
+			ammoBar.fillAmount = reloadDuration > 0f
+				? 1f - Mathf.Clamp01(ActiveGun1.reloadTimeCache / reloadDuration)
+				: 1f;
+			return;
+		}
+
+		ammoBar.fillAmount = shootConfig.magSize > 0
+			? Mathf.Clamp01((float)ActiveGun1.currentShotsInMag / shootConfig.magSize)
+			: 0f;
 	}
 
 	private string FormatAmmoIndicatorText(string text)
@@ -379,18 +396,6 @@ public class GunSelector : MonoBehaviour
 	private bool IsSelectedArmLeft()
 	{
 		return bodyController.PrimaryAimUsesLeft;
-	}
-
-	private static string[] BuildReloadIndicatorTexts()
-	{
-		string[] texts = new string[ReloadBarWidth + 1];
-		for (int i = 0; i <= ReloadBarWidth; i++)
-		{
-			string bar = "[" + new string('█', i) + new string('░', ReloadBarWidth - i) + "]";
-			texts[i] = $"RLD {bar}";
-		}
-
-		return texts;
 	}
 
 	private Transform ResolveAmmoIndicatorHeadTarget()

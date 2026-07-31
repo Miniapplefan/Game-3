@@ -4,13 +4,46 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Pool;
 
+public readonly struct EnemyHitByPlayerInfo
+{
+	public BodyController Target { get; }
+	public Vector3 ImpactPosition { get; }
+	public bool WasKillingBlow { get; }
+
+	public EnemyHitByPlayerInfo(BodyController target, Vector3 impactPosition, bool wasKillingBlow)
+	{
+		Target = target;
+		ImpactPosition = impactPosition;
+		WasKillingBlow = wasKillingBlow;
+	}
+}
+
+public readonly struct GunReloadAudioInfo
+{
+	public float DelaySeconds { get; }
+
+	public GunReloadAudioInfo(float delaySeconds)
+	{
+		DelaySeconds = Mathf.Max(0f, delaySeconds);
+	}
+}
+
 public class Gun : MonoBehaviour
 {
 	public GunDataScriptableObject gunData;
 	public Transform ModelRoot => modelRoot;
 	public Transform GripTransform => mountPoints != null ? mountPoints.Grip : null;
 	public Transform MuzzleTransform => mountPoints != null && mountPoints.Muzzle != null ? mountPoints.Muzzle : shootSystem != null ? shootSystem.transform : null;
+	public bool IsAIControlled => isAI;
+	public bool CanStartReload => !isReloading
+		&& gunData != null
+		&& gunData.shootConfig != null
+		&& currentShotsInMag < gunData.shootConfig.magSize;
 	public event System.Action<Gun> ActualShotFired;
+	public event System.Action<Gun> EmptyTriggerPulled;
+	public event System.Action<Gun, EnemyHitByPlayerInfo> EnemyHitByPlayer;
+	public event System.Action<Gun, GunReloadAudioInfo> ReloadStarted;
+	public event System.Action<Gun, GunReloadAudioInfo> ReloadCompleted;
 
 	private Rigidbody weapon;
 	private Transform modelRoot;
@@ -28,6 +61,8 @@ public class Gun : MonoBehaviour
 	public int currentShotsInMag;
 	public bool isReloading = false;
 	public float reloadTimeCache;
+	private float reloadAudioDelaySeconds;
+	private bool reloadCompletionUsesAudioTime;
 	private float chargeTimeLeftCache;
 	private float prepTimeLeftCache;
 	private Transform prepInd;
@@ -82,6 +117,12 @@ public class Gun : MonoBehaviour
 		raycastInterval += Random.Range(0.01f, 0.02f);
 
 		isAI = weapon.GetComponentInParent<AIController>() != null ? true : false;
+		GunAudioEmitter audioEmitter = GetComponent<GunAudioEmitter>();
+		if (audioEmitter == null)
+		{
+			audioEmitter = gameObject.AddComponent<GunAudioEmitter>();
+		}
+		audioEmitter.Initialize(this, isAI);
 
 		if (!isAI)
 		{
@@ -134,8 +175,13 @@ public class Gun : MonoBehaviour
 		npcBallisticAimPoint = Vector3.zero;
 	}
 
-	public bool Shoot()
+	public bool Shoot(bool triggerPressedThisFrame = false)
 	{
+		if (triggerPressedThisFrame && !isAI && !isReloading && currentShotsInMag <= 0)
+		{
+			EmptyTriggerPulled?.Invoke(this);
+		}
+
 		if (chargeTimeLeftCache <= 0)
 		{
 			isFiring = true;
@@ -208,6 +254,7 @@ public class Gun : MonoBehaviour
 		}
 
 		ApplyMovementAimShotImpulse();
+		Dictionary<BodyController, Vector3> enemiesHitThisShot = null;
 
 		for (int i = 0; i < gunData.shootConfig.bulletsPerShot; i++)
 		{
@@ -246,7 +293,19 @@ public class Gun : MonoBehaviour
 							hit
 						)
 					);
-					ManageHit(hit);
+					BodyController damagedEnemy = ManageHit(hit);
+					if (damagedEnemy != null)
+					{
+						if (enemiesHitThisShot == null)
+						{
+							enemiesHitThisShot = new Dictionary<BodyController, Vector3>();
+						}
+
+						if (!enemiesHitThisShot.ContainsKey(damagedEnemy))
+						{
+							enemiesHitThisShot.Add(damagedEnemy, hit.point);
+						}
+					}
 				}
 				else
 				{
@@ -261,7 +320,32 @@ public class Gun : MonoBehaviour
 			}
 		}
 		ActualShotFired?.Invoke(this);
+		NotifyEnemiesHitByPlayer(enemiesHitThisShot);
 		return true;
+	}
+
+	private void NotifyEnemiesHitByPlayer(Dictionary<BodyController, Vector3> enemiesHitThisShot)
+	{
+		if (enemiesHitThisShot == null)
+		{
+			return;
+		}
+
+		foreach (KeyValuePair<BodyController, Vector3> enemyHit in enemiesHitThisShot)
+		{
+			BodyController target = enemyHit.Key;
+			if (target == null)
+			{
+				continue;
+			}
+
+			EnemyHitByPlayerInfo hitInfo = new EnemyHitByPlayerInfo(
+				target,
+				enemyHit.Value,
+				target.isDead
+			);
+			EnemyHitByPlayer?.Invoke(this, hitInfo);
+		}
 	}
 
 	private Vector3 GetNpcShotCenterDirection()
@@ -491,30 +575,60 @@ public class Gun : MonoBehaviour
 		return radial.normalized;
 	}
 
-	public void StartReload()
+	public bool StartReload(float audioDelaySeconds = 0f)
 	{
-		if (isReloading || currentShotsInMag == gunData.shootConfig.magSize) return;
+		if (!CanStartReload)
+		{
+			return false;
+		}
+
 		isReloading = true;
-		reloadTimeCache = gunData.shootConfig.reloadTime;
+		reloadAudioDelaySeconds = Mathf.Max(0f, audioDelaySeconds);
+		reloadCompletionUsesAudioTime = false;
+		reloadTimeCache = gunData.shootConfig.reloadTime + reloadAudioDelaySeconds;
 		Debug.Log("started reload");
+		ReloadStarted?.Invoke(this, new GunReloadAudioInfo(reloadAudioDelaySeconds));
+		return true;
+	}
+
+	internal bool AlignReloadCompletionToAudio(float playbackDurationSeconds)
+	{
+		if (!isReloading || playbackDurationSeconds <= 0f)
+		{
+			return false;
+		}
+
+		reloadTimeCache = playbackDurationSeconds;
+		reloadCompletionUsesAudioTime = true;
+		return true;
 	}
 
 	private void ProcessReload()
 	{
 		if (reloadTimeCache > 0)
 		{
-			reloadTimeCache -= GetWeaponDeltaTime();
+			reloadTimeCache -= reloadCompletionUsesAudioTime
+				? Time.unscaledDeltaTime
+				: GetWeaponDeltaTime();
 		}
-		else
+
+		if (reloadTimeCache > 0)
 		{
-			Debug.Log("finished reload");
-			isReloading = false;
-			currentShotsInMag = gunData.shootConfig.magSize;
+			return;
 		}
+
+		Debug.Log("finished reload");
+		isReloading = false;
+		currentShotsInMag = gunData.shootConfig.magSize;
+		float audioDelaySeconds = reloadAudioDelaySeconds;
+		reloadAudioDelaySeconds = 0f;
+		reloadCompletionUsesAudioTime = false;
+		ReloadCompleted?.Invoke(this, new GunReloadAudioInfo(audioDelaySeconds));
 	}
 
-	private void ManageHit(RaycastHit hit)
+	private BodyController ManageHit(RaycastHit hit)
 	{
+		BodyController damagedEnemy = null;
 		Rigidbody hitRb = hit.collider.GetComponent<Rigidbody>();
 		HeatContainer heatContainer = hit.collider.GetComponent<HeatContainer>();
 		if (heatContainer == null)
@@ -537,6 +651,11 @@ public class Gun : MonoBehaviour
 			float hitReactionScale = GetHitReactionScale(targetBodyController);
 			//Debug.Log("hit limb");
 			BodyController sourceBodyController = GetOwnerBodyController();
+			bool wasLivingEnemyHitByPlayer = targetBodyController != null
+				&& targetBodyController.isAI
+				&& !targetBodyController.isDead
+				&& sourceBodyController != null
+				&& !sourceBodyController.isAI;
 			float damageAmount = gunData.shootConfig.rawDamage;
 			if (sourceBodyController != null && !sourceBodyController.isAI)
 			{
@@ -548,6 +667,10 @@ public class Gun : MonoBehaviour
 			damageInfo.impactVector = impulse;
 			damageInfo.sourceBodyController = sourceBodyController;
 			limb.TakeDamage(damageInfo);
+			if (wasLivingEnemyHitByPlayer)
+			{
+				damagedEnemy = targetBodyController;
+			}
 			if (limb.limb.specificLimb == Limb.LimbID.rightArm)
 			{
 				hitRb.AddForce(impulse * 0.75f * hitReactionScale, ForceMode.Impulse);
@@ -585,6 +708,8 @@ public class Gun : MonoBehaviour
 			Destroy(Instantiate(gunData.shootConfig.hitParticles, hit.point, Quaternion.Euler(hit.normal)).gameObject, 1f);
 			practiceTarget.DestroyTarget();
 		}
+
+		return damagedEnemy;
 	}
 
 	private IEnumerator PlayTrail(Vector3 StartPoint, Vector3 EndPoint, RaycastHit Hit)

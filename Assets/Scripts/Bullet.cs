@@ -33,6 +33,7 @@ public class Bullet : MonoBehaviour
     private Action<Bullet> releaseAction;
     private bool released;
     private bool trailEnabled = true;
+    private AudioLoopHandle lethalWarningLoop;
 
     void Awake()
     {
@@ -60,6 +61,7 @@ public class Bullet : MonoBehaviour
 
     void OnDisable()
     {
+        ReleaseLethalWarningLoop();
         playerOverlaps.Clear();
         playerCandidate = null;
         hasPlayerCandidate = false;
@@ -90,7 +92,7 @@ public class Bullet : MonoBehaviour
         transform.position = endPosition;
 
         shouldTelegraph = hasPlayerCandidate && HasLineOfSightToPlayer();
-        UpdateTelegraphVisuals();
+        UpdateTelegraphState();
     }
 
     private bool HandleCollision(Vector3 startPosition, Vector3 endPosition)
@@ -147,6 +149,7 @@ public class Bullet : MonoBehaviour
         }
 
         released = true;
+        ReleaseLethalWarningLoop();
         if (releaseAction != null)
         {
             releaseAction(this);
@@ -174,18 +177,48 @@ public class Bullet : MonoBehaviour
         return false;
     }
 
-    private void UpdateTelegraphVisuals()
+    private void UpdateTelegraphState()
     {
-        if (shouldTelegraph == isTelegraph)
+        bool stateChanged = shouldTelegraph != isTelegraph;
+        if (stateChanged)
+        {
+            Material targetMaterial = shouldTelegraph ? hitTelegraphMaterial : noHitTelegraphMaterial;
+            if (bulletTipMesh != null) bulletTipMesh.material = targetMaterial;
+            if (bulletBodyMesh != null) bulletBodyMesh.material = targetMaterial;
+            if (trail != null) trail.material = targetMaterial;
+        }
+
+        if (shouldTelegraph)
+        {
+            if (lethalWarningLoop == null || !lethalWarningLoop.IsValid)
+            {
+                lethalWarningLoop = AudioService.PlayFollowingLoop(
+                    GameAudioCueId.EnemyLethalBulletWarning,
+                    transform
+                );
+            }
+            else if (stateChanged)
+            {
+                lethalWarningLoop.SetActive(true);
+            }
+        }
+        else if (stateChanged && lethalWarningLoop != null && lethalWarningLoop.IsValid)
+        {
+            lethalWarningLoop.SetActive(false);
+        }
+
+        isTelegraph = shouldTelegraph;
+    }
+
+    private void ReleaseLethalWarningLoop()
+    {
+        if (lethalWarningLoop == null)
         {
             return;
         }
 
-        Material targetMaterial = shouldTelegraph ? hitTelegraphMaterial : noHitTelegraphMaterial;
-        if (bulletTipMesh != null) bulletTipMesh.material = targetMaterial;
-        if (bulletBodyMesh != null) bulletBodyMesh.material = targetMaterial;
-        if (trail != null) trail.material = targetMaterial;
-        isTelegraph = shouldTelegraph;
+        lethalWarningLoop.Release();
+        lethalWarningLoop = null;
     }
 
     private float ComputeTelegraphDistance()
@@ -249,6 +282,7 @@ public class Bullet : MonoBehaviour
 
     private void ResetState()
     {
+        ReleaseLethalWarningLoop();
         shouldTelegraph = false;
         isTelegraph = false;
         hasPlayerCandidate = false;

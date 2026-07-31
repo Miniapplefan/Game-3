@@ -1,0 +1,650 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"Lim",
+				"LimbID"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "Assets/Scripts/BodyController.cs",
+			"settings":
+			{
+				"buffer_size": 119372,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			},
+			"undo_stack":
+			[
+				[
+					13,
+					1,
+					"left_delete",
+					null,
+					"AQAAAH1HAAAAAAAAfUcAAAAAAAABAAAANQ",
+					"AwAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPC/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8L8AAAAAAQAAAH5HAAAAAAAAfkcAAAAAAAAAAAAAAADwvw"
+				],
+				[
+					14,
+					1,
+					"insert",
+					{
+						"characters": "3"
+					},
+					"AQAAAH1HAAAAAAAAfkcAAAAAAAAAAAAA",
+					"AwAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPC/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8L8AAAAAAQAAAH1HAAAAAAAAfUcAAAAAAAAAAAAAAADwvw"
+				],
+				[
+					19,
+					1,
+					"left_delete",
+					null,
+					"AQAAAG1IAAAAAAAAbUgAAAAAAAABAAAANA",
+					"AwAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPC/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8L8AAAAAAQAAAG5IAAAAAAAAbkgAAAAAAAAAAAAAAADwvw"
+				],
+				[
+					20,
+					1,
+					"insert",
+					{
+						"characters": "5"
+					},
+					"AQAAAG1IAAAAAAAAbkgAAAAAAAAAAAAA",
+					"AwAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPC/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8L8AAAAAAQAAAG1IAAAAAAAAbUgAAAAAAAAAAAAAAADwvw"
+				],
+				[
+					18,
+					2,
+					"left_delete",
+					null,
+					"AgAAAHpEAAAAAAAAekQAAAAAAAABAAAANXlEAAAAAAAAeUQAAAAAAAABAAAAMg",
+					"AQAAAAAAAAABAAAAe0QAAAAAAAB7RAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					19,
+					1,
+					"insert",
+					{
+						"characters": "5"
+					},
+					"AQAAAHlEAAAAAAAAekQAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAeUQAAAAAAAB5RAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					24,
+					2,
+					"left_delete",
+					null,
+					"AgAAAJlFAAAAAAAAmUUAAAAAAAABAAAANZhFAAAAAAAAmEUAAAAAAAABAAAAMg",
+					"AQAAAAAAAAABAAAAmkUAAAAAAACaRQAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					25,
+					1,
+					"insert",
+					{
+						"characters": "5"
+					},
+					"AQAAAJhFAAAAAAAAmUUAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAmEUAAAAAAACYRQAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					28,
+					2,
+					"left_delete",
+					null,
+					"AgAAAGdGAAAAAAAAZ0YAAAAAAAABAAAANWZGAAAAAAAAZkYAAAAAAAABAAAAMg",
+					"AQAAAAAAAAABAAAAaEYAAAAAAABoRgAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					29,
+					1,
+					"insert",
+					{
+						"characters": "5"
+					},
+					"AQAAAGZGAAAAAAAAZ0YAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAZkYAAAAAAABmRgAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					34,
+					1,
+					"insert",
+					{
+						"characters": "\n"
+					},
+					"AQAAAHpIAAAAAAAAgEgAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAekgAAAAAAAB6SAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					35,
+					1,
+					"left_delete",
+					null,
+					"AQAAAH9IAAAAAAAAf0gAAAAAAAABAAAACQ",
+					"AQAAAAAAAAABAAAAgEgAAAAAAACASAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					36,
+					1,
+					"insert",
+					{
+						"characters": "case"
+					},
+					"BAAAAH9IAAAAAAAAgEgAAAAAAAAAAAAAgEgAAAAAAACBSAAAAAAAAAAAAACBSAAAAAAAAIJIAAAAAAAAAAAAAIJIAAAAAAAAg0gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAf0gAAAAAAAB/SAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					37,
+					1,
+					"insert",
+					{
+						"characters": " "
+					},
+					"AQAAAINIAAAAAAAAhEgAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAg0gAAAAAAACDSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					38,
+					1,
+					"insert",
+					{
+						"characters": "def"
+					},
+					"AwAAAIRIAAAAAAAAhUgAAAAAAAAAAAAAhUgAAAAAAACGSAAAAAAAAAAAAACGSAAAAAAAAIdIAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAhEgAAAAAAACESAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					39,
+					1,
+					"insert_completion",
+					{
+						"completion": "default",
+						"format": "text",
+						"keep_prefix": false,
+						"must_insert": false,
+						"trigger": "default"
+					},
+					"AgAAAIRIAAAAAAAAhEgAAAAAAAADAAAAZGVmhEgAAAAAAACLSAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAh0gAAAAAAACHSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					40,
+					1,
+					"insert",
+					{
+						"characters": ":"
+					},
+					"AQAAAItIAAAAAAAAjEgAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAi0gAAAAAAACLSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					41,
+					1,
+					"insert",
+					{
+						"characters": "\n\t"
+					},
+					"AgAAAIxIAAAAAAAAkUgAAAAAAAAAAAAAkUgAAAAAAACSSAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAjEgAAAAAAACMSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					51,
+					1,
+					"paste",
+					null,
+					"AQAAAJJIAAAAAAAAu0gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAkkgAAAAAAACSSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					54,
+					5,
+					"left_delete",
+					null,
+					"BQAAAJZIAAAAAAAAlkgAAAAAAAABAAAACZVIAAAAAAAAlUgAAAAAAAABAAAACZRIAAAAAAAAlEgAAAAAAAABAAAACZNIAAAAAAAAk0gAAAAAAAABAAAACZJIAAAAAAAAkkgAAAAAAAABAAAACQ",
+					"AQAAAAAAAAABAAAAl0gAAAAAAACXSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					59,
+					1,
+					"left_delete",
+					null,
+					"AQAAALVIAAAAAAAAtUgAAAAAAAABAAAACg",
+					"AQAAAAAAAAABAAAAtkgAAAAAAAC2SAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					64,
+					1,
+					"insert",
+					{
+						"characters": "Lim"
+					},
+					"AwAAAIRIAAAAAAAAhUgAAAAAAAAHAAAAZGVmYXVsdIVIAAAAAAAAhkgAAAAAAAAAAAAAhkgAAAAAAACHSAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAhEgAAAAAAACLSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					66,
+					1,
+					"insert_completion",
+					{
+						"completion": "LimbID",
+						"format": "text",
+						"keep_prefix": false,
+						"must_insert": false,
+						"trigger": "LimbID"
+					},
+					"AgAAAIRIAAAAAAAAhEgAAAAAAAADAAAATGlthEgAAAAAAACKSAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAh0gAAAAAAACHSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					67,
+					1,
+					"insert",
+					{
+						"characters": "."
+					},
+					"AQAAAIpIAAAAAAAAi0gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAikgAAAAAAACKSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					138,
+					1,
+					"insert",
+					{
+						"characters": "right"
+					},
+					"BQAAAItIAAAAAAAAjEgAAAAAAAAAAAAAjEgAAAAAAACNSAAAAAAAAAAAAACNSAAAAAAAAI5IAAAAAAAAAAAAAI5IAAAAAAAAj0gAAAAAAAAAAAAAj0gAAAAAAACQSAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAi0gAAAAAAACLSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					139,
+					1,
+					"insert",
+					{
+						"characters": "Arm"
+					},
+					"AwAAAJBIAAAAAAAAkUgAAAAAAAAAAAAAkUgAAAAAAACSSAAAAAAAAAAAAACSSAAAAAAAAJNIAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAkEgAAAAAAACQSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					168,
+					1,
+					"insert",
+					{
+						"characters": "\n"
+					},
+					"AQAAAL1IAAAAAAAAw0gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAvUgAAAAAAAC9SAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					169,
+					1,
+					"paste",
+					null,
+					"AQAAAMNIAAAAAAAA+EgAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAAw0gAAAAAAADDSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					170,
+					1,
+					"left_delete",
+					null,
+					"AQAAAPdIAAAAAAAA90gAAAAAAAABAAAACg",
+					"AQAAAAAAAAABAAAA+EgAAAAAAAD4SAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					175,
+					5,
+					"left_delete",
+					null,
+					"BQAAAMdIAAAAAAAAx0gAAAAAAAABAAAACcZIAAAAAAAAxkgAAAAAAAABAAAACcVIAAAAAAAAxUgAAAAAAAABAAAACcRIAAAAAAAAxEgAAAAAAAABAAAACcNIAAAAAAAAw0gAAAAAAAABAAAACQ",
+					"AQAAAAAAAAABAAAAyEgAAAAAAADISAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					178,
+					3,
+					"left_delete",
+					null,
+					"AwAAAO5IAAAAAAAA7kgAAAAAAAABAAAANe1IAAAAAAAA7UgAAAAAAAABAAAALuxIAAAAAAAA7EgAAAAAAAABAAAAMQ",
+					"AQAAAAAAAAABAAAA70gAAAAAAADvSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					179,
+					1,
+					"insert",
+					{
+						"characters": "0.5"
+					},
+					"AwAAAOxIAAAAAAAA7UgAAAAAAAAAAAAA7UgAAAAAAADuSAAAAAAAAAAAAADuSAAAAAAAAO9IAAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA7EgAAAAAAADsSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					186,
+					1,
+					"left_delete",
+					null,
+					"AQAAAO5IAAAAAAAA7kgAAAAAAAABAAAANQ",
+					"AQAAAAAAAAABAAAA70gAAAAAAADvSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					187,
+					1,
+					"insert",
+					{
+						"characters": "2"
+					},
+					"AQAAAO5IAAAAAAAA70gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA7kgAAAAAAADuSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					198,
+					1,
+					"insert",
+					{
+						"characters": "\nbreak;"
+					},
+					"BwAAAPJIAAAAAAAA+EgAAAAAAAAAAAAA+EgAAAAAAAD5SAAAAAAAAAAAAAD5SAAAAAAAAPpIAAAAAAAAAAAAAPpIAAAAAAAA+0gAAAAAAAAAAAAA+0gAAAAAAAD8SAAAAAAAAAAAAAD8SAAAAAAAAP1IAAAAAAAAAAAAAP1IAAAAAAAA/kgAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA8kgAAAAAAADySAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					209,
+					1,
+					"left_delete",
+					null,
+					"AQAAAO5IAAAAAAAA7kgAAAAAAAABAAAAMg",
+					"AQAAAAAAAAABAAAA70gAAAAAAADvSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					210,
+					1,
+					"insert",
+					{
+						"characters": "7"
+					},
+					"AQAAAO5IAAAAAAAA70gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA7kgAAAAAAADuSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					211,
+					1,
+					"left_delete",
+					null,
+					"AQAAAO5IAAAAAAAA7kgAAAAAAAABAAAANw",
+					"AQAAAAAAAAABAAAA70gAAAAAAADvSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					212,
+					1,
+					"insert",
+					{
+						"characters": "7"
+					},
+					"AQAAAO5IAAAAAAAA70gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA7kgAAAAAAADuSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					213,
+					1,
+					"left_delete",
+					null,
+					"AQAAAO5IAAAAAAAA7kgAAAAAAAABAAAANw",
+					"AQAAAAAAAAABAAAA70gAAAAAAADvSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					214,
+					1,
+					"insert",
+					{
+						"characters": "8"
+					},
+					"AQAAAO5IAAAAAAAA70gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA7kgAAAAAAADuSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					215,
+					1,
+					"left_delete",
+					null,
+					"AQAAAO5IAAAAAAAA7kgAAAAAAAABAAAAOA",
+					"AQAAAAAAAAABAAAA70gAAAAAAADvSAAAAAAAAAAAAAAAAPC/"
+				],
+				[
+					216,
+					1,
+					"insert",
+					{
+						"characters": "7"
+					},
+					"AQAAAO5IAAAAAAAA70gAAAAAAAAAAAAA",
+					"AQAAAAAAAAABAAAA7kgAAAAAAADuSAAAAAAAAAAAAAAAAPC/"
+				]
+			]
+		}
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"package con",
+				"Package Control: Disable Package"
+			],
+			[
+				"package control: inst",
+				"Package Control: Install Package"
+			],
+			[
+				"pack",
+				"Preferences: Browse Packages"
+			],
+			[
+				"pac",
+				"Preferences: Browse Packages"
+			],
+			[
+				"package",
+				"Preferences: Browse Packages"
+			],
+			[
+				"package c",
+				"Preferences: Browse Packages"
+			]
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/Users/jd/Applications/Unity_projects/Game 3/Assets/Scripts"
+	],
+	"file_history":
+	[
+		"/Users/jd/Applications/Unity_projects/Game 3/Assets/Scripts/BodyController.cs"
+	],
+	"find":
+	{
+		"height": 40.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"specificlimb",
+			"hitstun"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"scrollbar_highlights": true,
+		"show_context": true,
+		"use_buffer2": true,
+		"use_gitignore": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "Assets/Scripts/BodyController.cs",
+					"selected": true,
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 119372,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								18172,
+								18172
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Unity3D/UnityC#.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 9370.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"stack_multiselect": false,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 28.0
+	},
+	"input":
+	{
+		"height": 0.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.find_results":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"pinned_build_system": "",
+	"project": "game3.sublime-project",
+	"replace":
+	{
+		"height": 52.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": false,
+	"side_bar_width": 213.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}

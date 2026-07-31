@@ -192,10 +192,10 @@ public class WeaponsModel : SystemModel
 		disruptionRecoveryRateCache = Mathf.Max(0.02f, disruptionRecoveryRateCache - disruptionRecoveryAmount);
 	}
 
-	public void ExecuteWeapon1(bool arm)
+	public void ExecuteWeapon1(bool arm, bool triggerPressedThisFrame = false)
 	{
 		GunSelector g = arm ? gunSelector : gunSelectorL;
-		if (g.ActiveGun1.Shoot())
+		if (g.ActiveGun1.Shoot(triggerPressedThisFrame))
 		{
 			RaiseFiredWeapon?.Invoke(this, 0);
 			//Debug.Log("Fire 1");

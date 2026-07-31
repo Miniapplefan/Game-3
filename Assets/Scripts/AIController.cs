@@ -110,6 +110,16 @@ public class AIController : MonoBehaviour, InputController
         return pressingFire3;
     }
 
+    public bool getFire1Down()
+    {
+        return false;
+    }
+
+    public bool getFire2Down()
+    {
+        return false;
+    }
+
     public bool getScroll()
     {
         return didScroll;

@@ -46,6 +46,8 @@ public class PlayerController : MonoBehaviour, InputController
     public bool pressingFire1;
     public bool pressingFire2;
     public bool pressingFire3;
+    private bool pendingFire1Down;
+    private bool pendingFire2Down;
 
 
     // Start is called before the first frame update
@@ -119,6 +121,20 @@ public class PlayerController : MonoBehaviour, InputController
     public bool getFire3()
     {
         return pressingFire3;
+    }
+
+    public bool getFire1Down()
+    {
+        bool pressed = pendingFire1Down;
+        pendingFire1Down = false;
+        return pressed;
+    }
+
+    public bool getFire2Down()
+    {
+        bool pressed = pendingFire2Down;
+        pendingFire2Down = false;
+        return pressed;
     }
 
     public bool getScroll()
@@ -224,6 +240,8 @@ public class PlayerController : MonoBehaviour, InputController
         pressingLeft = Input.GetKey(leftKey);
         pressingRight = Input.GetKey(rightKey);
 
+        pendingFire1Down |= Input.GetMouseButtonDown(0);
+        pendingFire2Down |= Input.GetMouseButtonDown(1);
         pressingFire1 = Input.GetMouseButton(0);
         pressingFire2 = Input.GetMouseButton(1);
         pressingAimMiddle = Input.GetMouseButton(2);

@@ -13,6 +13,10 @@ public class BodyController : MonoBehaviour
 	private const int PlayerDamageAuraRewardTenths = 1;
 	private const int PlayerKillAuraRewardTenths = 10;
 
+	[Header("Reload Audio")]
+	[Min(0f)]
+	public float dualReloadAudioStaggerSeconds = 0.5f;
+
 	public BodyInfo so_initialBodyStats;
 
 	public BodyState bodyState;
@@ -484,7 +488,7 @@ public class BodyController : MonoBehaviour
 	{
 		if (i.limb.specificLimb == Limb.LimbID.none)
 		{
-			head.DamageHealth(i.amount * 0.25f);
+			head.DamageHealth(i.amount * 0.5f);
 			//GetSystem(i.limb.linkedSystem).Damage(1);
 			Mathf.Clamp01(bodyState.hitStunAmount += 0.2f);
 			checkForRepair(i);
@@ -495,26 +499,30 @@ public class BodyController : MonoBehaviour
 			{
 				case LimbID.leftLeg:
 					legs.damangeLeftLegCurrentHealth(i.amount);
-					head.DamageHealth(i.amount * 0.25f);
-					Mathf.Clamp01(bodyState.hitStunAmount += 0.9f);
+					head.DamageHealth(i.amount * 0.5f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 1.5f);
 					checkForRepair(i);
 					break;
 				case LimbID.rightLeg:
 					legs.damangeRightLegCurrentHealth(i.amount);
-					head.DamageHealth(i.amount * 0.25f);
-					Mathf.Clamp01(bodyState.hitStunAmount += 0.9f);
+					head.DamageHealth(i.amount * 0.5f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 1.5f);
 					checkForRepair(i);
 					break;
 				case LimbID.torso:
 					head.DamageHealth(i.amount);
 					// Debug.Log(LimbID.torso + " " + i.amount + " " + head.currentHealth);
-					Mathf.Clamp01(bodyState.hitStunAmount += 0.5f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.3f);
 					break;
 				case LimbID.head:
 					head.DamageHealth(i.amount * 2);
 					// Debug.Log(LimbID.head + " " + i.amount * 2 + " " + head.currentHealth);
 					//head.Damage((int)i.amount);
-					Mathf.Clamp01(bodyState.hitStunAmount += 0.4f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.5f);
+					break;
+				case LimbID.rightArm:
+					head.DamageHealth(i.amount * 0.5f);
+					Mathf.Clamp01(bodyState.hitStunAmount += 0.7f);
 					break;
 			}
 		}
@@ -741,11 +749,11 @@ public class BodyController : MonoBehaviour
 		legs.ExecuteRight();
 	}
 
-	public void FireWeapon1()
+	public void FireWeapon1(bool triggerPressedThisFrame = false)
 	{
 		if (!isAI && IsPlayerCenteredAim())
 		{
-			weapons.ExecuteWeapon1(true);
+			weapons.ExecuteWeapon1(true, triggerPressedThisFrame);
 			weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
 			weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
 			weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
@@ -754,12 +762,12 @@ public class BodyController : MonoBehaviour
 
 		if (isAI || (!PrimaryAimUsesLeft && isAimingRight))
 		{
-			weapons.ExecuteWeapon1(true);
+			weapons.ExecuteWeapon1(true, triggerPressedThisFrame);
 
 		}
 		else if (PrimaryAimUsesLeft && isAimingLeft)
 		{
-			weapons.ExecuteWeapon1(false);
+			weapons.ExecuteWeapon1(false, triggerPressedThisFrame);
 		}
 		//Debug.Log(guns.ActiveGun1.Model.transform.position);
 
@@ -769,11 +777,11 @@ public class BodyController : MonoBehaviour
 		weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
 	}
 
-	public void FireOffhandWeapon1()
+	public void FireOffhandWeapon1(bool triggerPressedThisFrame = false)
 	{
 		if (!isAI && IsPlayerCenteredAim())
 		{
-			weapons.ExecuteWeapon1(false);
+			weapons.ExecuteWeapon1(false, triggerPressedThisFrame);
 			weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
 			weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
 			weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
@@ -786,7 +794,7 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
-		weapons.ExecuteWeapon1(PrimaryAimUsesLeft);
+		weapons.ExecuteWeapon1(PrimaryAimUsesLeft, triggerPressedThisFrame);
 
 		// TODO This is just to debug the AI cycling power allocations
 		weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
@@ -799,7 +807,7 @@ public class BodyController : MonoBehaviour
 		weapons.ExecuteWeapon2();
 		//Debug.Log(guns.ActiveGun2.Model.transform.position);
 
-		// TODO This is just to debug the AI cycling power allocations 
+		// TODO This is just to debug the AI cycling power allocations
 		weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
 		weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
 		weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
@@ -810,7 +818,7 @@ public class BodyController : MonoBehaviour
 		weapons.ExecuteWeapon3();
 		//Debug.Log(guns.ActiveGun3.Model.transform.position);
 
-		// TODO This is just to debug the AI cycling power allocations 
+		// TODO This is just to debug the AI cycling power allocations
 		weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
 		weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
 		weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
@@ -1123,7 +1131,7 @@ public class BodyController : MonoBehaviour
 			Vector3 origin = GetAimLockOrigin();
 			Vector3 centeredForward = GetTorsoYawPitchRotation() * Vector3.forward;
 			Vector3 centeredFallback = origin + centeredForward * 20f;
-			Vector3 centeredTarget = ResolveAimPoint(centeredForward, centeredFallback);
+			Vector3 centeredTarget = ResolveAimPoint(origin, centeredForward, centeredFallback);
 			bool aimSourceRight = IsAimSourceRight();
 			bool aimSourceLeft = IsAimSourceLeft();
 
@@ -1260,7 +1268,7 @@ public class BodyController : MonoBehaviour
 			Quaternion cameraRot = Quaternion.Euler(aimCam.transform.eulerAngles.x, aimCam.transform.eulerAngles.y, 0f);
 			Vector3 rayForward = cameraRot * Vector3.forward;
 			Vector3 cameraFallback = origin + rayForward * 20f;
-			Vector3 cameraTarget = ResolveAimPoint(rayForward, cameraFallback);
+			Vector3 cameraTarget = ResolveAimPoint(origin, rayForward, cameraFallback);
 			if (aimSourceRight)
 			{
 				SetWeaponAimPointR(cameraTarget);
@@ -1296,33 +1304,23 @@ public class BodyController : MonoBehaviour
 		// torsoAimPoint.position = torso;
 	}
 
-	private Vector3 ResolveAimPoint(Vector3 forward, Vector3 fallback)
+	private Vector3 ResolveAimPoint(Vector3 origin, Vector3 forward, Vector3 fallback)
 	{
 		if (forward.sqrMagnitude <= 0.0001f)
 		{
 			return fallback;
 		}
 
-		Transform rayOriginTransform = physicalHead != null
-			? physicalHead.transform
-			: (headObjectTransformCache != null ? headObjectTransformCache : transform);
-		Ray ray = new Ray(rayOriginTransform.position, forward.normalized);
+		Ray ray = new Ray(origin, forward.normalized);
 		RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
 		if (hits.Length <= 0)
 		{
 			return fallback;
 		}
 
-		RaycastHit? bodyHit = null;
-		List<RaycastHit> enviroHits = new List<RaycastHit>();
+		RaycastHit? nearestValidHit = null;
 		foreach (var hit in hits)
 		{
-			if (hit.collider.gameObject.layer == 9)
-			{
-				enviroHits.Add(hit);
-				continue;
-			}
-
 			bool isOwnCollider = false;
 			if (bodyColliders != null)
 			{
@@ -1336,35 +1334,24 @@ public class BodyController : MonoBehaviour
 				}
 			}
 
-			if (!isOwnCollider && hit.collider.gameObject.layer == 6)
+			if (isOwnCollider)
 			{
-				bodyHit = hit;
-				break;
+				continue;
+			}
+
+			int hitLayer = hit.collider.gameObject.layer;
+			if (hitLayer != 6 && hitLayer != 9)
+			{
+				continue;
+			}
+
+			if (!nearestValidHit.HasValue || hit.distance < nearestValidHit.Value.distance)
+			{
+				nearestValidHit = hit;
 			}
 		}
 
-		if (enviroHits.Count > 0)
-		{
-			enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
-		}
-
-		if (bodyHit.HasValue)
-		{
-			if (enviroHits.Count <= 0)
-			{
-				return bodyHit.Value.point;
-			}
-
-			float bodyDistance = rb != null
-				? Vector3.Distance(rb.transform.position, bodyHit.Value.point)
-				: bodyHit.Value.distance;
-			float enviroDistance = rb != null
-				? Vector3.Distance(rb.transform.position, enviroHits[0].point)
-				: enviroHits[0].distance;
-			return bodyDistance < enviroDistance ? bodyHit.Value.point : enviroHits[0].point;
-		}
-
-		return enviroHits.Count > 0 ? enviroHits[0].point : fallback;
+		return nearestValidHit.HasValue ? nearestValidHit.Value.point : fallback;
 	}
 
 	void ResetWeaponAimPoint(bool resetPitch = false, bool resetHead = true)
@@ -2296,13 +2283,23 @@ public class BodyController : MonoBehaviour
 	{
 		if (!isAI && IsPlayerCenteredAim())
 		{
-			if (guns != null && guns.ActiveGun1 != null)
+			Gun rightGun = guns != null ? guns.ActiveGun1 : null;
+			Gun leftGun = gunsL != null ? gunsL.ActiveGun1 : null;
+			bool reloadRight = rightGun != null && rightGun.CanStartReload;
+			bool reloadLeft = leftGun != null && leftGun.CanStartReload;
+
+			if (reloadRight && reloadLeft)
 			{
-				guns.ActiveGun1.StartReload();
+				rightGun.StartReload();
+				leftGun.StartReload(dualReloadAudioStaggerSeconds);
 			}
-			if (gunsL != null && gunsL.ActiveGun1 != null)
+			else if (reloadRight)
 			{
-				gunsL.ActiveGun1.StartReload();
+				rightGun.StartReload();
+			}
+			else if (reloadLeft)
+			{
+				leftGun.StartReload();
 			}
 			return;
 		}
@@ -2674,10 +2671,14 @@ public class BodyController : MonoBehaviour
 
 		float maxSpeed = legs.baseWalkSpeed * legs.getMoveSpeed();
 		float maxFireSpeed = maxSpeed * 0.7f;
+		bool fire1Pressed = input.getFire1Down();
+		bool fire2Pressed = input.getFire2Down();
+		bool fire1Requested = input.getFire1() || fire1Pressed;
+		bool fire2Requested = input.getFire2() || fire2Pressed;
 		if (rb.velocity.magnitude < maxFireSpeed)
 		{
-			if (input.getFire1()) FireWeapon1();
-			if (input.getFire2()) FireOffhandWeapon1();
+			if (fire1Requested) FireWeapon1(fire1Pressed);
+			if (fire2Requested) FireOffhandWeapon1(fire2Pressed);
 			if (input.getFire3()) FireWeapon3();
 		}
 		else if (rb.velocity.magnitude > maxSpeed * 0.6f)
@@ -3005,7 +3006,7 @@ public class BodyController : MonoBehaviour
 		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
 		Vector3 forward = combinedRot * Vector3.forward;
 		Vector3 fallback = origin + forward * 20f;
-		return resolveWithAimRaycast ? ResolveAimPoint(forward, fallback) : fallback;
+		return resolveWithAimRaycast ? ResolveAimPoint(origin, forward, fallback) : fallback;
 	}
 
 	private bool TryGetAssistedBreakoutStartAimPoint(bool useLeft, out Vector3 aimPoint, out bool foundAimAssistTarget)

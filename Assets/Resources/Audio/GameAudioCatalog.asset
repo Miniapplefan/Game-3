@@ -1,0 +1,112 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b58de1daafb9442719449f1adf2a3a03, type: 3}
+  m_Name: GameAudioCatalog
+  m_EditorClassIdentifier: 
+  playerGunshot:
+    clips:
+    - {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+    outputMixerGroup: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 0.23
+    pitchRange: {x: 0.97, y: 1.03}
+    spatialBlend: 1
+    minDistance: 2
+    maxDistance: 30
+    rolloffMode: 0
+    priority: 64
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  playerEmptyGunClick:
+    clips:
+    - {fileID: 8300000, guid: 5d337a123c362429aaf693d1742f5ce1, type: 3}
+    outputMixerGroup: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 0.98, y: 1.02}
+    spatialBlend: 0.35
+    minDistance: 1
+    maxDistance: 15
+    rolloffMode: 0
+    priority: 64
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  playerReloadStarted:
+    clips:
+    - {fileID: 8300000, guid: 3df30eae4e8db4619aa2ce105150f965, type: 3}
+    outputMixerGroup: {fileID: 6758493027441001001, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 0.98, y: 1.02}
+    spatialBlend: 0.35
+    minDistance: 1
+    maxDistance: 15
+    rolloffMode: 0
+    priority: 64
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  playerReloadFinished:
+    clips:
+    - {fileID: 8300000, guid: 79065ff7feaa143389b920b76515bf5c, type: 3}
+    outputMixerGroup: {fileID: 6758493027441001001, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 0.98, y: 1.02}
+    spatialBlend: 0.35
+    minDistance: 1
+    maxDistance: 15
+    rolloffMode: 0
+    priority: 64
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  enemyGunshot:
+    clips:
+    - {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+    outputMixerGroup: {fileID: -1632768354943943605, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 0.8
+    pitchRange: {x: 0.77, y: 0.83}
+    spatialBlend: 1
+    minDistance: 2
+    maxDistance: 30
+    rolloffMode: 0
+    priority: 128
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  enemyHitByPlayer:
+    clips:
+    - {fileID: 8300000, guid: dc4f4c9c5a29144008afa1532e260282, type: 3}
+    outputMixerGroup: {fileID: -3863647200042775362, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 0.87, y: 0.77}
+    spatialBlend: 0.71
+    minDistance: 4
+    maxDistance: 30
+    rolloffMode: 0
+    priority: 80
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  enemyLethalBulletWarning:
+    clips:
+    - {fileID: 8300000, guid: 37297145c020a429ea5a5894c80a4575, type: 3}
+    outputMixerGroup: {fileID: 8682057297602537484, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    spatialBlend: 1
+    minDistance: 0.5
+    maxDistance: 10
+    rolloffMode: 0
+    priority: 32
+    loop: 1
+    fadeInSeconds: 0.2
+    fadeOutSeconds: 0.5
