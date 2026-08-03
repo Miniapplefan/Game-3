@@ -23,7 +23,6 @@ public class BulletTimeManager : MonoBehaviour
 	[SerializeField] private float duration = 0.35f;
 	[FormerlySerializedAs("scale")]
 	[SerializeField, Range(0f, 1f)] private float defaultScale = 0.25f;
-	[SerializeField, Range(0f, 1f)] private float triggerBlendProgress = 0.35f;
 	[SerializeField] private AnimationCurve intensityCurve = AnimationCurve.Linear(0f, 1f, 1f, 1f);
 
 	[Header("Enemy Channels")]
@@ -54,7 +53,6 @@ public class BulletTimeManager : MonoBehaviour
 	private bool active;
 	private int triggerVersion;
 
-	public static float TriggerBlendProgress => Mathf.Clamp01(EnsureInstance().triggerBlendProgress);
 	public static bool IsActive => EnsureInstance().active;
 	public static float Duration => Mathf.Max(0f, EnsureInstance().duration);
 	public static float RemainingTime

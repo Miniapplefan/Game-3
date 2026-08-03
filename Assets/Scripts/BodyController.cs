@@ -118,6 +118,7 @@ public class BodyController : MonoBehaviour
 
 	public GameObject aimCam;
 	[SerializeField] private MovePlayerCamera cameraMoveScript;
+	private ActiveRagdollController activeRagdollController;
 	public bool isAimingRight = false;
 	bool startedAimingRight = false;
 	public bool isAimingLeft = false;
@@ -169,6 +170,8 @@ public class BodyController : MonoBehaviour
 	private Vector3 aimStartHoldPointLeft;
 	private bool holdAimStartRightUntilInput = false;
 	private bool holdAimStartLeftUntilInput = false;
+	private bool aimStartHoldUsesAssistedTravelRight = false;
+	private bool aimStartHoldUsesAssistedTravelLeft = false;
 	private Collider[] breakoutAimAssistColliders;
 	private readonly List<BodyController> breakoutAimAssistBodies = new List<BodyController>();
 	private GameObject breakoutAimAssistDebugLeftVolume;
@@ -182,8 +185,6 @@ public class BodyController : MonoBehaviour
 	private float aimSwapElapsed = 0f;
 	private Vector3 aimSwapStartWeights;
 	private Vector3 aimSwapTargetWeights;
-	private bool bulletTimeTriggerPending = false;
-	private bool bulletTimeTriggeredForAimSwap = false;
 	[Header("Aim Yaw Clamp")]
 	public float aimYawLimit = 90f;
 	public float aimYawFollowSpeedMin = 60f;
@@ -339,6 +340,7 @@ public class BodyController : MonoBehaviour
 		SubscribeSystemEvents();
 		bodyState.Init(systemControllers, heatContainer, this);
 		rb = GetComponent<Rigidbody>();
+		ResolveActiveRagdollController();
 		bodyColliders = GetComponentsInChildren<Collider>();
 		tempJoint = new JointDrive();
 
@@ -929,6 +931,8 @@ public class BodyController : MonoBehaviour
 
 	private void FocusRightArm()
 	{
+		CancelBreakoutAimAssistTravel(true);
+		CancelBreakoutAimAssistTravel(false);
 		if (isAimingLeft)
 		{
 			CaptureRelativeAimLeft();
@@ -940,6 +944,7 @@ public class BodyController : MonoBehaviour
 		keepCameraAimUsesLeft = false;
 		aimStartHoldTimerLeft = 0f;
 		holdAimStartLeftUntilInput = false;
+		aimStartHoldUsesAssistedTravelLeft = false;
 		forceAimToTorsoLeft = false;
 
 		bool wasBrokenOut = startedAimingRight;
@@ -953,9 +958,9 @@ public class BodyController : MonoBehaviour
 		if (!wasBrokenOut && !hasStoredRelativeAimRight)
 		{
 			forceAimToTorsoRight = true;
-			aimStartHoldPointRight = GetBreakoutStartAimPoint(false, out bool foundBreakoutAimAssistTarget, out _);
+			aimStartHoldPointRight = GetBreakoutStartAimPoint(false, out bool foundBreakoutAimAssistTarget, out bool usedBreakoutAimAssist);
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
-			BeginAimStartHold(false, aimStartHoldPointRight);
+			BeginAimStartHold(false, aimStartHoldPointRight, usedBreakoutAimAssist);
 		}
 		else
 		{
@@ -965,7 +970,7 @@ public class BodyController : MonoBehaviour
 			if (TryGetAssistedBreakoutStartAimPoint(false, out Vector3 assistedAimPoint, out bool foundBreakoutAimAssistTarget))
 			{
 				aimStartHoldPointRight = assistedAimPoint;
-				BeginAimStartHold(false, aimStartHoldPointRight);
+				BeginAimStartHold(false, aimStartHoldPointRight, true);
 			}
 			else
 			{
@@ -981,12 +986,14 @@ public class BodyController : MonoBehaviour
 		StartAimSwapBlend(0f, 1f, startedAimingLeft ? 0.7f : 0f);
 		if (shouldTriggerBulletTime)
 		{
-			QueueBulletTimeTriggerForAimSwap();
+			TryTriggerBulletTimeImmediately();
 		}
 	}
 
 	private void FocusLeftArm()
 	{
+		CancelBreakoutAimAssistTravel(false);
+		CancelBreakoutAimAssistTravel(true);
 		if (isAimingRight)
 		{
 			CaptureRelativeAimRight();
@@ -998,6 +1005,7 @@ public class BodyController : MonoBehaviour
 		keepCameraAimUsesLeft = true;
 		aimStartHoldTimerRight = 0f;
 		holdAimStartRightUntilInput = false;
+		aimStartHoldUsesAssistedTravelRight = false;
 		forceAimToTorsoRight = false;
 
 		bool wasBrokenOut = startedAimingLeft;
@@ -1017,9 +1025,9 @@ public class BodyController : MonoBehaviour
 					headObjectTransformCache.position,
 					GetTorsoYawPitchRotation());
 			}
-			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true, out bool foundBreakoutAimAssistTarget, out _);
+			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true, out bool foundBreakoutAimAssistTarget, out bool usedBreakoutAimAssist);
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
-			BeginAimStartHold(true, aimStartHoldPointLeft);
+			BeginAimStartHold(true, aimStartHoldPointLeft, usedBreakoutAimAssist);
 		}
 		else
 		{
@@ -1029,7 +1037,7 @@ public class BodyController : MonoBehaviour
 			if (TryGetAssistedBreakoutStartAimPoint(true, out Vector3 assistedAimPoint, out bool foundBreakoutAimAssistTarget))
 			{
 				aimStartHoldPointLeft = assistedAimPoint;
-				BeginAimStartHold(true, aimStartHoldPointLeft);
+				BeginAimStartHold(true, aimStartHoldPointLeft, true);
 			}
 			else
 			{
@@ -1045,7 +1053,7 @@ public class BodyController : MonoBehaviour
 		StartAimSwapBlend(0f, startedAimingRight ? 0.7f : 0f, 1f);
 		if (shouldTriggerBulletTime)
 		{
-			QueueBulletTimeTriggerForAimSwap();
+			TryTriggerBulletTimeImmediately();
 		}
 	}
 
@@ -1058,6 +1066,7 @@ public class BodyController : MonoBehaviour
 		forceAimToTorsoRight = false;
 		aimStartHoldTimerRight = 0f;
 		holdAimStartRightUntilInput = false;
+		aimStartHoldUsesAssistedTravelRight = false;
 
 		EnterCenteredState();
 	}
@@ -1082,6 +1091,7 @@ public class BodyController : MonoBehaviour
 		forceAimToTorsoLeft = false;
 		aimStartHoldTimerLeft = 0f;
 		holdAimStartLeftUntilInput = false;
+		aimStartHoldUsesAssistedTravelLeft = false;
 
 		EnterCenteredState();
 	}
@@ -1099,12 +1109,11 @@ public class BodyController : MonoBehaviour
 
 	private void EnterCenteredState()
 	{
+		CancelAllBreakoutAimAssistTravel();
 		isAimingRight = false;
 		isAimingLeft = false;
 		keepCameraAimWithoutArm = false;
 		keepCameraAimUsesLeft = false;
-		bulletTimeTriggerPending = false;
-		bulletTimeTriggeredForAimSwap = false;
 		if (!startedAimingRight)
 		{
 			hasStoredRelativeAimRight = false;
@@ -1121,6 +1130,8 @@ public class BodyController : MonoBehaviour
 		aimStartHoldTimerLeft = 0f;
 		holdAimStartRightUntilInput = false;
 		holdAimStartLeftUntilInput = false;
+		aimStartHoldUsesAssistedTravelRight = false;
+		aimStartHoldUsesAssistedTravelLeft = false;
 		StartAimSwapBlend(1f, 0f, 0f);
 	}
 
@@ -1169,6 +1180,12 @@ public class BodyController : MonoBehaviour
 				if (aimStartHoldTimerRight > 0f)
 				{
 					aimStartHoldTimerRight -= Time.deltaTime;
+					if (aimStartHoldUsesAssistedTravelRight && HasAimStartReleaseInput())
+					{
+						ReleaseAimStartHold(false);
+						torsoAimPoint.position = centeredTarget;
+						return;
+					}
 					MaintainAimStartHoldAlignment(false);
 					torsoAimPoint.position = centeredTarget;
 					return;
@@ -1194,6 +1211,12 @@ public class BodyController : MonoBehaviour
 				if (aimStartHoldTimerLeft > 0f)
 				{
 					aimStartHoldTimerLeft -= Time.deltaTime;
+					if (aimStartHoldUsesAssistedTravelLeft && HasAimStartReleaseInput())
+					{
+						ReleaseAimStartHold(true);
+						torsoAimPoint.position = centeredTarget;
+						return;
+					}
 					MaintainAimStartHoldAlignment(true);
 					torsoAimPoint.position = centeredTarget;
 					return;
@@ -1477,23 +1500,29 @@ public class BodyController : MonoBehaviour
 		SetWeaponAimPointL(origin + (torsoYaw * storedRelativeAimLeftLocal));
 	}
 
-	private void BeginAimStartHold(bool useLeft, Vector3 aimPoint)
+	private void BeginAimStartHold(bool useLeft, Vector3 aimPoint, bool beginAssistedArmTravel = false)
 	{
 		if (useLeft)
 		{
 			aimStartHoldPointLeft = aimPoint;
 			aimStartHoldTimerLeft = aimStartHoldDuration;
 			holdAimStartLeftUntilInput = true;
+			aimStartHoldUsesAssistedTravelLeft = beginAssistedArmTravel;
 		}
 		else
 		{
 			aimStartHoldPointRight = aimPoint;
 			aimStartHoldTimerRight = aimStartHoldDuration;
 			holdAimStartRightUntilInput = true;
+			aimStartHoldUsesAssistedTravelRight = beginAssistedArmTravel;
 		}
 
 		smoothedMovingAimYaw = 0f;
 		MaintainAimStartHoldAlignment(useLeft);
+		if (beginAssistedArmTravel)
+		{
+			BeginBreakoutAimAssistTravel(useLeft);
+		}
 		ApplyCameraImmediateForAimSwap();
 	}
 
@@ -1524,6 +1553,7 @@ public class BodyController : MonoBehaviour
 
 	private void ReleaseAimStartHold(bool useLeft)
 	{
+		CancelBreakoutAimAssistTravel(useLeft);
 		// Rebase the manual controller and camera to the assisted direction before
 		// the sampled mouse delta is applied later in this FixedUpdate.
 		MaintainAimStartHoldAlignment(useLeft);
@@ -1534,11 +1564,58 @@ public class BodyController : MonoBehaviour
 		{
 			holdAimStartLeftUntilInput = false;
 			forceAimToTorsoLeft = false;
+			aimStartHoldUsesAssistedTravelLeft = false;
 		}
 		else
 		{
 			holdAimStartRightUntilInput = false;
 			forceAimToTorsoRight = false;
+			aimStartHoldUsesAssistedTravelRight = false;
+		}
+	}
+
+	private void BeginBreakoutAimAssistTravel(bool useLeft)
+	{
+		ResolveActiveRagdollController();
+		if (activeRagdollController != null)
+		{
+			activeRagdollController.BeginBreakoutAimAssistTravel(useLeft);
+		}
+	}
+
+	private void CancelBreakoutAimAssistTravel(bool useLeft)
+	{
+		ResolveActiveRagdollController();
+		if (activeRagdollController != null)
+		{
+			activeRagdollController.CancelBreakoutAimAssistTravel(useLeft);
+		}
+	}
+
+	private void CancelAllBreakoutAimAssistTravel()
+	{
+		ResolveActiveRagdollController();
+		if (activeRagdollController != null)
+		{
+			activeRagdollController.CancelAllBreakoutAimAssistTravel();
+		}
+	}
+
+	private void ResolveActiveRagdollController()
+	{
+		if (activeRagdollController != null)
+		{
+			return;
+		}
+
+		activeRagdollController = GetComponent<ActiveRagdollController>();
+		if (activeRagdollController == null)
+		{
+			activeRagdollController = GetComponentInChildren<ActiveRagdollController>();
+		}
+		if (activeRagdollController == null)
+		{
+			activeRagdollController = GetComponentInParent<ActiveRagdollController>();
 		}
 	}
 
@@ -3043,7 +3120,7 @@ public class BodyController : MonoBehaviour
 				ApplySameDirectionScrollAimAssist(useLeft, closestTargetAimPoint);
 			}
 
-			QueueBulletTimeTriggerForAimSwap();
+			TryTriggerBulletTimeImmediately();
 			return;
 		}
 
@@ -3051,7 +3128,7 @@ public class BodyController : MonoBehaviour
 		{
 			if (foundVisibleTarget)
 			{
-				QueueBulletTimeTriggerForAimSwap();
+				TryTriggerBulletTimeImmediately();
 			}
 			return;
 		}
@@ -3061,7 +3138,7 @@ public class BodyController : MonoBehaviour
 			ApplySameDirectionScrollAimAssist(useLeft, assistedAimPoint);
 		}
 
-		QueueBulletTimeTriggerForAimSwap();
+		TryTriggerBulletTimeImmediately();
 	}
 
 	private void ApplySameDirectionScrollAimAssist(bool useLeft, Vector3 assistedAimPoint)
@@ -3069,12 +3146,12 @@ public class BodyController : MonoBehaviour
 		if (useLeft)
 		{
 			aimStartHoldPointLeft = assistedAimPoint;
-			BeginAimStartHold(true, aimStartHoldPointLeft);
+			BeginAimStartHold(true, aimStartHoldPointLeft, true);
 			return;
 		}
 
 		aimStartHoldPointRight = assistedAimPoint;
-		BeginAimStartHold(false, aimStartHoldPointRight);
+		BeginAimStartHold(false, aimStartHoldPointRight, true);
 	}
 
 	private bool TryGetSameDirectionScrollBreakoutAssist(
@@ -3833,49 +3910,15 @@ public class BodyController : MonoBehaviour
 		{
 			ApplyAimSwapWeights(targetW0, targetW1, targetW2);
 			isAimSwapInProgress = false;
-			TryTriggerQueuedBulletTime(1f);
 		}
 	}
 
-	private void QueueBulletTimeTriggerForAimSwap()
+	private void TryTriggerBulletTimeImmediately()
 	{
 		if (isAI)
 		{
 			return;
 		}
-
-		bulletTimeTriggerPending = true;
-		bulletTimeTriggeredForAimSwap = false;
-		if (!isAimSwapInProgress || aimSwapDuration <= 0f)
-		{
-			TriggerQueuedBulletTime();
-		}
-	}
-
-	private void TryTriggerQueuedBulletTime(float aimSwapProgress)
-	{
-		if (!bulletTimeTriggerPending || bulletTimeTriggeredForAimSwap)
-		{
-			return;
-		}
-
-		if (aimSwapProgress < BulletTimeManager.TriggerBlendProgress)
-		{
-			return;
-		}
-
-		TriggerQueuedBulletTime();
-	}
-
-	private void TriggerQueuedBulletTime()
-	{
-		if (!bulletTimeTriggerPending || bulletTimeTriggeredForAimSwap)
-		{
-			return;
-		}
-
-		bulletTimeTriggeredForAimSwap = true;
-		bulletTimeTriggerPending = false;
 
 		if (auraManager == null)
 		{
@@ -3921,7 +3964,6 @@ public class BodyController : MonoBehaviour
 
 		aimSwapElapsed += Time.deltaTime;
 		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
-		TryTriggerQueuedBulletTime(t);
 		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
 		Vector3 w = Vector3.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
 		ApplyAimSwapWeights(w.x, w.y, w.z);

@@ -93,6 +93,23 @@ public class ActiveRagdollController : MonoBehaviour
 	// private float rightAimSwapCatchUpTimer;
 	// private float leftAimSwapCatchUpTimer;
 
+	[Header("Assisted Aim Travel")]
+	[SerializeField, Min(0f)] private float assistedAimMinTravelTime = 0.06f;
+	[SerializeField, Min(0f)] private float assistedAimMaxTravelTime = 0.25f;
+	[SerializeField, Min(0.0001f)] private float assistedAimAngleForMaxTravelTime = 100f;
+
+	private sealed class AssistedAimTravelState
+	{
+		public bool active;
+		public float elapsed;
+		public float duration;
+		public Quaternion startArmRotation;
+		public Quaternion startWeaponRotation;
+	}
+
+	private readonly AssistedAimTravelState rightAssistedAimTravel = new AssistedAimTravelState();
+	private readonly AssistedAimTravelState leftAssistedAimTravel = new AssistedAimTravelState();
+
 	[Header("Movement Aim Error")]
 	[SerializeField] private bool enableMovementAimError = true;
 	[SerializeField] private float movementAimErrorMaxDegrees = 35f;
@@ -307,8 +324,35 @@ public class ActiveRagdollController : MonoBehaviour
 			float rightSpeed = armAimFollowSpeed;
 			float leftSpeed = armAimFollowSpeed;
 
-			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false, bodyController.IsRightArmAimed);
-			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false, bodyController.IsLeftArmAimed);
+			if (rightAssistedAimTravel.active)
+			{
+				UpdateBreakoutAimAssistTravel(
+					rightAssistedAimTravel,
+					RagdollRightArm,
+					RagdollRightWeapon,
+					target,
+					bodyController.guns,
+					bodyController.IsRightArmAimed);
+			}
+			else
+			{
+				UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, rightSpeed, false, bodyController.IsRightArmAimed);
+			}
+
+			if (leftAssistedAimTravel.active)
+			{
+				UpdateBreakoutAimAssistTravel(
+					leftAssistedAimTravel,
+					RagdollLeftArm,
+					RagdollLeftWeapon,
+					targetL,
+					bodyController.gunsL,
+					bodyController.IsLeftArmAimed);
+			}
+			else
+			{
+				UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, leftSpeed, false, bodyController.IsLeftArmAimed);
+			}
 
 			// rightAimSwapCatchUpTimer = Mathf.Max(0f, rightAimSwapCatchUpTimer - Time.deltaTime);
 			// leftAimSwapCatchUpTimer = Mathf.Max(0f, leftAimSwapCatchUpTimer - Time.deltaTime);
@@ -316,6 +360,7 @@ public class ActiveRagdollController : MonoBehaviour
 		}
 		else
 		{
+			CancelAllBreakoutAimAssistTravel();
 			UpdateMovementAimError(false);
 			UpdateMovementShotError(false);
 		}
@@ -345,13 +390,13 @@ public class ActiveRagdollController : MonoBehaviour
 		bool isAimingRight = bodyController != null && bodyController.IsRightArmAimed;
 		bool isAimingLeft = bodyController != null && bodyController.IsLeftArmAimed;
 
-		if (isAimingRight && !wasAimingRight)
+		if (isAimingRight && !wasAimingRight && !rightAssistedAimTravel.active)
 		{
 			// rightAimSwapCatchUpTimer = armAimSwapCatchUpDuration;
 			UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, armAimFollowSpeed, true, true);
 		}
 
-		if (isAimingLeft && !wasAimingLeft)
+		if (isAimingLeft && !wasAimingLeft && !leftAssistedAimTravel.active)
 		{
 			// leftAimSwapCatchUpTimer = armAimSwapCatchUpDuration;
 			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, armAimFollowSpeed, true, true);
@@ -363,20 +408,129 @@ public class ActiveRagdollController : MonoBehaviour
 
 	private void UpdateArmAim(Transform arm, Transform weapon, Transform aimTarget, GunSelector gunSelector, float followSpeed, bool instant, bool applyMovementAimError)
 	{
-		if (arm == null || weapon == null || aimTarget == null)
+		if (!TryGetArmAimRotations(
+			arm,
+			weapon,
+			aimTarget,
+			gunSelector,
+			applyMovementAimError,
+			out Quaternion armRotation,
+			out Quaternion weaponRotation))
 		{
 			return;
 		}
 
 		float t = instant ? 1f : GetAimFollowT(followSpeed);
-		Vector3 direction = aimTarget.position - arm.position;
-		if (TryGetAimRotation(direction, transform.up, arm.rotation, out Quaternion armRotation))
+		arm.rotation = Quaternion.Slerp(arm.rotation, armRotation, t);
+		weapon.rotation = Quaternion.Slerp(weapon.rotation, weaponRotation, t);
+	}
+
+	public void BeginBreakoutAimAssistTravel(bool useLeft)
+	{
+		AssistedAimTravelState state = useLeft ? leftAssistedAimTravel : rightAssistedAimTravel;
+		Transform arm = useLeft ? RagdollLeftArm : RagdollRightArm;
+		Transform weapon = useLeft ? RagdollLeftWeapon : RagdollRightWeapon;
+		Transform aimTarget = useLeft ? targetL : target;
+		GunSelector gunSelector = bodyController != null
+			? (useLeft ? bodyController.gunsL : bodyController.guns)
+			: null;
+
+		if (!TryGetArmAimRotations(
+			arm,
+			weapon,
+			aimTarget,
+			gunSelector,
+			true,
+			out Quaternion targetArmRotation,
+			out _))
 		{
-			armRotation = ApplyMovementAimError(armRotation, applyMovementAimError);
-			arm.rotation = Quaternion.Slerp(arm.rotation, armRotation, t);
+			state.active = false;
+			return;
 		}
 
-		Quaternion weaponRotation;
+		float minTravelTime = Mathf.Max(0f, assistedAimMinTravelTime);
+		float maxTravelTime = Mathf.Max(minTravelTime, assistedAimMaxTravelTime);
+		float angleForMaxTravelTime = Mathf.Max(0.0001f, assistedAimAngleForMaxTravelTime);
+		float angularDistance = Quaternion.Angle(arm.rotation, targetArmRotation);
+		float angleT = Mathf.Clamp01(angularDistance / angleForMaxTravelTime);
+
+		state.elapsed = 0f;
+		state.duration = Mathf.Lerp(minTravelTime, maxTravelTime, angleT);
+		state.startArmRotation = arm.rotation;
+		state.startWeaponRotation = weapon.rotation;
+		state.active = true;
+	}
+
+	public void CancelBreakoutAimAssistTravel(bool useLeft)
+	{
+		(useLeft ? leftAssistedAimTravel : rightAssistedAimTravel).active = false;
+	}
+
+	public void CancelAllBreakoutAimAssistTravel()
+	{
+		rightAssistedAimTravel.active = false;
+		leftAssistedAimTravel.active = false;
+	}
+
+	private void UpdateBreakoutAimAssistTravel(
+		AssistedAimTravelState state,
+		Transform arm,
+		Transform weapon,
+		Transform aimTarget,
+		GunSelector gunSelector,
+		bool applyMovementAimError)
+	{
+		if (!TryGetArmAimRotations(
+			arm,
+			weapon,
+			aimTarget,
+			gunSelector,
+			applyMovementAimError,
+			out Quaternion targetArmRotation,
+			out Quaternion targetWeaponRotation))
+		{
+			state.active = false;
+			return;
+		}
+
+		state.elapsed += Time.unscaledDeltaTime;
+		float progress = state.duration <= 0f
+			? 1f
+			: Mathf.Clamp01(state.elapsed / state.duration);
+		float easedProgress = SmootherStep(progress);
+
+		arm.rotation = Quaternion.Slerp(state.startArmRotation, targetArmRotation, easedProgress);
+		weapon.rotation = Quaternion.Slerp(state.startWeaponRotation, targetWeaponRotation, easedProgress);
+
+		if (progress >= 1f)
+		{
+			state.active = false;
+		}
+	}
+
+	private bool TryGetArmAimRotations(
+		Transform arm,
+		Transform weapon,
+		Transform aimTarget,
+		GunSelector gunSelector,
+		bool applyMovementAimError,
+		out Quaternion armRotation,
+		out Quaternion weaponRotation)
+	{
+		armRotation = arm != null ? arm.rotation : Quaternion.identity;
+		weaponRotation = weapon != null ? weapon.rotation : Quaternion.identity;
+		if (arm == null || weapon == null || aimTarget == null)
+		{
+			return false;
+		}
+
+		Vector3 direction = aimTarget.position - arm.position;
+		if (!TryGetAimRotation(direction, transform.up, arm.rotation, out armRotation))
+		{
+			return false;
+		}
+		armRotation = ApplyMovementAimError(armRotation, applyMovementAimError);
+
 		if (gunSelector != null)
 		{
 			weaponRotation = gunSelector.GetPrimaryHandAimRotation(aimTarget.position, transform.right);
@@ -386,12 +540,18 @@ public class ActiveRagdollController : MonoBehaviour
 			Vector3 weaponDirection = aimTarget.position - weapon.position;
 			if (!TryGetAimRotation(weaponDirection, transform.right, weapon.rotation, out weaponRotation))
 			{
-				return;
+				return false;
 			}
 		}
 
 		weaponRotation = ApplyMovementAimError(weaponRotation, applyMovementAimError);
-		weapon.rotation = Quaternion.Slerp(weapon.rotation, weaponRotation, t);
+		return true;
+	}
+
+	private static float SmootherStep(float t)
+	{
+		t = Mathf.Clamp01(t);
+		return t * t * t * (t * (t * 6f - 15f) + 10f);
 	}
 
 	public void ApplyMovementAimShotImpulse(bool isLeftArm)
@@ -565,10 +725,18 @@ public class ActiveRagdollController : MonoBehaviour
 	{
 		if (isLeftArm)
 		{
+			if (leftAssistedAimTravel.active)
+			{
+				return;
+			}
 			UpdateArmAim(RagdollLeftArm, RagdollLeftWeapon, targetL, bodyController.gunsL, armAimFollowSpeed, true, true);
 			return;
 		}
 
+		if (rightAssistedAimTravel.active)
+		{
+			return;
+		}
 		UpdateArmAim(RagdollRightArm, RagdollRightWeapon, target, bodyController.guns, armAimFollowSpeed, true, true);
 	}
 
