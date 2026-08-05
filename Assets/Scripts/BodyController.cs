@@ -180,6 +180,23 @@ public class BodyController : MonoBehaviour
 	private bool holdAimStartLeftUntilInput = false;
 	private bool aimStartHoldUsesAssistedTravelRight = false;
 	private bool aimStartHoldUsesAssistedTravelLeft = false;
+	[Header("Breakout Aim Assist View Travel")]
+	[SerializeField, Min(0f)] private float assistedViewMinTravelTime = 0.08f;
+	[SerializeField, Min(0f)] private float assistedViewMaxTravelTime = 0.25f;
+	[SerializeField, Min(0.0001f)] private float assistedViewAngleForMaxTravelTime = 90f;
+	[SerializeField] private AnimationCurve assistedViewTravelCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+	private sealed class AssistedViewTravelState
+	{
+		public bool active;
+		public float elapsed;
+		public float duration;
+		public Quaternion startRotation;
+		public Vector3 currentDirection;
+	}
+
+	private readonly AssistedViewTravelState rightAssistedViewTravel = new AssistedViewTravelState();
+	private readonly AssistedViewTravelState leftAssistedViewTravel = new AssistedViewTravelState();
 	private Collider[] breakoutAimAssistColliders;
 	private readonly List<BodyController> breakoutAimAssistBodies = new List<BodyController>();
 	private GameObject breakoutAimAssistDebugLeftVolume;
@@ -686,6 +703,7 @@ public class BodyController : MonoBehaviour
 
 	public void Die()
 	{
+		CancelAllBreakoutAimAssistTravel();
 		isDead = true;
 		bodyState.isDead = true;
 
@@ -999,7 +1017,7 @@ public class BodyController : MonoBehaviour
 				ApplyRelativeAimRight();
 			}
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
-			if (restoringParkedAim)
+			if (restoringParkedAim && !IsBreakoutAimAssistViewTravelActive(false))
 			{
 				AlignHeadAnchorToAimPoint(false);
 			}
@@ -1041,13 +1059,13 @@ public class BodyController : MonoBehaviour
 		if (!wasBrokenOut && !hasStoredRelativeAimLeft)
 		{
 			forceAimToTorsoLeft = true;
-			if (headObjectL != null && headObjectTransformCache != null)
+			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true, out bool foundBreakoutAimAssistTarget, out bool usedBreakoutAimAssist);
+			if (!usedBreakoutAimAssist && headObjectL != null && headObjectTransformCache != null)
 			{
 				headObjectL.transform.SetPositionAndRotation(
 					headObjectTransformCache.position,
 					GetTorsoYawPitchRotation());
 			}
-			aimStartHoldPointLeft = GetBreakoutStartAimPoint(true, out bool foundBreakoutAimAssistTarget, out bool usedBreakoutAimAssist);
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
 			BeginAimStartHold(true, aimStartHoldPointLeft, usedBreakoutAimAssist);
 		}
@@ -1066,7 +1084,7 @@ public class BodyController : MonoBehaviour
 				ApplyRelativeAimLeft();
 			}
 			shouldTriggerBulletTime = foundBreakoutAimAssistTarget;
-			if (restoringParkedAim)
+			if (restoringParkedAim && !IsBreakoutAimAssistViewTravelActive(true))
 			{
 				AlignHeadAnchorToAimPoint(true);
 			}
@@ -1540,15 +1558,20 @@ public class BodyController : MonoBehaviour
 		}
 
 		smoothedMovingAimYaw = 0f;
-		MaintainAimStartHoldAlignment(useLeft);
+		SetAimStartHoldAimPoint(useLeft);
 		if (beginAssistedArmTravel)
 		{
+			BeginBreakoutAimAssistViewTravel(useLeft);
 			BeginBreakoutAimAssistTravel(useLeft);
+		}
+		else
+		{
+			MaintainAimStartHoldAlignment(useLeft);
 		}
 		ApplyCameraImmediateForAimSwap();
 	}
 
-	private void MaintainAimStartHoldAlignment(bool useLeft)
+	private void SetAimStartHoldAimPoint(bool useLeft)
 	{
 		Vector3 aimPoint = useLeft ? aimStartHoldPointLeft : aimStartHoldPointRight;
 		if (useLeft)
@@ -1558,6 +1581,15 @@ public class BodyController : MonoBehaviour
 		else
 		{
 			SetWeaponAimPointR(aimPoint);
+		}
+	}
+
+	private void MaintainAimStartHoldAlignment(bool useLeft)
+	{
+		SetAimStartHoldAimPoint(useLeft);
+		if (IsBreakoutAimAssistViewTravelActive(useLeft))
+		{
+			return;
 		}
 
 		AlignHeadAnchorToAimPoint(useLeft);
@@ -1575,10 +1607,18 @@ public class BodyController : MonoBehaviour
 
 	private void ReleaseAimStartHold(bool useLeft)
 	{
+		bool interruptedAssistedViewTravel = IsBreakoutAimAssistViewTravelActive(useLeft);
 		CancelBreakoutAimAssistTravel(useLeft);
-		// Rebase the manual controller and camera to the assisted direction before
-		// the sampled mouse delta is applied later in this FixedUpdate.
-		MaintainAimStartHoldAlignment(useLeft);
+		if (interruptedAssistedViewTravel)
+		{
+			RebaseAimFromCurrentAssistedView(useLeft);
+		}
+		else
+		{
+			// Rebase the manual controller and camera to the assisted direction before
+			// the sampled mouse delta is applied later in this FixedUpdate.
+			MaintainAimStartHoldAlignment(useLeft);
+		}
 		ApplyCameraImmediateForAimSwap();
 		smoothedMovingAimYaw = 0f;
 
@@ -1596,6 +1636,36 @@ public class BodyController : MonoBehaviour
 		}
 	}
 
+	private void RebaseAimFromCurrentAssistedView(bool useLeft)
+	{
+		Transform head = GetBreakoutAimAssistHeadAnchor(useLeft);
+		if (head == null)
+		{
+			MaintainAimStartHoldAlignment(useLeft);
+			return;
+		}
+
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : head.position;
+		Vector3 forward = head.forward;
+		Vector3 fallback = origin + forward * 20f;
+		Vector3 rebasedAimPoint = ResolveAimPoint(origin, forward, fallback);
+		if (useLeft)
+		{
+			aimStartHoldPointLeft = rebasedAimPoint;
+			SetWeaponAimPointL(rebasedAimPoint);
+		}
+		else
+		{
+			aimStartHoldPointRight = rebasedAimPoint;
+			SetWeaponAimPointR(rebasedAimPoint);
+		}
+
+		if (sensors != null)
+		{
+			sensors.SyncHeadPitchFromCurrentTransform(useLeft);
+		}
+	}
+
 	private void BeginBreakoutAimAssistTravel(bool useLeft)
 	{
 		ResolveActiveRagdollController();
@@ -1607,6 +1677,7 @@ public class BodyController : MonoBehaviour
 
 	private void CancelBreakoutAimAssistTravel(bool useLeft)
 	{
+		CancelBreakoutAimAssistViewTravel(useLeft);
 		ResolveActiveRagdollController();
 		if (activeRagdollController != null)
 		{
@@ -1616,11 +1687,147 @@ public class BodyController : MonoBehaviour
 
 	private void CancelAllBreakoutAimAssistTravel()
 	{
+		CancelAllBreakoutAimAssistViewTravel();
 		ResolveActiveRagdollController();
 		if (activeRagdollController != null)
 		{
 			activeRagdollController.CancelAllBreakoutAimAssistTravel();
 		}
+	}
+
+	private void BeginBreakoutAimAssistViewTravel(bool useLeft)
+	{
+		AssistedViewTravelState state = GetBreakoutAimAssistViewTravelState(useLeft);
+		Transform head = GetBreakoutAimAssistHeadAnchor(useLeft);
+		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
+		state.active = false;
+		if (head == null || aimPoint == null)
+		{
+			MaintainAimStartHoldAlignment(useLeft);
+			return;
+		}
+
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : head.position;
+		Vector3 targetDirection = aimPoint.position - origin;
+		if (targetDirection.sqrMagnitude <= 0.0001f)
+		{
+			MaintainAimStartHoldAlignment(useLeft);
+			return;
+		}
+
+		targetDirection.Normalize();
+		Quaternion targetRotation = Quaternion.LookRotation(targetDirection, Vector3.up);
+		float minTravelTime = Mathf.Max(0f, assistedViewMinTravelTime);
+		float maxTravelTime = Mathf.Max(minTravelTime, assistedViewMaxTravelTime);
+		float angleForMaxTravelTime = Mathf.Max(0.0001f, assistedViewAngleForMaxTravelTime);
+		float angularDistance = Quaternion.Angle(head.rotation, targetRotation);
+		float angleT = Mathf.Clamp01(angularDistance / angleForMaxTravelTime);
+
+		state.elapsed = 0f;
+		state.duration = Mathf.Lerp(minTravelTime, maxTravelTime, angleT);
+		state.startRotation = head.rotation;
+		state.currentDirection = head.forward.normalized;
+		head.position = origin;
+		if (state.duration <= 0f || angularDistance <= 0.0001f)
+		{
+			head.rotation = targetRotation;
+			state.currentDirection = targetDirection;
+			if (sensors != null)
+			{
+				sensors.SyncHeadPitchFromCurrentTransform(useLeft);
+			}
+			return;
+		}
+
+		state.active = true;
+	}
+
+	private void UpdateBreakoutAimAssistViewTravel()
+	{
+		bool updatedRight = UpdateBreakoutAimAssistViewTravel(false, rightAssistedViewTravel);
+		bool updatedLeft = UpdateBreakoutAimAssistViewTravel(true, leftAssistedViewTravel);
+		if (updatedRight || updatedLeft)
+		{
+			SyncHeadAimTargetProxies();
+		}
+	}
+
+	private bool UpdateBreakoutAimAssistViewTravel(bool useLeft, AssistedViewTravelState state)
+	{
+		if (!state.active)
+		{
+			return false;
+		}
+
+		Transform head = GetBreakoutAimAssistHeadAnchor(useLeft);
+		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
+		if (head == null || aimPoint == null)
+		{
+			state.active = false;
+			return false;
+		}
+
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : head.position;
+		Vector3 targetDirection = aimPoint.position - origin;
+		if (targetDirection.sqrMagnitude <= 0.0001f)
+		{
+			state.active = false;
+			return false;
+		}
+
+		targetDirection.Normalize();
+		Quaternion targetRotation = Quaternion.LookRotation(targetDirection, Vector3.up);
+		state.elapsed += Time.unscaledDeltaTime;
+		float progress = state.duration <= 0f
+			? 1f
+			: Mathf.Clamp01(state.elapsed / state.duration);
+		float curvedProgress = assistedViewTravelCurve != null
+			? Mathf.Clamp01(assistedViewTravelCurve.Evaluate(progress))
+			: progress;
+		Quaternion currentRotation = Quaternion.Slerp(state.startRotation, targetRotation, curvedProgress);
+		head.SetPositionAndRotation(origin, currentRotation);
+		state.currentDirection = currentRotation * Vector3.forward;
+
+		if (progress >= 1f)
+		{
+			state.active = false;
+			head.rotation = targetRotation;
+			state.currentDirection = targetDirection;
+			if (sensors != null)
+			{
+				sensors.SyncHeadPitchFromCurrentTransform(useLeft);
+			}
+		}
+
+		return true;
+	}
+
+	private Transform GetBreakoutAimAssistHeadAnchor(bool useLeft)
+	{
+		return useLeft
+			? (headObjectL != null ? headObjectL.transform : null)
+			: (headObject != null ? headObject.transform : null);
+	}
+
+	private AssistedViewTravelState GetBreakoutAimAssistViewTravelState(bool useLeft)
+	{
+		return useLeft ? leftAssistedViewTravel : rightAssistedViewTravel;
+	}
+
+	private bool IsBreakoutAimAssistViewTravelActive(bool useLeft)
+	{
+		return GetBreakoutAimAssistViewTravelState(useLeft).active;
+	}
+
+	private void CancelBreakoutAimAssistViewTravel(bool useLeft)
+	{
+		GetBreakoutAimAssistViewTravelState(useLeft).active = false;
+	}
+
+	private void CancelAllBreakoutAimAssistViewTravel()
+	{
+		rightAssistedViewTravel.active = false;
+		leftAssistedViewTravel.active = false;
 	}
 
 	private void ResolveActiveRagdollController()
@@ -1727,6 +1934,11 @@ public class BodyController : MonoBehaviour
 
 	private Vector3 GetHeadAimTargetProxyPosition(bool useLeft)
 	{
+		if (TryGetBreakoutAimAssistViewTargetPoint(useLeft, out Vector3 assistedViewTargetPoint))
+		{
+			return assistedViewTargetPoint;
+		}
+
 		if (movementStandbyVisualActive)
 		{
 			if (useLeft && isAimingLeft && headObjectAimOffsetL != null)
@@ -1741,6 +1953,35 @@ public class BodyController : MonoBehaviour
 
 		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
 		return aimPoint != null ? aimPoint.position : transform.position;
+	}
+
+	private bool TryGetBreakoutAimAssistViewTargetPoint(bool useLeft, out Vector3 targetPoint)
+	{
+		targetPoint = Vector3.zero;
+		AssistedViewTravelState state = GetBreakoutAimAssistViewTravelState(useLeft);
+		if (!state.active || state.currentDirection.sqrMagnitude <= 0.0001f)
+		{
+			return false;
+		}
+
+		Transform head = GetBreakoutAimAssistHeadAnchor(useLeft);
+		if (head == null)
+		{
+			return false;
+		}
+
+		Vector3 origin = headObjectTransformCache != null ? headObjectTransformCache.position : head.position;
+		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
+		float targetDistance = aimPoint != null
+			? Vector3.Distance(origin, aimPoint.position)
+			: 20f;
+		if (targetDistance <= 0.0001f)
+		{
+			targetDistance = 20f;
+		}
+
+		targetPoint = origin + state.currentDirection.normalized * targetDistance;
+		return true;
 	}
 
 	#endregion
@@ -1908,6 +2149,7 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
+		CancelAllBreakoutAimAssistTravel();
 		offhandMirrorStoredAimPoint = offhandAimPoint.position;
 		offhandMirrorStoredAimingRight = isAimingRight;
 		offhandMirrorStoredAimingLeft = isAimingLeft;
@@ -2694,6 +2936,7 @@ public class BodyController : MonoBehaviour
 	// Update is called once per frame
 	void Update()
 	{
+		UpdateBreakoutAimAssistViewTravel();
 		UpdateBreakoutAimAssistPreviewTarget();
 		UpdateBreakoutAimAssistDebugVolumes();
 	}
