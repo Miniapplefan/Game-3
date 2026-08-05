@@ -20823,8 +20823,16 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: dualArmHeadBlendNearAngle
+      value: 60
+      objectReference: {fileID: 0}
+    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: dualReloadAudioStaggerSeconds
       value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
+      propertyPath: breakoutAimAssistMaxTorsoAngle
+      value: 130
       objectReference: {fileID: 0}
     - target: {fileID: 5359900809183358901, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: enableBulletTimePulses

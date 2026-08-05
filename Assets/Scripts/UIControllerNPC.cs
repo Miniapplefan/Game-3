@@ -10,6 +10,7 @@ public class UIControllerNPC : MonoBehaviour
     public GameObject rightAimIndicatorLine;
     public GameObject topAimIndicatorLine;
     public GameObject bottomAimIndicatorLine;
+    public GameObject AimIndicator;
     public TMP_Text healthIndicator;
     public TMP_Text damageIndicator;
     public Image healthBar;
@@ -21,6 +22,7 @@ public class UIControllerNPC : MonoBehaviour
     const float DamageIndicatorDisplayDuration = 2f;
 
     bool aimIndicatorsVisible = true;
+    bool aimAssistIndicatorVisible = false;
     bool healthIndicatorVisible = true;
     bool damageIndicatorVisible = false;
     bool healthBarVisible = false;
@@ -30,10 +32,20 @@ public class UIControllerNPC : MonoBehaviour
     float healthBarDeltaHideTimer = 0f;
     float lastDisplayedHealth = float.NaN;
     float maxHealth = float.NaN;
+    BodyController npcBodyController;
+    BodyController playerBodyController;
 
 
     void Awake()
     {
+        npcBodyController = GetComponent<BodyController>();
+        ResolvePlayerBodyController();
+
+        if (AimIndicator != null)
+        {
+            AimIndicator.SetActive(false);
+        }
+
         if (healthBar != null)
         {
             healthBar.gameObject.SetActive(false);
@@ -96,6 +108,49 @@ public class UIControllerNPC : MonoBehaviour
 
         lp = bottomAimIndicatorLine.transform.localPosition;
         bottomAimIndicatorLine.transform.localPosition = new Vector3(lp.x, -dist, lp.z);
+    }
+
+    void LateUpdate()
+    {
+        UpdateAimAssistIndicator();
+    }
+
+    void UpdateAimAssistIndicator()
+    {
+        if (playerBodyController == null)
+        {
+            ResolvePlayerBodyController();
+        }
+
+        bool shouldShow = bodyState != null
+            && !bodyState.isDead
+            && npcBodyController != null
+            && playerBodyController != null
+            && playerBodyController.BreakoutAimAssistPreviewTarget == npcBodyController;
+        SetAimAssistIndicatorActive(shouldShow);
+    }
+
+    void ResolvePlayerBodyController()
+    {
+        PlayerController playerController = FindObjectOfType<PlayerController>();
+        if (playerController != null)
+        {
+            playerBodyController = playerController.GetComponent<BodyController>();
+        }
+    }
+
+    void SetAimAssistIndicatorActive(bool active)
+    {
+        if (aimAssistIndicatorVisible == active)
+        {
+            return;
+        }
+
+        aimAssistIndicatorVisible = active;
+        if (AimIndicator != null)
+        {
+            AimIndicator.SetActive(active);
+        }
     }
 
     void SetAimIndicatorsActive(bool active)

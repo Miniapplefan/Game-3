@@ -5,6 +5,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Animations.Rigging;
+using UnityEngine.Serialization;
 using static BodyInfo;
 using static Limb;
 
@@ -68,6 +69,7 @@ public class BodyController : MonoBehaviour
 		: isAimingLeft || (keepCameraAimWithoutArm && keepCameraAimUsesLeft);
 	public bool IsRightArmAimed => IsPlayerCenteredAim() || isAimingRight || (offhandMirrorActive && offhandMirrorSourceIsLeft);
 	public bool IsLeftArmAimed => IsPlayerCenteredAim() || isAimingLeft || (offhandMirrorActive && !offhandMirrorSourceIsLeft);
+	public BodyController BreakoutAimAssistPreviewTarget { get; private set; }
 	private const float SlowMoveSpeedMultiplier = 0.3f;
 
 	// [HideInInspector]
@@ -149,13 +151,19 @@ public class BodyController : MonoBehaviour
 	[SerializeField, Min(0f)] private float aimStartReleaseInputDeadzone = 0.01f;
 	[SerializeField] private float breakoutAimYawOffset = 45f;
 	[SerializeField] private bool breakoutAimAssistEnabled = true;
-	[SerializeField] private LayerMask breakoutAimAssistLayerMask = 1 << 6;
+	[SerializeField, Tooltip("Layer containing exactly one dedicated aim-assist target collider per enemy.")]
+	private LayerMask breakoutAimAssistLayerMask = 1 << 14;
 	[SerializeField, Min(0f)] private float breakoutAimAssistBoxSideWidth = 12f;
 	[SerializeField, Min(0f)] private float breakoutAimAssistBoxDepth = 20f;
 	[SerializeField, Min(0f)] private float breakoutAimAssistBoxHeight = 4f;
 	[SerializeField] private float breakoutAimAssistForwardOffset = 6f;
 	[SerializeField, Min(0f)] private float breakoutAimAssistSideOffset = 6f;
-	[SerializeField, Min(1)] private int breakoutAimAssistMaxTargets = 16;
+	[SerializeField, Range(0f, 180f), Tooltip("Maximum horizontal angle from torso forward that breakout aim assist can lock onto.")]
+	private float breakoutAimAssistMaxTorsoAngle = 90f;
+	[SerializeField, Range(0f, 180f), Tooltip("Maximum angle from the active gun that broken-out arm retrigger aim assist can lock onto.")]
+	private float breakoutRetriggerAimAssistMaxGunAngle = 30f;
+	[SerializeField, FormerlySerializedAs("breakoutAimAssistMaxTargets"), Min(1), Tooltip("Initial overlap buffer capacity. The buffer grows automatically if it fills.")]
+	private int breakoutAimAssistInitialTargetCapacity = 16;
 	[SerializeField] private bool breakoutAimAssistRequireLineOfSight = false;
 	[SerializeField] private LayerMask breakoutAimAssistObstructionMask = 1 << 9;
 	private Vector2 fixedTickHeadRotation;
@@ -185,6 +193,20 @@ public class BodyController : MonoBehaviour
 	private float aimSwapElapsed = 0f;
 	private Vector3 aimSwapStartWeights;
 	private Vector3 aimSwapTargetWeights;
+	[Header("Dual Arm Head Aim Blend")]
+	[SerializeField, Range(0f, 180f), Tooltip("Arm separation at or below which the parked arm keeps its near weight.")]
+	private float dualArmHeadBlendNearAngle = 30f;
+	[SerializeField, Range(0f, 180f), Tooltip("Arm separation at or above which the parked arm reaches its far weight.")]
+	private float dualArmHeadBlendFarAngle = 120f;
+	[SerializeField, Range(0f, 1f), Tooltip("Parked-arm head aim weight when both arms aim in similar directions.")]
+	private float dualArmHeadParkedWeightNear = 0.7f;
+	[SerializeField, Range(0f, 1f), Tooltip("Minimum parked-arm head aim weight at wide angular separation.")]
+	private float dualArmHeadParkedWeightFar = 0.1f;
+	[SerializeField, Tooltip("Normalized falloff from the near weight at 0 to the far weight at 1.")]
+	private AnimationCurve dualArmHeadSeparationCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+	[SerializeField, Min(0f), Tooltip("Time used to smooth parked-arm weight changes after an aim swap.")]
+	private float dualArmHeadWeightSmoothTime = 0.12f;
+	private float dualArmHeadParkedWeightVelocity;
 	[Header("Aim Yaw Clamp")]
 	public float aimYawLimit = 90f;
 	public float aimYawFollowSpeedMin = 60f;
@@ -983,7 +1005,7 @@ public class BodyController : MonoBehaviour
 			}
 		}
 
-		StartAimSwapBlend(0f, 1f, startedAimingLeft ? 0.7f : 0f);
+		StartAimSwapBlend(0f, 1f, startedAimingLeft ? GetDesiredDualArmHeadParkedWeight() : 0f);
 		if (shouldTriggerBulletTime)
 		{
 			TryTriggerBulletTimeImmediately();
@@ -1050,7 +1072,7 @@ public class BodyController : MonoBehaviour
 			}
 		}
 
-		StartAimSwapBlend(0f, startedAimingRight ? 0.7f : 0f, 1f);
+		StartAimSwapBlend(0f, startedAimingRight ? GetDesiredDualArmHeadParkedWeight() : 0f, 1f);
 		if (shouldTriggerBulletTime)
 		{
 			TryTriggerBulletTimeImmediately();
@@ -2672,6 +2694,7 @@ public class BodyController : MonoBehaviour
 	// Update is called once per frame
 	void Update()
 	{
+		UpdateBreakoutAimAssistPreviewTarget();
 		UpdateBreakoutAimAssistDebugVolumes();
 	}
 
@@ -2697,6 +2720,7 @@ public class BodyController : MonoBehaviour
 				DoRotation();
 				UpdatePendingMoveAimYaw();
 				UpdateAimSwapBlend();
+				UpdateDualArmHeadAimBlend();
 				ApplyMovementStandbyVisualPose();
 				SyncHeadAimTargetProxies();
 				UpdateStandbyElbowTargets();
@@ -3106,38 +3130,17 @@ public class BodyController : MonoBehaviour
 
 	private void TriggerBulletTimeForVisibleBreakoutTargets(bool useLeft)
 	{
-		bool usedAimAssist = TryGetSameDirectionScrollBreakoutAssist(
+		if (!TryGetClosestBreakoutRetriggerTargetAimPoint(
 			useLeft,
-			out Vector3 assistedAimPoint,
-			out bool foundVisibleTarget,
-			out int visibleTargetCount);
-
-		if (visibleTargetCount > 1)
+			out BodyController targetBody,
+			out Vector3 assistedAimPoint))
 		{
-			if (!IsFocusedArmAimedAtTarget(useLeft)
-				&& TryGetClosestVisibleBreakoutTargetAimPoint(useLeft, out Vector3 closestTargetAimPoint))
-			{
-				ApplySameDirectionScrollAimAssist(useLeft, closestTargetAimPoint);
-			}
-
-			TryTriggerBulletTimeImmediately();
+			BreakoutAimAssistPreviewTarget = null;
 			return;
 		}
 
-		if (!usedAimAssist)
-		{
-			if (foundVisibleTarget)
-			{
-				TryTriggerBulletTimeImmediately();
-			}
-			return;
-		}
-
-		if (visibleTargetCount == 1)
-		{
-			ApplySameDirectionScrollAimAssist(useLeft, assistedAimPoint);
-		}
-
+		BreakoutAimAssistPreviewTarget = targetBody;
+		ApplySameDirectionScrollAimAssist(useLeft, assistedAimPoint);
 		TryTriggerBulletTimeImmediately();
 	}
 
@@ -3154,60 +3157,27 @@ public class BodyController : MonoBehaviour
 		BeginAimStartHold(false, aimStartHoldPointRight, true);
 	}
 
-	private bool TryGetSameDirectionScrollBreakoutAssist(
+	private void UpdateBreakoutAimAssistPreviewTarget()
+	{
+		BreakoutAimAssistPreviewTarget = null;
+		if (isAI || isDead || offhandMirrorActive || isAimingRight == isAimingLeft)
+		{
+			return;
+		}
+
+		TryGetClosestBreakoutRetriggerTargetAimPoint(
+			isAimingLeft,
+			out BodyController targetBody,
+			out Vector3 unusedAimPoint);
+		BreakoutAimAssistPreviewTarget = targetBody;
+	}
+
+	private bool TryGetClosestBreakoutRetriggerTargetAimPoint(
 		bool useLeft,
-		out Vector3 aimPoint,
-		out bool foundVisibleTarget,
-		out int visibleTargetCount)
+		out BodyController targetBody,
+		out Vector3 aimPoint)
 	{
-		aimPoint = Vector3.zero;
-		Quaternion baseTorsoYaw = GetBreakoutAimAssistYawRotation();
-		bool usedAimAssist = TryGetBreakoutAimAssistYaw(
-			useLeft,
-			baseTorsoYaw,
-			out float assistedYawOffset,
-			out foundVisibleTarget,
-			out visibleTargetCount);
-		if (!usedAimAssist)
-		{
-			return false;
-		}
-
-		aimPoint = GetBreakoutStartAimPointFromYawOffset(assistedYawOffset, true);
-		return true;
-	}
-
-	private bool IsFocusedArmAimedAtTarget(bool useLeft)
-	{
-		GunSelector selector = useLeft ? gunsL : guns;
-		Gun primaryGun = selector != null ? selector.ActiveGun1 : null;
-		Transform muzzle = primaryGun != null ? primaryGun.MuzzleTransform : null;
-		if (muzzle == null)
-		{
-			return false;
-		}
-
-		ShootConfigScriptableObject shootConfig = primaryGun.gunData != null
-			? primaryGun.gunData.shootConfig
-			: null;
-		LayerMask hitMask = shootConfig != null ? shootConfig.HitMask : aimMask;
-		float maxRange = shootConfig != null ? Mathf.Max(0f, shootConfig.maxRange) : Mathf.Infinity;
-		if (!Physics.Raycast(
-			muzzle.position,
-			muzzle.forward,
-			out RaycastHit hit,
-			maxRange,
-			hitMask,
-			QueryTriggerInteraction.Ignore))
-		{
-			return false;
-		}
-
-		return GetValidBreakoutAimAssistBody(hit.collider) != null;
-	}
-
-	private bool TryGetClosestVisibleBreakoutTargetAimPoint(bool useLeft, out Vector3 aimPoint)
-	{
+		targetBody = null;
 		aimPoint = Vector3.zero;
 		Quaternion torsoYaw = GetBreakoutAimAssistYawRotation();
 		if (isAI || !breakoutAimAssistEnabled || breakoutAimAssistLayerMask.value == 0)
@@ -3215,19 +3185,12 @@ public class BodyController : MonoBehaviour
 			return false;
 		}
 
-		EnsureBreakoutAimAssistBuffer();
-		if (!TryGetBreakoutAimAssistBox(useLeft, torsoYaw, out Vector3 boxCenter, out Vector3 halfExtents))
+		if (!TryGetBreakoutRetriggerAimAssistBox(torsoYaw, out Vector3 boxCenter, out Vector3 halfExtents))
 		{
 			return false;
 		}
 
-		int count = Physics.OverlapBoxNonAlloc(
-			boxCenter,
-			halfExtents,
-			breakoutAimAssistColliders,
-			torsoYaw,
-			breakoutAimAssistLayerMask,
-			QueryTriggerInteraction.Collide);
+		int count = GetBreakoutAimAssistOverlapCount(boxCenter, halfExtents, torsoYaw);
 		if (count <= 0)
 		{
 			return false;
@@ -3236,24 +3199,22 @@ public class BodyController : MonoBehaviour
 		GetFocusedArmAimRay(useLeft, out Vector3 referenceOrigin, out Vector3 referenceForward);
 		Vector3 aimLockOrigin = GetAimLockOrigin();
 		Vector3 bestTargetPoint = Vector3.zero;
-		float bestAlignment = float.NegativeInfinity;
+		float bestAngularDifference = float.PositiveInfinity;
+		float bestDistanceSqr = float.PositiveInfinity;
+		float maxGunAngle = Mathf.Clamp(breakoutRetriggerAimAssistMaxGunAngle, 0f, 180f);
 		bool foundTarget = false;
+		const float angularTieEpsilon = 0.01f;
 
 		breakoutAimAssistBodies.Clear();
 		for (int i = 0; i < count; i++)
 		{
-			BodyController targetBody = GetValidBreakoutAimAssistBody(breakoutAimAssistColliders[i]);
-			if (targetBody == null || breakoutAimAssistBodies.Contains(targetBody))
+			BodyController candidateBody = GetValidBreakoutAimAssistBody(breakoutAimAssistColliders[i]);
+			if (candidateBody == null || breakoutAimAssistBodies.Contains(candidateBody))
 			{
 				continue;
 			}
 
-			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(targetBody);
-			if (IsBreakoutAimAssistTargetObstructed(aimLockOrigin, targetPoint))
-			{
-				continue;
-			}
-
+			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(candidateBody);
 			Vector3 horizontalDirection = targetPoint - aimLockOrigin;
 			horizontalDirection.y = 0f;
 			if (horizontalDirection.sqrMagnitude <= 0.0001f)
@@ -3262,23 +3223,40 @@ public class BodyController : MonoBehaviour
 			}
 
 			Vector3 localTargetDirection = Quaternion.Inverse(torsoYaw) * horizontalDirection;
-			if ((useLeft && localTargetDirection.x >= -0.01f) || (!useLeft && localTargetDirection.x <= 0.01f))
+			if (!IsWithinBreakoutAimAssistMaxTorsoAngle(localTargetDirection))
 			{
 				continue;
 			}
 
-			breakoutAimAssistBodies.Add(targetBody);
+			bool hasLineOfSight = !IsBreakoutAimAssistTargetObstructed(aimLockOrigin, targetPoint);
+			if (breakoutAimAssistRequireLineOfSight && !hasLineOfSight)
+			{
+				continue;
+			}
+
+			breakoutAimAssistBodies.Add(candidateBody);
 			Vector3 referenceDirection = targetPoint - referenceOrigin;
 			if (referenceDirection.sqrMagnitude <= 0.0001f)
 			{
 				continue;
 			}
 
-			float alignment = Vector3.Dot(referenceForward, referenceDirection.normalized);
-			if (!foundTarget || alignment > bestAlignment)
+			float angularDifference = Vector3.Angle(referenceForward, referenceDirection);
+			if (angularDifference > maxGunAngle)
 			{
-				bestAlignment = alignment;
+				continue;
+			}
+
+			float distanceSqr = referenceDirection.sqrMagnitude;
+			bool hasBetterAngle = angularDifference < bestAngularDifference - angularTieEpsilon;
+			bool hasEqualAngleAndIsCloser = Mathf.Abs(angularDifference - bestAngularDifference) <= angularTieEpsilon
+				&& distanceSqr < bestDistanceSqr;
+			if (!foundTarget || hasBetterAngle || hasEqualAngleAndIsCloser)
+			{
+				bestAngularDifference = angularDifference;
+				bestDistanceSqr = distanceSqr;
 				bestTargetPoint = targetPoint;
+				targetBody = candidateBody;
 				foundTarget = true;
 			}
 		}
@@ -3339,19 +3317,12 @@ public class BodyController : MonoBehaviour
 			return false;
 		}
 
-		EnsureBreakoutAimAssistBuffer();
 		if (!TryGetBreakoutAimAssistBox(useLeft, torsoYaw, out Vector3 boxCenter, out Vector3 halfExtents))
 		{
 			return false;
 		}
 
-		int count = Physics.OverlapBoxNonAlloc(
-			boxCenter,
-			halfExtents,
-			breakoutAimAssistColliders,
-			torsoYaw,
-			breakoutAimAssistLayerMask,
-			QueryTriggerInteraction.Collide);
+		int count = GetBreakoutAimAssistOverlapCount(boxCenter, halfExtents, torsoYaw);
 		if (count <= 0)
 		{
 			return false;
@@ -3369,12 +3340,6 @@ public class BodyController : MonoBehaviour
 			}
 
 			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(targetBody);
-			bool hasLineOfSight = !IsBreakoutAimAssistTargetObstructed(origin, targetPoint);
-			if (breakoutAimAssistRequireLineOfSight && !hasLineOfSight)
-			{
-				continue;
-			}
-
 			Vector3 direction = targetPoint - origin;
 			direction.y = 0f;
 			if (direction.sqrMagnitude <= 0.0001f)
@@ -3383,7 +3348,15 @@ public class BodyController : MonoBehaviour
 			}
 
 			Vector3 localTargetDirection = Quaternion.Inverse(torsoYaw) * direction;
-			if ((useLeft && localTargetDirection.x >= -0.01f) || (!useLeft && localTargetDirection.x <= 0.01f))
+			if (!IsWithinBreakoutAimAssistMaxTorsoAngle(localTargetDirection)
+				|| (useLeft && localTargetDirection.x >= -0.01f)
+				|| (!useLeft && localTargetDirection.x <= 0.01f))
+			{
+				continue;
+			}
+
+			bool hasLineOfSight = !IsBreakoutAimAssistTargetObstructed(origin, targetPoint);
+			if (breakoutAimAssistRequireLineOfSight && !hasLineOfSight)
 			{
 				continue;
 			}
@@ -3435,6 +3408,22 @@ public class BodyController : MonoBehaviour
 			+ torsoRight * (sideSign * breakoutAimAssistSideOffset);
 		halfExtents = new Vector3(
 			Mathf.Max(0f, breakoutAimAssistBoxSideWidth) * 0.5f,
+			Mathf.Max(0f, breakoutAimAssistBoxHeight) * 0.5f,
+			Mathf.Max(0f, breakoutAimAssistBoxDepth) * 0.5f);
+		return halfExtents.x > 0f && halfExtents.y > 0f && halfExtents.z > 0f;
+	}
+
+	private bool TryGetBreakoutRetriggerAimAssistBox(
+		Quaternion yawRotation,
+		out Vector3 boxCenter,
+		out Vector3 halfExtents)
+	{
+		Vector3 torsoForward = yawRotation * Vector3.forward;
+		boxCenter = transform.position
+			+ Vector3.up * (Mathf.Max(0f, breakoutAimAssistBoxHeight) * 0.5f)
+			+ torsoForward * breakoutAimAssistForwardOffset;
+		halfExtents = new Vector3(
+			Mathf.Max(0f, breakoutAimAssistSideOffset) + (Mathf.Max(0f, breakoutAimAssistBoxSideWidth) * 0.5f),
 			Mathf.Max(0f, breakoutAimAssistBoxHeight) * 0.5f,
 			Mathf.Max(0f, breakoutAimAssistBoxDepth) * 0.5f);
 		return halfExtents.x > 0f && halfExtents.y > 0f && halfExtents.z > 0f;
@@ -3592,10 +3581,34 @@ public class BodyController : MonoBehaviour
 
 	private void EnsureBreakoutAimAssistBuffer()
 	{
-		int targetCount = Mathf.Max(1, breakoutAimAssistMaxTargets);
-		if (breakoutAimAssistColliders == null || breakoutAimAssistColliders.Length != targetCount)
+		int targetCount = Mathf.Max(1, breakoutAimAssistInitialTargetCapacity);
+		if (breakoutAimAssistColliders == null || breakoutAimAssistColliders.Length < targetCount)
 		{
 			breakoutAimAssistColliders = new Collider[targetCount];
+		}
+	}
+
+	private int GetBreakoutAimAssistOverlapCount(
+		Vector3 boxCenter,
+		Vector3 halfExtents,
+		Quaternion boxRotation)
+	{
+		EnsureBreakoutAimAssistBuffer();
+		while (true)
+		{
+			int count = Physics.OverlapBoxNonAlloc(
+				boxCenter,
+				halfExtents,
+				breakoutAimAssistColliders,
+				boxRotation,
+				breakoutAimAssistLayerMask,
+				QueryTriggerInteraction.Collide);
+			if (count < breakoutAimAssistColliders.Length)
+			{
+				return count;
+			}
+
+			breakoutAimAssistColliders = new Collider[breakoutAimAssistColliders.Length * 2];
 		}
 	}
 
@@ -3606,7 +3619,11 @@ public class BodyController : MonoBehaviour
 			return null;
 		}
 
-		BodyController targetBody = candidateCollider.GetComponentInParent<BodyController>();
+		Transform npcRoot = candidateCollider.transform.parent;
+		Transform bodyTransform = npcRoot != null ? npcRoot.Find("Body") : null;
+		BodyController targetBody = bodyTransform != null
+			? bodyTransform.GetComponent<BodyController>()
+			: null;
 		if (targetBody == null
 			|| targetBody == this
 			|| !targetBody.isAI
@@ -3629,6 +3646,19 @@ public class BodyController : MonoBehaviour
 		}
 
 		return targetBody != null ? targetBody.transform.position : Vector3.zero;
+	}
+
+	private bool IsWithinBreakoutAimAssistMaxTorsoAngle(Vector3 localTargetDirection)
+	{
+		localTargetDirection.y = 0f;
+		if (localTargetDirection.sqrMagnitude <= 0.0001f)
+		{
+			return false;
+		}
+
+		float targetYaw = Mathf.Atan2(localTargetDirection.x, localTargetDirection.z) * Mathf.Rad2Deg;
+		float maxAngle = Mathf.Clamp(breakoutAimAssistMaxTorsoAngle, 0f, 180f);
+		return Mathf.Abs(targetYaw) <= maxAngle;
 	}
 
 	private bool IsBreakoutAimAssistTargetObstructed(Vector3 origin, Vector3 targetPoint)
@@ -3905,6 +3935,7 @@ public class BodyController : MonoBehaviour
 		aimSwapTargetWeights = new Vector3(targetW0, targetW1, targetW2);
 		aimSwapElapsed = 0f;
 		isAimSwapInProgress = true;
+		dualArmHeadParkedWeightVelocity = 0f;
 
 		if (aimSwapDuration <= 0f)
 		{
@@ -3939,6 +3970,7 @@ public class BodyController : MonoBehaviour
 		{
 			isAimSwapInProgress = false;
 			aimSwapElapsed = 0f;
+			dualArmHeadParkedWeightVelocity = 0f;
 			ApplyAimSwapWeights(1f, 0f, 0f);
 		}
 
@@ -3962,6 +3994,7 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
+		RefreshDualArmHeadAimSwapTarget();
 		aimSwapElapsed += Time.deltaTime;
 		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
 		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
@@ -3977,6 +4010,92 @@ public class BodyController : MonoBehaviour
 				ReleaseFrozenAimPoints();
 			}
 		}
+	}
+
+	private void RefreshDualArmHeadAimSwapTarget()
+	{
+		if (!IsDualArmHeadAimBlendActive())
+		{
+			return;
+		}
+
+		float parkedWeight = GetDesiredDualArmHeadParkedWeight();
+		aimSwapTargetWeights = isAimingLeft
+			? new Vector3(0f, parkedWeight, 1f)
+			: new Vector3(0f, 1f, parkedWeight);
+	}
+
+	private void UpdateDualArmHeadAimBlend()
+	{
+		if (isAimSwapInProgress || headAimConstraint == null || !IsDualArmHeadAimBlendActive())
+		{
+			dualArmHeadParkedWeightVelocity = 0f;
+			return;
+		}
+
+		var sources = headAimConstraint.data.sourceObjects;
+		int parkedSourceIndex = isAimingLeft ? 1 : 2;
+		float currentWeight = sources[parkedSourceIndex].weight;
+		float desiredWeight = GetDesiredDualArmHeadParkedWeight();
+		float smoothTime = Mathf.Max(0f, dualArmHeadWeightSmoothTime);
+		float nextWeight = smoothTime <= 0f
+			? desiredWeight
+			: Mathf.SmoothDamp(
+				currentWeight,
+				desiredWeight,
+				ref dualArmHeadParkedWeightVelocity,
+				smoothTime,
+				Mathf.Infinity,
+				Time.deltaTime);
+
+		var parkedSource = sources[parkedSourceIndex];
+		parkedSource.weight = Mathf.Clamp01(nextWeight);
+		sources[parkedSourceIndex] = parkedSource;
+		headAimConstraint.data.sourceObjects = sources;
+	}
+
+	private bool IsDualArmHeadAimBlendActive()
+	{
+		return !isAI
+			&& startedAimingRight
+			&& startedAimingLeft
+			&& isAimingRight != isAimingLeft;
+	}
+
+	private float GetDesiredDualArmHeadParkedWeight()
+	{
+		float nearWeight = Mathf.Clamp01(dualArmHeadParkedWeightNear);
+		float farWeight = Mathf.Clamp(dualArmHeadParkedWeightFar, 0f, nearWeight);
+		if (weaponAimPoint == null || weaponAimPointL == null)
+		{
+			return nearWeight;
+		}
+
+		Vector3 origin = GetAimLockOrigin();
+		Vector3 rightDirection = weaponAimPoint.position - origin;
+		Vector3 leftDirection = weaponAimPointL.position - origin;
+		if (rightDirection.sqrMagnitude <= 0.0001f || leftDirection.sqrMagnitude <= 0.0001f)
+		{
+			return nearWeight;
+		}
+
+		float separationAngle = Vector3.Angle(rightDirection, leftDirection);
+		float nearAngle = Mathf.Clamp(dualArmHeadBlendNearAngle, 0f, 180f);
+		float farAngle = Mathf.Clamp(dualArmHeadBlendFarAngle, nearAngle, 180f);
+		if (separationAngle <= nearAngle)
+		{
+			return nearWeight;
+		}
+		if (separationAngle >= farAngle)
+		{
+			return farWeight;
+		}
+
+		float angleT = Mathf.InverseLerp(nearAngle, farAngle, separationAngle);
+		float curvedT = dualArmHeadSeparationCurve != null
+			? Mathf.Clamp01(dualArmHeadSeparationCurve.Evaluate(angleT))
+			: angleT;
+		return Mathf.Lerp(nearWeight, farWeight, curvedT);
 	}
 
 	private void ApplyAimSwapWeights(float w0, float w1, float w2)
