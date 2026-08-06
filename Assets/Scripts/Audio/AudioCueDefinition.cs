@@ -11,7 +11,9 @@ public enum GameAudioCueId
 	EnemyLethalBulletWarning,
 	PlayerReloadStarted,
 	PlayerReloadFinished,
-	PlayerEmptyGunClick
+	PlayerEmptyGunClick,
+	BulletTimeStarted,
+	BulletTimeEnding
 }
 
 [Serializable]

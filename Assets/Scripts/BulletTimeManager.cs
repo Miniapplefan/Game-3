@@ -25,6 +25,12 @@ public class BulletTimeManager : MonoBehaviour
 	[SerializeField, Range(0f, 1f)] private float defaultScale = 0.25f;
 	[SerializeField] private AnimationCurve intensityCurve = AnimationCurve.Linear(0f, 1f, 1f, 1f);
 
+	[Header("Audio")]
+	[Min(0f)] public float endSoundLeadTime = 0.5f;
+	[SerializeField, Min(0f)] private float endSoundRetriggerFadeSeconds = 0.08f;
+	[SerializeField, Min(0f)] private float audioEffectEnterSeconds = 0.12f;
+	[SerializeField, Min(0f)] private float audioEffectExitSeconds = 0.3f;
+
 	[Header("Enemy Channels")]
 	[SerializeField] private bool affectEnemyMovement = true;
 	[SerializeField, Range(0f, 1f)] private float enemyMovementScale = 0.25f;
@@ -52,6 +58,8 @@ public class BulletTimeManager : MonoBehaviour
 	private float elapsed;
 	private bool active;
 	private int triggerVersion;
+	private bool endSoundPlayed;
+	private AudioOneShotHandle endSoundHandle;
 
 	public static bool IsActive => EnsureInstance().active;
 	public static float Duration => Mathf.Max(0f, EnsureInstance().duration);
@@ -80,6 +88,7 @@ public class BulletTimeManager : MonoBehaviour
 	{
 		if (instance == this)
 		{
+			AudioService.TransitionToBulletTimeMix(false, 0f);
 			instance = null;
 		}
 	}
@@ -92,10 +101,12 @@ public class BulletTimeManager : MonoBehaviour
 		}
 
 		elapsed += Time.unscaledDeltaTime;
+		TryPlayEndingSoundIfDue();
 		if (elapsed >= Mathf.Max(0f, duration))
 		{
 			active = false;
 			elapsed = 0f;
+			AudioService.TransitionToBulletTimeMix(false, audioEffectExitSeconds);
 		}
 	}
 
@@ -145,12 +156,39 @@ public class BulletTimeManager : MonoBehaviour
 
 	private void StartBulletTime()
 	{
+		if (endSoundHandle != null && endSoundHandle.IsValid)
+		{
+			endSoundHandle.FadeOut(endSoundRetriggerFadeSeconds);
+		}
+		endSoundHandle = null;
+
 		elapsed = 0f;
 		active = duration > 0f;
+		endSoundPlayed = false;
 		if (active)
 		{
 			triggerVersion++;
+			AudioService.PlayGlobal(GameAudioCueId.BulletTimeStarted);
+			AudioService.TransitionToBulletTimeMix(true, audioEffectEnterSeconds);
+			TryPlayEndingSoundIfDue();
 		}
+	}
+
+	private void TryPlayEndingSoundIfDue()
+	{
+		if (!active || endSoundPlayed)
+		{
+			return;
+		}
+
+		float remainingTime = Mathf.Max(0f, duration - elapsed);
+		if (remainingTime > Mathf.Max(0f, endSoundLeadTime))
+		{
+			return;
+		}
+
+		endSoundPlayed = true;
+		endSoundHandle = AudioService.PlayGlobalControlled(GameAudioCueId.BulletTimeEnding);
 	}
 
 	private bool IsChannelEnabled(BulletTimeChannel channel)

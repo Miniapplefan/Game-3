@@ -12,6 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b58de1daafb9442719449f1adf2a3a03, type: 3}
   m_Name: GameAudioCatalog
   m_EditorClassIdentifier: 
+  defaultSnapshot: {fileID: 24500006, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  bulletTimeSnapshot: {fileID: 24500007, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
   playerGunshot:
     clips:
     - {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
@@ -65,6 +67,34 @@ MonoBehaviour:
     maxDistance: 15
     rolloffMode: 0
     priority: 64
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  bulletTimeStarted:
+    clips:
+    - {fileID: 8300000, guid: 8e1fbcb868d8d4efc8cd199e19f61ac2, type: 3}
+    outputMixerGroup: {fileID: -6201847315509001101, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    spatialBlend: 0
+    minDistance: 1
+    maxDistance: 1
+    rolloffMode: 0
+    priority: 32
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
+  bulletTimeEnding:
+    clips:
+    - {fileID: 8300000, guid: 5637903a5979f48c6a4c9db723e85788, type: 3}
+    outputMixerGroup: {fileID: -6201847315509001101, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    spatialBlend: 0
+    minDistance: 1
+    maxDistance: 1
+    rolloffMode: 0
+    priority: 32
     loop: 0
     fadeInSeconds: 0
     fadeOutSeconds: 0

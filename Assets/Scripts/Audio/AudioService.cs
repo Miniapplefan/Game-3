@@ -1,6 +1,38 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+public sealed class AudioOneShotHandle
+{
+	private AudioService owner;
+	private readonly int voiceIndex;
+	private readonly int generation;
+
+	internal AudioOneShotHandle(AudioService owner, int voiceIndex, int generation)
+	{
+		this.owner = owner;
+		this.voiceIndex = voiceIndex;
+		this.generation = generation;
+	}
+
+	public bool IsValid => owner != null && owner.IsOneShotHandleValid(voiceIndex, generation);
+
+	public void FadeOut(float seconds)
+	{
+		if (owner != null)
+		{
+			owner.FadeOutOneShot(voiceIndex, generation, seconds);
+		}
+	}
+
+	internal void Invalidate(AudioService expectedOwner)
+	{
+		if (owner == expectedOwner)
+		{
+			owner = null;
+		}
+	}
+}
+
 public sealed class AudioLoopHandle
 {
 	private AudioService owner;
@@ -75,8 +107,13 @@ public sealed class AudioService : MonoBehaviour
 	{
 		public AudioSource Source;
 		public Transform Target;
+		public AudioOneShotHandle Handle;
+		public int Generation;
 		public float StartedAt;
 		public int Priority;
+		public float FadeStartVolume;
+		public float FadeDuration;
+		public float FadeElapsed;
 	}
 
 	private sealed class LoopVoice
@@ -140,12 +177,17 @@ public sealed class AudioService : MonoBehaviour
 
 	private void LateUpdate()
 	{
-		UpdateFollowingVoices();
+		UpdateOneShotVoices();
 		UpdateLoopVoices();
 	}
 
 	private void OnDestroy()
 	{
+		for (int i = 0; i < voices.Count; i++)
+		{
+			voices[i].Handle?.Invalidate(this);
+		}
+
 		for (int i = 0; i < loopVoices.Count; i++)
 		{
 			loopVoices[i].Handle?.Invalidate(this);
@@ -160,6 +202,21 @@ public sealed class AudioService : MonoBehaviour
 	public static void PlayAt(GameAudioCueId cueId, Vector3 worldPosition)
 	{
 		EnsureInstance().PlayOneShotInternal(cueId, worldPosition, null);
+	}
+
+	public static void PlayGlobal(GameAudioCueId cueId)
+	{
+		EnsureInstance().PlayOneShotInternal(cueId, Vector3.zero, null);
+	}
+
+	public static AudioOneShotHandle PlayGlobalControlled(GameAudioCueId cueId)
+	{
+		return EnsureInstance().PlayControlledOneShotInternal(cueId, Vector3.zero, null);
+	}
+
+	public static void TransitionToBulletTimeMix(bool bulletTimeActive, float transitionSeconds)
+	{
+		EnsureInstance().TransitionToBulletTimeMixInternal(bulletTimeActive, transitionSeconds);
 	}
 
 	public static void PlayFollowing(GameAudioCueId cueId, Transform followTarget)
@@ -184,7 +241,12 @@ public sealed class AudioService : MonoBehaviour
 			return false;
 		}
 
-		return EnsureInstance().PlayPreparedOneShotInternal(preparedCue, followTarget.position, followTarget);
+		return EnsureInstance().TryPlayPreparedOneShotInternal(
+			preparedCue,
+			followTarget.position,
+			followTarget,
+			false,
+			out _);
 	}
 
 	public static AudioLoopHandle PlayFollowingLoop(GameAudioCueId cueId, Transform followTarget)
@@ -213,6 +275,27 @@ public sealed class AudioService : MonoBehaviour
 
 		GameObject serviceObject = new GameObject(nameof(AudioService));
 		return serviceObject.AddComponent<AudioService>();
+	}
+
+	private void TransitionToBulletTimeMixInternal(bool bulletTimeActive, float transitionSeconds)
+	{
+		if (catalog == null)
+		{
+			WarnOnce("MissingCatalog", $"{nameof(AudioService)} cannot transition audio snapshots because the audio catalog is missing.");
+			return;
+		}
+
+		UnityEngine.Audio.AudioMixerSnapshot snapshot = bulletTimeActive
+			? catalog.BulletTimeSnapshot
+			: catalog.DefaultSnapshot;
+		if (snapshot == null)
+		{
+			string snapshotName = bulletTimeActive ? "Bullet Time" : "Default";
+			WarnOnce($"MissingSnapshot:{snapshotName}", $"The {snapshotName} audio snapshot is not configured.");
+			return;
+		}
+
+		snapshot.TransitionTo(Mathf.Max(0f, transitionSeconds));
 	}
 
 	private void CreateVoicePool()
@@ -254,8 +337,29 @@ public sealed class AudioService : MonoBehaviour
 		PreparedAudioCue preparedCue = PrepareOneShotInternal(cueId);
 		if (preparedCue != null)
 		{
-			PlayPreparedOneShotInternal(preparedCue, worldPosition, followTarget);
+			TryPlayPreparedOneShotInternal(preparedCue, worldPosition, followTarget, false, out _);
 		}
+	}
+
+	private AudioOneShotHandle PlayControlledOneShotInternal(
+		GameAudioCueId cueId,
+		Vector3 worldPosition,
+		Transform followTarget)
+	{
+		PreparedAudioCue preparedCue = PrepareOneShotInternal(cueId);
+		if (preparedCue == null)
+		{
+			return null;
+		}
+
+		return TryPlayPreparedOneShotInternal(
+			preparedCue,
+			worldPosition,
+			followTarget,
+			true,
+			out AudioOneShotHandle handle)
+			? handle
+			: null;
 	}
 
 	private PreparedAudioCue PrepareOneShotInternal(GameAudioCueId cueId)
@@ -282,8 +386,14 @@ public sealed class AudioService : MonoBehaviour
 		return new PreparedAudioCue(this, cue, clip, pitch);
 	}
 
-	private bool PlayPreparedOneShotInternal(PreparedAudioCue preparedCue, Vector3 worldPosition, Transform followTarget)
+	private bool TryPlayPreparedOneShotInternal(
+		PreparedAudioCue preparedCue,
+		Vector3 worldPosition,
+		Transform followTarget,
+		bool createHandle,
+		out AudioOneShotHandle handle)
 	{
+		handle = null;
 		if (preparedCue == null
 			|| preparedCue.Owner != this
 			|| preparedCue.Consumed
@@ -299,11 +409,25 @@ public sealed class AudioService : MonoBehaviour
 			return false;
 		}
 
+		ResetOneShotVoiceState(voice);
 		ConfigureSource(voice.Source, preparedCue.Definition, preparedCue.Clip, worldPosition);
 		voice.Source.pitch = preparedCue.Pitch;
 		voice.Target = followTarget;
 		voice.Priority = preparedCue.Definition.Priority;
 		voice.StartedAt = Time.realtimeSinceStartup;
+		voice.Generation++;
+		if (voice.Generation == 0)
+		{
+			voice.Generation++;
+		}
+
+		if (createHandle)
+		{
+			int voiceIndex = voices.IndexOf(voice);
+			handle = new AudioOneShotHandle(this, voiceIndex, voice.Generation);
+			voice.Handle = handle;
+		}
+
 		preparedCue.Consumed = true;
 		voice.Source.Play();
 		return true;
@@ -464,19 +588,89 @@ public sealed class AudioService : MonoBehaviour
 		return -1;
 	}
 
-	private void UpdateFollowingVoices()
+	private void UpdateOneShotVoices()
 	{
 		for (int i = 0; i < voices.Count; i++)
 		{
 			Voice voice = voices[i];
-			if (voice.Target == null || !voice.Source.isPlaying)
+			if (!voice.Source.isPlaying)
 			{
-				voice.Target = null;
+				if (voice.Target != null || voice.Handle != null || voice.FadeDuration > 0f)
+				{
+					ReleaseOneShotVoice(voice);
+				}
 				continue;
 			}
 
-			voice.Source.transform.position = voice.Target.position;
+			if (voice.Target != null)
+			{
+				voice.Source.transform.position = voice.Target.position;
+			}
+
+			if (voice.FadeDuration <= 0f)
+			{
+				continue;
+			}
+
+			voice.FadeElapsed += Time.unscaledDeltaTime;
+			float progress = Mathf.Clamp01(voice.FadeElapsed / voice.FadeDuration);
+			voice.Source.volume = Mathf.Lerp(voice.FadeStartVolume, 0f, progress);
+			if (progress >= 1f)
+			{
+				ReleaseOneShotVoice(voice);
+			}
 		}
+	}
+
+	internal bool IsOneShotHandleValid(int voiceIndex, int generation)
+	{
+		if (voiceIndex < 0 || voiceIndex >= voices.Count)
+		{
+			return false;
+		}
+
+		Voice voice = voices[voiceIndex];
+		return voice.Handle != null
+			&& voice.Generation == generation
+			&& voice.Source.isPlaying;
+	}
+
+	internal void FadeOutOneShot(int voiceIndex, int generation, float seconds)
+	{
+		if (!IsOneShotHandleValid(voiceIndex, generation))
+		{
+			return;
+		}
+
+		Voice voice = voices[voiceIndex];
+		float duration = Mathf.Max(0f, seconds);
+		if (duration <= 0f)
+		{
+			ReleaseOneShotVoice(voice);
+			return;
+		}
+
+		voice.FadeStartVolume = voice.Source.volume;
+		voice.FadeDuration = duration;
+		voice.FadeElapsed = 0f;
+	}
+
+	private void ResetOneShotVoiceState(Voice voice)
+	{
+		voice.Handle?.Invalidate(this);
+		voice.Handle = null;
+		voice.Target = null;
+		voice.FadeStartVolume = 0f;
+		voice.FadeDuration = 0f;
+		voice.FadeElapsed = 0f;
+	}
+
+	private void ReleaseOneShotVoice(Voice voice)
+	{
+		ResetOneShotVoiceState(voice);
+		voice.StartedAt = float.NegativeInfinity;
+		voice.Priority = 256;
+		ResetSource(voice.Source);
 	}
 
 	internal bool IsLoopHandleValid(int voiceIndex, int generation)
