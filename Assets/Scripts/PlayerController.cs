@@ -29,6 +29,8 @@ public class PlayerController : MonoBehaviour, InputController
     private bool pressingShift;
 
     public float sensitivity;
+    [Min(0f), Tooltip("Mouse-look delta required to interrupt aim assist while the arm is moving toward its target.")]
+    public float aimAssistBreakoutMouseDeadZone = 0.01f;
     private float mouseXrotation;
     private float mouseYrotation;
 
@@ -90,6 +92,12 @@ public class PlayerController : MonoBehaviour, InputController
         mouseXrotation = Mathf.Clamp(mouseXrotation, -90, 90);
 
         return new Vector2(mouseXrotation, mouseYrotation);
+    }
+
+    public bool HasAimAssistBreakoutInput(Vector2 headRotation)
+    {
+        float deadZone = Mathf.Max(0f, aimAssistBreakoutMouseDeadZone);
+        return headRotation.sqrMagnitude > deadZone * deadZone;
     }
 
     public bool getAimRight()

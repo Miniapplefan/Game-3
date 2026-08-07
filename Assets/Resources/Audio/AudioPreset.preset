@@ -1,0 +1,539 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!181963792 &2655988077585873504
+Preset:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: AudioPreset
+  m_TargetType:
+    m_NativeTypeID: 114
+    m_ManagedTypePPtr: {fileID: 11500000, guid: b58de1daafb9442719449f1adf2a3a03, type: 3}
+    m_ManagedTypeFallback: 
+  m_Properties:
+  - target: {fileID: 0}
+    propertyPath: m_Enabled
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: m_EditorHideFlags
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: m_EditorClassIdentifier
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: defaultSnapshot
+    value: 
+    objectReference: {fileID: 24500006, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeSnapshot
+    value: 
+    objectReference: {fileID: 24500007, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.outputMixerGroup
+    value: 
+    objectReference: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.volume
+    value: 0.23
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.pitchRange.x
+    value: 0.97
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.pitchRange.y
+    value: 1.03
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.spatialBlend
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.minDistance
+    value: 2
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.maxDistance
+    value: 30
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.priority
+    value: 64
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerGunshot.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: 5d337a123c362429aaf693d1742f5ce1, type: 3}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.outputMixerGroup
+    value: 
+    objectReference: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.pitchRange.x
+    value: 0.98
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.pitchRange.y
+    value: 1.02
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.spatialBlend
+    value: 0.35
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.minDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.maxDistance
+    value: 15
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.priority
+    value: 64
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerEmptyGunClick.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: 3df30eae4e8db4619aa2ce105150f965, type: 3}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.outputMixerGroup
+    value: 
+    objectReference: {fileID: 6758493027441001001, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.pitchRange.x
+    value: 0.98
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.pitchRange.y
+    value: 1.02
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.spatialBlend
+    value: 0.35
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.minDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.maxDistance
+    value: 15
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.priority
+    value: 64
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadStarted.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: 79065ff7feaa143389b920b76515bf5c, type: 3}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.outputMixerGroup
+    value: 
+    objectReference: {fileID: 6758493027441001001, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.pitchRange.x
+    value: 0.98
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.pitchRange.y
+    value: 1.02
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.spatialBlend
+    value: 0.35
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.minDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.maxDistance
+    value: 15
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.priority
+    value: 64
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: playerReloadFinished.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: 4ba39855759a43a4182b70096f3266d6, type: 3}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.outputMixerGroup
+    value: 
+    objectReference: {fileID: -6201847315509001101, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.pitchRange.x
+    value: 0.75
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.pitchRange.y
+    value: 0.82
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.spatialBlend
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.minDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.maxDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.priority
+    value: 32
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeStarted.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: 5637903a5979f48c6a4c9db723e85788, type: 3}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.outputMixerGroup
+    value: 
+    objectReference: {fileID: -6201847315509001101, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.pitchRange.x
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.pitchRange.y
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.spatialBlend
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.minDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.maxDistance
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.priority
+    value: 32
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: bulletTimeEnding.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.outputMixerGroup
+    value: 
+    objectReference: {fileID: -1632768354943943605, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.volume
+    value: 0.8
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.pitchRange.x
+    value: 0.77
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.pitchRange.y
+    value: 0.83
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.spatialBlend
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.minDistance
+    value: 2
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.maxDistance
+    value: 30
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.priority
+    value: 128
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyGunshot.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: dc4f4c9c5a29144008afa1532e260282, type: 3}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.outputMixerGroup
+    value: 
+    objectReference: {fileID: -3863647200042775362, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.pitchRange.x
+    value: 0.87
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.pitchRange.y
+    value: 0.77
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.spatialBlend
+    value: 0.71
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.minDistance
+    value: 4
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.maxDistance
+    value: 30
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.priority
+    value: 80
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.loop
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.fadeInSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyHitByPlayer.fadeOutSeconds
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.clips.Array.size
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.clips.Array.data[0]
+    value: 
+    objectReference: {fileID: 8300000, guid: 37297145c020a429ea5a5894c80a4575, type: 3}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.outputMixerGroup
+    value: 
+    objectReference: {fileID: 8682057297602537484, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.volume
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.pitchRange.x
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.pitchRange.y
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.spatialBlend
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.minDistance
+    value: 0.5
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.maxDistance
+    value: 10
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.rolloffMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.priority
+    value: 32
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.loop
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.fadeInSeconds
+    value: 0.2
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: enemyLethalBulletWarning.fadeOutSeconds
+    value: 0.5
+    objectReference: {fileID: 0}
+  m_ExcludedProperties: []

@@ -148,7 +148,6 @@ public class BodyController : MonoBehaviour
 	private bool offhandMirrorRestoreOffhandOnRelease = true;
 	[Header("Aim Start Hold")]
 	public float aimStartHoldDuration = 0.05f;
-	[SerializeField, Min(0f)] private float aimStartReleaseInputDeadzone = 0.01f;
 	[SerializeField] private float breakoutAimYawOffset = 45f;
 	[SerializeField] private bool breakoutAimAssistEnabled = true;
 	[SerializeField, Tooltip("Layer containing exactly one dedicated aim-assist target collider per enemy.")]
@@ -795,7 +794,7 @@ public class BodyController : MonoBehaviour
 	{
 		if (!isAI && IsPlayerCenteredAim())
 		{
-			weapons.ExecuteWeapon1(true, triggerPressedThisFrame);
+			weapons.ExecuteWeapon1(false, triggerPressedThisFrame);
 			weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
 			weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
 			weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
@@ -823,7 +822,7 @@ public class BodyController : MonoBehaviour
 	{
 		if (!isAI && IsPlayerCenteredAim())
 		{
-			weapons.ExecuteWeapon1(false, triggerPressedThisFrame);
+			weapons.ExecuteWeapon1(true, triggerPressedThisFrame);
 			weapon1gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[0]);
 			weapon2gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[1]);
 			weapon3gauge.SetActive(weapons.GetCurrentPowerAllocationDictionary()[2]);
@@ -1601,8 +1600,8 @@ public class BodyController : MonoBehaviour
 
 	private bool HasAimStartReleaseInput()
 	{
-		float deadzone = Mathf.Max(0f, aimStartReleaseInputDeadzone);
-		return fixedTickHeadRotation.sqrMagnitude > deadzone * deadzone;
+		return input is PlayerController playerController
+			&& playerController.HasAimAssistBreakoutInput(fixedTickHeadRotation);
 	}
 
 	private void ReleaseAimStartHold(bool useLeft)
