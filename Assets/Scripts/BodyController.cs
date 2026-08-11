@@ -69,7 +69,9 @@ public class BodyController : MonoBehaviour
 		: isAimingLeft || (keepCameraAimWithoutArm && keepCameraAimUsesLeft);
 	public bool IsRightArmAimed => IsPlayerCenteredAim() || isAimingRight || (offhandMirrorActive && offhandMirrorSourceIsLeft);
 	public bool IsLeftArmAimed => IsPlayerCenteredAim() || isAimingLeft || (offhandMirrorActive && !offhandMirrorSourceIsLeft);
-	public BodyController BreakoutAimAssistPreviewTarget { get; private set; }
+	public AimAssistTarget BreakoutAimAssistPreviewTarget { get; private set; }
+	public BodyController BreakoutAimAssistPreviewBodyTarget { get; private set; }
+	public event System.Action<BodyController> Died;
 	private const float SlowMoveSpeedMultiplier = 0.3f;
 
 	// [HideInInspector]
@@ -197,7 +199,7 @@ public class BodyController : MonoBehaviour
 	private readonly AssistedViewTravelState rightAssistedViewTravel = new AssistedViewTravelState();
 	private readonly AssistedViewTravelState leftAssistedViewTravel = new AssistedViewTravelState();
 	private Collider[] breakoutAimAssistColliders;
-	private readonly List<BodyController> breakoutAimAssistBodies = new List<BodyController>();
+	private readonly List<Transform> breakoutAimAssistTargetRoots = new List<Transform>();
 	private GameObject breakoutAimAssistDebugLeftVolume;
 	private GameObject breakoutAimAssistDebugRightVolume;
 	private Material breakoutAimAssistDebugLeftMaterial;
@@ -702,9 +704,15 @@ public class BodyController : MonoBehaviour
 
 	public void Die()
 	{
+		if (isDead)
+		{
+			return;
+		}
+
 		CancelAllBreakoutAimAssistTravel();
 		isDead = true;
 		bodyState.isDead = true;
+		Died?.Invoke(this);
 
 		ActiveRagdollController arc = GetComponentInChildren<ActiveRagdollController>();
 		arc.enabled = false;
@@ -3374,14 +3382,17 @@ public class BodyController : MonoBehaviour
 	{
 		if (!TryGetClosestBreakoutRetriggerTargetAimPoint(
 			useLeft,
+			out AimAssistTarget previewTarget,
 			out BodyController targetBody,
 			out Vector3 assistedAimPoint))
 		{
 			BreakoutAimAssistPreviewTarget = null;
+			BreakoutAimAssistPreviewBodyTarget = null;
 			return;
 		}
 
-		BreakoutAimAssistPreviewTarget = targetBody;
+		BreakoutAimAssistPreviewTarget = previewTarget;
+		BreakoutAimAssistPreviewBodyTarget = targetBody;
 		ApplySameDirectionScrollAimAssist(useLeft, assistedAimPoint);
 		TryTriggerBulletTimeImmediately();
 	}
@@ -3402,6 +3413,7 @@ public class BodyController : MonoBehaviour
 	private void UpdateBreakoutAimAssistPreviewTarget()
 	{
 		BreakoutAimAssistPreviewTarget = null;
+		BreakoutAimAssistPreviewBodyTarget = null;
 		if (isAI || isDead || offhandMirrorActive || isAimingRight == isAimingLeft)
 		{
 			return;
@@ -3409,16 +3421,20 @@ public class BodyController : MonoBehaviour
 
 		TryGetClosestBreakoutRetriggerTargetAimPoint(
 			isAimingLeft,
+			out AimAssistTarget previewTarget,
 			out BodyController targetBody,
 			out Vector3 unusedAimPoint);
-		BreakoutAimAssistPreviewTarget = targetBody;
+		BreakoutAimAssistPreviewTarget = previewTarget;
+		BreakoutAimAssistPreviewBodyTarget = targetBody;
 	}
 
 	private bool TryGetClosestBreakoutRetriggerTargetAimPoint(
 		bool useLeft,
+		out AimAssistTarget previewTarget,
 		out BodyController targetBody,
 		out Vector3 aimPoint)
 	{
+		previewTarget = null;
 		targetBody = null;
 		aimPoint = Vector3.zero;
 		Quaternion torsoYaw = GetBreakoutAimAssistYawRotation();
@@ -3447,16 +3463,20 @@ public class BodyController : MonoBehaviour
 		bool foundTarget = false;
 		const float angularTieEpsilon = 0.01f;
 
-		breakoutAimAssistBodies.Clear();
+		breakoutAimAssistTargetRoots.Clear();
 		for (int i = 0; i < count; i++)
 		{
-			BodyController candidateBody = GetValidBreakoutAimAssistBody(breakoutAimAssistColliders[i]);
-			if (candidateBody == null || breakoutAimAssistBodies.Contains(candidateBody))
+			if (!TryGetValidBreakoutAimAssistTarget(
+				breakoutAimAssistColliders[i],
+				out AimAssistTarget candidateTarget,
+				out BodyController candidateBody,
+				out Vector3 targetPoint,
+				out Transform targetRoot)
+				|| breakoutAimAssistTargetRoots.Contains(targetRoot))
 			{
 				continue;
 			}
 
-			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(candidateBody);
 			Vector3 horizontalDirection = targetPoint - aimLockOrigin;
 			horizontalDirection.y = 0f;
 			if (horizontalDirection.sqrMagnitude <= 0.0001f)
@@ -3476,7 +3496,6 @@ public class BodyController : MonoBehaviour
 				continue;
 			}
 
-			breakoutAimAssistBodies.Add(candidateBody);
 			Vector3 referenceDirection = targetPoint - referenceOrigin;
 			if (referenceDirection.sqrMagnitude <= 0.0001f)
 			{
@@ -3489,6 +3508,7 @@ public class BodyController : MonoBehaviour
 				continue;
 			}
 
+			breakoutAimAssistTargetRoots.Add(targetRoot);
 			float distanceSqr = referenceDirection.sqrMagnitude;
 			bool hasBetterAngle = angularDifference < bestAngularDifference - angularTieEpsilon;
 			bool hasEqualAngleAndIsCloser = Mathf.Abs(angularDifference - bestAngularDifference) <= angularTieEpsilon
@@ -3498,11 +3518,12 @@ public class BodyController : MonoBehaviour
 				bestAngularDifference = angularDifference;
 				bestDistanceSqr = distanceSqr;
 				bestTargetPoint = targetPoint;
+				previewTarget = candidateTarget;
 				targetBody = candidateBody;
 				foundTarget = true;
 			}
 		}
-		breakoutAimAssistBodies.Clear();
+		breakoutAimAssistTargetRoots.Clear();
 
 		if (!foundTarget)
 		{
@@ -3570,18 +3591,22 @@ public class BodyController : MonoBehaviour
 			return false;
 		}
 
-		breakoutAimAssistBodies.Clear();
+		breakoutAimAssistTargetRoots.Clear();
 		Vector3 origin = GetAimLockOrigin();
 		Vector3 directionSum = Vector3.zero;
 		for (int i = 0; i < count; i++)
 		{
-			BodyController targetBody = GetValidBreakoutAimAssistBody(breakoutAimAssistColliders[i]);
-			if (targetBody == null || breakoutAimAssistBodies.Contains(targetBody))
+			if (!TryGetValidBreakoutAimAssistTarget(
+				breakoutAimAssistColliders[i],
+				out AimAssistTarget unusedTarget,
+				out BodyController targetBody,
+				out Vector3 targetPoint,
+				out Transform targetRoot)
+				|| breakoutAimAssistTargetRoots.Contains(targetRoot))
 			{
 				continue;
 			}
 
-			Vector3 targetPoint = GetBreakoutAimAssistTargetPoint(targetBody);
 			Vector3 direction = targetPoint - origin;
 			direction.y = 0f;
 			if (direction.sqrMagnitude <= 0.0001f)
@@ -3609,11 +3634,11 @@ public class BodyController : MonoBehaviour
 				visibleTargetCount++;
 			}
 
-			breakoutAimAssistBodies.Add(targetBody);
+			breakoutAimAssistTargetRoots.Add(targetRoot);
 			directionSum += direction.normalized;
 		}
 
-		breakoutAimAssistBodies.Clear();
+		breakoutAimAssistTargetRoots.Clear();
 		if (directionSum.sqrMagnitude <= 0.0001f)
 		{
 			return false;
@@ -3854,16 +3879,47 @@ public class BodyController : MonoBehaviour
 		}
 	}
 
-	private BodyController GetValidBreakoutAimAssistBody(Collider candidateCollider)
+	private bool TryGetValidBreakoutAimAssistTarget(
+		Collider candidateCollider,
+		out AimAssistTarget aimAssistTarget,
+		out BodyController targetBody,
+		out Vector3 targetPoint,
+		out Transform targetRoot)
 	{
+		aimAssistTarget = null;
+		targetBody = null;
+		targetPoint = Vector3.zero;
+		targetRoot = null;
 		if (candidateCollider == null)
 		{
-			return null;
+			return false;
+		}
+
+		aimAssistTarget = candidateCollider.GetComponentInParent<AimAssistTarget>();
+		if (aimAssistTarget != null && aimAssistTarget.IsAvailable())
+		{
+			targetBody = aimAssistTarget.GetComponent<BodyController>();
+			if (targetBody == null)
+			{
+				targetBody = aimAssistTarget.GetComponentInChildren<BodyController>();
+			}
+			targetRoot = aimAssistTarget.GetTargetRoot();
+			if (targetRoot == transform.root || targetBody == this)
+			{
+				aimAssistTarget = null;
+				targetBody = null;
+				targetRoot = null;
+			}
+			else
+			{
+				targetPoint = aimAssistTarget.GetAimPoint(candidateCollider);
+				return true;
+			}
 		}
 
 		Transform npcRoot = candidateCollider.transform.parent;
 		Transform bodyTransform = npcRoot != null ? npcRoot.Find("Body") : null;
-		BodyController targetBody = bodyTransform != null
+		targetBody = bodyTransform != null
 			? bodyTransform.GetComponent<BodyController>()
 			: null;
 		if (targetBody == null
@@ -3872,10 +3928,26 @@ public class BodyController : MonoBehaviour
 			|| targetBody.isDead
 			|| (targetBody.bodyState != null && targetBody.bodyState.isDead))
 		{
-			return null;
+			targetBody = null;
+		}
+		else
+		{
+			aimAssistTarget = targetBody.GetComponent<AimAssistTarget>();
+			targetPoint = GetBreakoutAimAssistTargetPoint(targetBody);
+			targetRoot = targetBody.transform.root;
+			return true;
 		}
 
-		return targetBody;
+		PracticeTarget practiceTarget = candidateCollider.GetComponentInParent<PracticeTarget>();
+		if (practiceTarget == null || !practiceTarget.isActiveAndEnabled)
+		{
+			return false;
+		}
+
+		aimAssistTarget = practiceTarget.GetComponent<AimAssistTarget>();
+		targetPoint = GetBreakoutAimAssistTargetPoint(practiceTarget, candidateCollider);
+		targetRoot = practiceTarget.transform.root;
+		return true;
 	}
 
 	private Vector3 GetBreakoutAimAssistTargetPoint(BodyController targetBody)
@@ -3888,6 +3960,22 @@ public class BodyController : MonoBehaviour
 		}
 
 		return targetBody != null ? targetBody.transform.position : Vector3.zero;
+	}
+
+	private Vector3 GetBreakoutAimAssistTargetPoint(PracticeTarget practiceTarget, Collider candidateCollider)
+	{
+		if (candidateCollider != null)
+		{
+			return candidateCollider.bounds.center;
+		}
+
+		Collider targetCollider = practiceTarget != null ? practiceTarget.GetComponentInChildren<Collider>() : null;
+		if (targetCollider != null)
+		{
+			return targetCollider.bounds.center;
+		}
+
+		return practiceTarget != null ? practiceTarget.transform.position : Vector3.zero;
 	}
 
 	private bool IsWithinBreakoutAimAssistMaxTorsoAngle(Vector3 localTargetDirection)

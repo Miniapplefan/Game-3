@@ -138,7 +138,7 @@ public class PracticeRangeController : MonoBehaviour
         Vector3 spawnPosition = transform.position + direction * randomDistance;
         spawnPosition.y += randomHeight;
 
-        GameObject target = Instantiate(targetPrefab, spawnPosition, Quaternion.identity);
+        GameObject target = Instantiate(targetPrefab, spawnPosition, targetPrefab.transform.rotation);
         target.GetComponentInChildren<PracticeTarget>().prc = this;
         target.GetComponentInChildren<PracticeTarget>().player = player;
 

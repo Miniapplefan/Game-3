@@ -270,6 +270,8 @@ MonoBehaviour:
   maxLife: 0
   innerConeAngle: 2
   outerConeAngle: 10
+  firesBullets: 1
+  facePlayerOnStart: 1
   minTimeUntilShot: 0
   maxTimeUntilShot: 0
   shotIndicator: {fileID: 0}
@@ -653,11 +655,11 @@ MonoBehaviour:
   - {fileID: 1312817423}
   - {fileID: 757896835}
   limitWaveCount: 1
-  numberOfWaves: 10
+  numberOfWaves: 6
   maxActiveEnemies: 16
   waveSize: 8
-  minWaveInterval: 20
-  maxWaveInterval: 30
+  minWaveInterval: 17
+  maxWaveInterval: 21
   minTrickleInterval: 6
   maxTrickleInterval: 10
   corpseLifetime: 10
@@ -994,6 +996,8 @@ MonoBehaviour:
   maxLife: 0
   innerConeAngle: 2
   outerConeAngle: 10
+  firesBullets: 1
+  facePlayerOnStart: 1
   minTimeUntilShot: 0
   maxTimeUntilShot: 0
   shotIndicator: {fileID: 0}
@@ -1603,16 +1607,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5134508460515516453, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 4388020593017561413, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1 &1062438531
 GameObject:
@@ -19924,7 +19919,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 136.21225
+      value: 147.24615
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture

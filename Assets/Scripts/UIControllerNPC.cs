@@ -32,12 +32,14 @@ public class UIControllerNPC : MonoBehaviour
     float healthBarDeltaHideTimer = 0f;
     float lastDisplayedHealth = float.NaN;
     float maxHealth = float.NaN;
+    AimAssistTarget aimAssistTarget;
     BodyController npcBodyController;
     BodyController playerBodyController;
 
 
     void Awake()
     {
+        aimAssistTarget = GetComponent<AimAssistTarget>();
         npcBodyController = GetComponent<BodyController>();
         ResolvePlayerBodyController();
 
@@ -112,6 +114,11 @@ public class UIControllerNPC : MonoBehaviour
 
     void LateUpdate()
     {
+        if (aimAssistTarget != null)
+        {
+            return;
+        }
+
         UpdateAimAssistIndicator();
     }
 
@@ -126,7 +133,7 @@ public class UIControllerNPC : MonoBehaviour
             && !bodyState.isDead
             && npcBodyController != null
             && playerBodyController != null
-            && playerBodyController.BreakoutAimAssistPreviewTarget == npcBodyController;
+            && playerBodyController.BreakoutAimAssistPreviewBodyTarget == npcBodyController;
         SetAimAssistIndicatorActive(shouldShow);
     }
 

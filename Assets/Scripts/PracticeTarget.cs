@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class PracticeTarget : MonoBehaviour
 {
+    public event System.Action<PracticeTarget> DestroyedByPlayer;
+
     public float life;
     public float minLife;
     public float maxLife;
@@ -15,6 +17,14 @@ public class PracticeTarget : MonoBehaviour
     [Tooltip("Outer angle (degrees) — how far from the player direction the bullet CAN go.")]
     public float outerConeAngle = 10f;
 
+    [Header("Firing Settings")]
+    [Tooltip("If disabled, this target will not fire bullets.")]
+    public bool firesBullets = true;
+
+    [Header("Orientation Settings")]
+    [Tooltip("If enabled, the target rotates to face the player when it starts.")]
+    public bool facePlayerOnStart = true;
+
     public float minTimeUntilShot;
     public float maxTimeUntilShot;
 
@@ -25,30 +35,60 @@ public class PracticeTarget : MonoBehaviour
     [HideInInspector]
     public PracticeRangeController prc;
     public GameObject player;
+    bool isBeingDestroyed;
+
+    void Awake()
+    {
+        ResolveReferences();
+    }
 
     // Start is called before the first frame update
     void Start()
     {
+        ResolveReferences();
         life = Random.Range(minLife, maxLife);
-        player = GameObject.Find("Main Camera");
+        if (facePlayerOnStart && player != null)
+        {
+            transform.LookAt(player.transform);
+        }
 
-        transform.LookAt(player.gameObject.transform);
+        if (shotIndicator != null)
+        {
+            shotIndicator.SetActive(firesBullets);
+        }
 
-        timeUntilNextShot = Random.Range(minTimeUntilShot, maxTimeUntilShot);
+        if (firesBullets)
+        {
+            timeUntilNextShot = Random.Range(minTimeUntilShot, maxTimeUntilShot);
+        }
     }
 
     // Update is called once per frame
     void FixedUpdate()
     {
+        if (isBeingDestroyed)
+        {
+            return;
+        }
+
         life -= Time.fixedDeltaTime;
         if (life <= 0)
         {
-            prc.totalTargetsAccountedFor++;
-            GameObject.Destroy(gameObject);
+            HandleTargetRemoval(false);
+            return;
+        }
+
+        if (!firesBullets)
+        {
+            return;
         }
 
         timeUntilNextShot -= Time.fixedDeltaTime;
-        shotIndicator.transform.localScale = transform.localScale * (timeUntilNextShot / minTimeUntilShot);
+        if (shotIndicator != null && shotIndicator.activeSelf)
+        {
+            float safeMinTimeUntilShot = Mathf.Max(minTimeUntilShot, 0.01f);
+            shotIndicator.transform.localScale = transform.localScale * (timeUntilNextShot / safeMinTimeUntilShot);
+        }
 
         if (timeUntilNextShot <= 0)
         {
@@ -58,15 +98,18 @@ public class PracticeTarget : MonoBehaviour
 
     public void DestroyTarget()
     {
-        prc.totalTargetsDestroyed++;
-        prc.totalTargetsAccountedFor++;
-        GameObject.Destroy(gameObject);
+        HandleTargetRemoval(true);
     }
 
     void FireShot()
     {
+        if (bullet == null || player == null)
+        {
+            return;
+        }
+
         // Direction from enemy to player
-        Vector3 toPlayer = (player.gameObject.transform.position - transform.position).normalized;
+        Vector3 toPlayer = (player.transform.position - transform.position).normalized;
 
         // Generate a random direction within the hollow cone
         Vector3 fireDirection = GetRandomDirectionInHollowCone(toPlayer, innerConeAngle, outerConeAngle);
@@ -80,6 +123,52 @@ public class PracticeTarget : MonoBehaviour
 
         // Reset timer for next shot
         timeUntilNextShot = Random.Range(minTimeUntilShot, maxTimeUntilShot);
+    }
+
+    void HandleTargetRemoval(bool destroyedByPlayer)
+    {
+        if (isBeingDestroyed)
+        {
+            return;
+        }
+
+        isBeingDestroyed = true;
+        ResolvePracticeRangeController();
+
+        if (prc != null)
+        {
+            if (destroyedByPlayer)
+            {
+                DestroyedByPlayer?.Invoke(this);
+                prc.totalTargetsDestroyed++;
+            }
+
+            prc.totalTargetsAccountedFor++;
+        }
+        else if (destroyedByPlayer)
+        {
+            DestroyedByPlayer?.Invoke(this);
+        }
+
+        Destroy(gameObject);
+    }
+
+    void ResolveReferences()
+    {
+        ResolvePracticeRangeController();
+
+        if (player == null && Camera.main != null)
+        {
+            player = Camera.main.gameObject;
+        }
+    }
+
+    void ResolvePracticeRangeController()
+    {
+        if (prc == null)
+        {
+            prc = GetComponentInParent<PracticeRangeController>();
+        }
     }
 
     Vector3 GetRandomDirectionInHollowCone(Vector3 forward, float innerAngle, float outerAngle)

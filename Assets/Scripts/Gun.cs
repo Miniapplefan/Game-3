@@ -638,8 +638,22 @@ public class Gun : MonoBehaviour
 		LimbToSystemLinker limb = hit.collider.GetComponent<LimbToSystemLinker>();
 		MarchingCubesGenerator marchingCubes = hit.collider.GetComponent<MarchingCubesGenerator>();
 		BodyController targetBodyController = hit.collider.GetComponentInParent<BodyController>();
+		if (targetBodyController == null && hit.collider.transform.root != null)
+		{
+			targetBodyController = hit.collider.transform.root.GetComponentInChildren<BodyController>(true);
+		}
+
 		BodyVFXController bodyVFXController = hit.collider.GetComponentInParent<BodyVFXController>();
+		if (bodyVFXController == null && hit.collider.transform.root != null)
+		{
+			bodyVFXController = hit.collider.transform.root.GetComponentInChildren<BodyVFXController>(true);
+		}
+
 		PracticeTarget practiceTarget = hit.collider.GetComponentInParent<PracticeTarget>();
+		if (practiceTarget == null && hit.collider.transform.root != null)
+		{
+			practiceTarget = hit.collider.transform.root.GetComponentInChildren<PracticeTarget>(true);
+		}
 
 		if (heatContainer != null)
 		{
@@ -703,7 +717,7 @@ public class Gun : MonoBehaviour
 			Destroy(Instantiate(gunData.shootConfig.hitParticles, hit.point, Quaternion.Euler(hit.normal)).gameObject, 1f);
 
 		}
-		if (practiceTarget != null)
+		if (practiceTarget != null && targetBodyController == null)
 		{
 			Destroy(Instantiate(gunData.shootConfig.hitParticles, hit.point, Quaternion.Euler(hit.normal)).gameObject, 1f);
 			practiceTarget.DestroyTarget();
