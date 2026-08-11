@@ -167,7 +167,7 @@ public class BodyController : MonoBehaviour
 	private int breakoutAimAssistInitialTargetCapacity = 16;
 	[SerializeField] private bool breakoutAimAssistRequireLineOfSight = false;
 	[SerializeField] private LayerMask breakoutAimAssistObstructionMask = 1 << 9;
-	private Vector2 fixedTickHeadRotation;
+	private Vector2 frameHeadRotation;
 	[Header("Breakout Aim Assist Debug")]
 	[SerializeField] private bool showBreakoutAimAssistDebugVolumes = true;
 	[SerializeField, Range(0f, 1f)] private float breakoutAimAssistDebugAlpha = 0.12f;
@@ -243,6 +243,14 @@ public class BodyController : MonoBehaviour
 	private bool hasMovementStandbyStoredAimLeft = false;
 	private Vector3 movementStandbyStoredAimRight;
 	private Vector3 movementStandbyStoredAimLeft;
+	[Header("Close Range Head Aim")]
+	[SerializeField, Min(0f), Tooltip("Distance where the head target begins blending away from close-range convergence.")]
+	private float closeHeadAimCorrectionStartDistance = 2f;
+	[SerializeField, Min(0f), Tooltip("Distance where the head target fully follows the logical aim-ray direction.")]
+	private float closeHeadAimCorrectionFullDistance = 0.6f;
+	[SerializeField, Min(0f), Tooltip("Distance used for the virtual head target when close-range correction is fully active.")]
+	private float closeHeadAimProjectionDistance = 20f;
+	private Transform headAimTargetProxyCentered;
 	private Transform headAimTargetProxyRight;
 	private Transform headAimTargetProxyLeft;
 	private bool headAimUsesProxyTargets = false;
@@ -347,7 +355,7 @@ public class BodyController : MonoBehaviour
 	public LayerMask aimMask;
 	public Transform torsoAimPoint;
 	private float lastRaycastTime;
-	private float raycastInterval = 0.1f; // Adjust this value as needed
+	private float raycastInterval = 0.1f; // Used by the unchanged AI aim update.
 	public Collider[] bodyColliders; // Array to hold player's own colliders
 
 	float currentSelfXrotation;
@@ -894,7 +902,7 @@ public class BodyController : MonoBehaviour
 
 	private void DoRotation()
 	{
-		Vector2 headRot = fixedTickHeadRotation;
+		Vector2 headRot = frameHeadRotation;
 		if ((IsAimSourceRight() && holdAimStartRightUntilInput)
 			|| (IsAimSourceLeft() && holdAimStartLeftUntilInput))
 		{
@@ -1182,196 +1190,189 @@ public class BodyController : MonoBehaviour
 		StartAimSwapBlend(1f, 0f, 0f);
 	}
 
+	private void PrepareCenteredHeadAnchorsForFrame()
+	{
+		if (!IsPlayerCenteredAim()
+			|| freezeHeadDuringMoveAimYaw
+			|| headObjectTransformCache == null)
+		{
+			return;
+		}
+
+		if (headObject != null)
+		{
+			headObject.transform.SetPositionAndRotation(
+				headObjectTransformCache.position,
+				headObjectTransformCache.rotation);
+		}
+		if (headObjectL != null)
+		{
+			headObjectL.transform.SetPositionAndRotation(
+				headObjectTransformCache.position,
+				headObjectTransformCache.rotation);
+		}
+	}
+
+	private void UpdateAimStartHoldsBeforeLook()
+	{
+		if (IsAimSourceRight())
+		{
+			UpdateAimStartHoldBeforeLook(false);
+		}
+		if (IsAimSourceLeft())
+		{
+			UpdateAimStartHoldBeforeLook(true);
+		}
+	}
+
+	private void UpdateAimStartHoldBeforeLook(bool useLeft)
+	{
+		float timer = useLeft ? aimStartHoldTimerLeft : aimStartHoldTimerRight;
+		bool holdUntilInput = useLeft ? holdAimStartLeftUntilInput : holdAimStartRightUntilInput;
+		bool usesAssistedTravel = useLeft
+			? aimStartHoldUsesAssistedTravelLeft
+			: aimStartHoldUsesAssistedTravelRight;
+
+		if (timer > 0f)
+		{
+			timer -= Time.deltaTime;
+			if (useLeft)
+			{
+				aimStartHoldTimerLeft = timer;
+			}
+			else
+			{
+				aimStartHoldTimerRight = timer;
+			}
+
+			if (usesAssistedTravel && HasAimStartReleaseInput())
+			{
+				ReleaseAimStartHold(useLeft);
+				return;
+			}
+
+			MaintainAimStartHoldAlignment(useLeft);
+			return;
+		}
+
+		if (!holdUntilInput)
+		{
+			return;
+		}
+
+		if (HasAimStartReleaseInput())
+		{
+			ReleaseAimStartHold(useLeft);
+			return;
+		}
+
+		MaintainAimStartHoldAlignment(useLeft);
+	}
+
 	private void GetAimPoint()
 	{
-		if (Time.time - lastRaycastTime >= raycastInterval)
+		GetPlayerAimRay(out Vector3 origin, out Vector3 centeredForward);
+		Vector3 centeredFallback = origin + centeredForward * 20f;
+		Vector3 centeredTarget = ResolveAimPoint(origin, centeredForward, centeredFallback);
+		bool aimSourceRight = IsAimSourceRight();
+		bool aimSourceLeft = IsAimSourceLeft();
+
+		if (IsPlayerCenteredAim())
 		{
-			Vector3 origin = GetAimLockOrigin();
-			Vector3 centeredForward = GetTorsoYawPitchRotation() * Vector3.forward;
-			Vector3 centeredFallback = origin + centeredForward * 20f;
-			Vector3 centeredTarget = ResolveAimPoint(origin, centeredForward, centeredFallback);
-			bool aimSourceRight = IsAimSourceRight();
-			bool aimSourceLeft = IsAimSourceLeft();
-
-			if (IsPlayerCenteredAim())
+			if (startedAimingRight)
 			{
-				if (startedAimingRight)
-				{
-					ApplyRelativeAimRight();
-				}
-				else
-				{
-					SetWeaponAimPointR(centeredTarget);
-				}
-
-				if (startedAimingLeft)
-				{
-					ApplyRelativeAimLeft();
-				}
-				else
-				{
-					SetWeaponAimPointL(centeredTarget);
-				}
-
-				torsoAimPoint.position = centeredTarget;
-				if (!freezeHeadDuringMoveAimYaw)
-				{
-					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
-					headObjectL.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
-				}
-				return;
+				ApplyRelativeAimRight();
+			}
+			else
+			{
+				SetWeaponAimPointR(centeredTarget);
 			}
 
-			if (aimSourceRight)
+			if (startedAimingLeft)
 			{
-				if (aimStartHoldTimerRight > 0f)
-				{
-					aimStartHoldTimerRight -= Time.deltaTime;
-					if (aimStartHoldUsesAssistedTravelRight && HasAimStartReleaseInput())
-					{
-						ReleaseAimStartHold(false);
-						torsoAimPoint.position = centeredTarget;
-						return;
-					}
-					MaintainAimStartHoldAlignment(false);
-					torsoAimPoint.position = centeredTarget;
-					return;
-				}
-
-				if (holdAimStartRightUntilInput)
-				{
-					if (!HasAimStartReleaseInput())
-					{
-						MaintainAimStartHoldAlignment(false);
-						torsoAimPoint.position = centeredTarget;
-						return;
-					}
-
-					ReleaseAimStartHold(false);
-					torsoAimPoint.position = centeredTarget;
-					return;
-				}
+				ApplyRelativeAimLeft();
+			}
+			else
+			{
+				SetWeaponAimPointL(centeredTarget);
 			}
 
-			if (aimSourceLeft)
-			{
-				if (aimStartHoldTimerLeft > 0f)
-				{
-					aimStartHoldTimerLeft -= Time.deltaTime;
-					if (aimStartHoldUsesAssistedTravelLeft && HasAimStartReleaseInput())
-					{
-						ReleaseAimStartHold(true);
-						torsoAimPoint.position = centeredTarget;
-						return;
-					}
-					MaintainAimStartHoldAlignment(true);
-					torsoAimPoint.position = centeredTarget;
-					return;
-				}
-
-				if (holdAimStartLeftUntilInput)
-				{
-					if (!HasAimStartReleaseInput())
-					{
-						MaintainAimStartHoldAlignment(true);
-						torsoAimPoint.position = centeredTarget;
-						return;
-					}
-
-					ReleaseAimStartHold(true);
-					torsoAimPoint.position = centeredTarget;
-					return;
-				}
-			}
-
-			if (freezeHeadDuringMoveAimYaw)
-			{
-				torsoAimPoint.position = centeredTarget;
-				return;
-			}
-
-			if (!aimSourceRight)
-			{
-				if (startedAimingRight)
-				{
-					ApplyRelativeAimRight();
-				}
-				else
-				{
-					SetWeaponAimPointR(centeredTarget);
-				}
-			}
-
-			if (!aimSourceLeft)
-			{
-				if (startedAimingLeft)
-				{
-					ApplyRelativeAimLeft();
-				}
-				else
-				{
-					SetWeaponAimPointL(centeredTarget);
-				}
-			}
-
-			if (!aimSourceRight && !aimSourceLeft)
-			{
-				torsoAimPoint.position = centeredTarget;
-				return;
-			}
-
-			if (aimSourceRight && forceAimToTorsoRight)
-			{
-				SetWeaponAimPointR(aimStartHoldPointRight);
-				torsoAimPoint.position = centeredTarget;
-				forceAimToTorsoRight = false;
-				return;
-			}
-			if (aimSourceLeft && forceAimToTorsoLeft)
-			{
-				SetWeaponAimPointL(aimStartHoldPointLeft);
-				torsoAimPoint.position = centeredTarget;
-				forceAimToTorsoLeft = false;
-				return;
-			}
-
-			Quaternion cameraRot = Quaternion.Euler(aimCam.transform.eulerAngles.x, aimCam.transform.eulerAngles.y, 0f);
-			Vector3 rayForward = cameraRot * Vector3.forward;
-			Vector3 cameraFallback = origin + rayForward * 20f;
-			Vector3 cameraTarget = ResolveAimPoint(origin, rayForward, cameraFallback);
-			if (aimSourceRight)
-			{
-				SetWeaponAimPointR(cameraTarget);
-			}
-			else if (aimSourceLeft)
-			{
-				SetWeaponAimPointL(cameraTarget);
-			}
-			torsoAimPoint.position = cameraTarget;
+			torsoAimPoint.position = centeredTarget;
+			return;
 		}
-		else
+
+		if (aimSourceRight && (aimStartHoldTimerRight > 0f || holdAimStartRightUntilInput))
 		{
-			if (!freezeHeadDuringMoveAimYaw)
+			torsoAimPoint.position = centeredTarget;
+			return;
+		}
+
+		if (aimSourceLeft && (aimStartHoldTimerLeft > 0f || holdAimStartLeftUntilInput))
+		{
+			torsoAimPoint.position = centeredTarget;
+			return;
+		}
+
+		if (freezeHeadDuringMoveAimYaw)
+		{
+			torsoAimPoint.position = centeredTarget;
+			return;
+		}
+
+		if (!aimSourceRight)
+		{
+			if (startedAimingRight)
 			{
-				ResetWeaponAimPoint();
+				ApplyRelativeAimRight();
+			}
+			else
+			{
+				SetWeaponAimPointR(centeredTarget);
 			}
 		}
 
+		if (!aimSourceLeft)
+		{
+			if (startedAimingLeft)
+			{
+				ApplyRelativeAimLeft();
+			}
+			else
+			{
+				SetWeaponAimPointL(centeredTarget);
+			}
+		}
 
-		// Vector3 torso = aimCam.transform.position + 20 * aimCam.transform.forward;
-		// if (Physics.Raycast(aimCam.transform.position, aimCam.transform.forward, out hit, Mathf.Infinity, aimMask))
-		// {
-		// 	//Debug.DrawRay(headObject.transform.position, headObject.transform.TransformDirection(Vector3.forward) * hit.distance, Color.yellow);
-		// 	//Debug.Log(hit.distance);
-		// 	//weaponAimPoint.position = Vector3.Lerp(weaponAimPoint.position, hit.point, 0.2f);
-		// 	weaponAimPoint.position = hit.point;
-		// }
-		// else
-		// {
-		// 	//weaponAimPoint.position = Vector3.Lerp(weaponAimPoint.position, torso, 0.2f);
-		// 	weaponAimPoint.position = torso;
-		// }
-		// torsoAimPoint.position = torso;
+		if (!aimSourceRight && !aimSourceLeft)
+		{
+			torsoAimPoint.position = centeredTarget;
+			return;
+		}
+
+		if (aimSourceRight && forceAimToTorsoRight)
+		{
+			SetWeaponAimPointR(aimStartHoldPointRight);
+			torsoAimPoint.position = centeredTarget;
+			forceAimToTorsoRight = false;
+			return;
+		}
+		if (aimSourceLeft && forceAimToTorsoLeft)
+		{
+			SetWeaponAimPointL(aimStartHoldPointLeft);
+			torsoAimPoint.position = centeredTarget;
+			forceAimToTorsoLeft = false;
+			return;
+		}
+
+		if (aimSourceRight)
+		{
+			SetWeaponAimPointR(centeredTarget);
+		}
+		else if (aimSourceLeft)
+		{
+			SetWeaponAimPointL(centeredTarget);
+		}
+		torsoAimPoint.position = centeredTarget;
 	}
 
 	private Vector3 ResolveAimPoint(Vector3 origin, Vector3 forward, Vector3 fallback)
@@ -1471,6 +1472,29 @@ public class BodyController : MonoBehaviour
 	private Vector3 GetAimLockOrigin()
 	{
 		return headObjectTransformCache != null ? headObjectTransformCache.position : transform.position;
+	}
+
+	private void GetPlayerAimRay(out Vector3 origin, out Vector3 forward)
+	{
+		Transform viewHead = CameraAimUsesLeft
+			? (headObjectL != null ? headObjectL.transform : null)
+			: (headObject != null ? headObject.transform : null);
+
+		origin = viewHead != null ? viewHead.position : GetAimLockOrigin();
+
+		if (viewHead != null && viewHead.forward.sqrMagnitude > 0.0001f)
+		{
+			forward = viewHead.forward.normalized;
+			return;
+		}
+
+		if (aimCam != null && aimCam.transform.forward.sqrMagnitude > 0.0001f)
+		{
+			forward = aimCam.transform.forward.normalized;
+			return;
+		}
+
+		forward = GetTorsoYawPitchRotation() * Vector3.forward;
 	}
 
 	private void SetTorsoAimPointToCurrentView()
@@ -1609,7 +1633,7 @@ public class BodyController : MonoBehaviour
 	private bool HasAimStartReleaseInput()
 	{
 		return input is PlayerController playerController
-			&& playerController.HasAimAssistBreakoutInput(fixedTickHeadRotation);
+			&& playerController.HasAimAssistBreakoutInput(frameHeadRotation);
 	}
 
 	private void ReleaseAimStartHold(bool useLeft)
@@ -1878,7 +1902,11 @@ public class BodyController : MonoBehaviour
 
 	private void SetupHeadAimTargetProxies()
 	{
-		if (isAI || headAimConstraint == null || weaponAimPoint == null || weaponAimPointL == null)
+		if (isAI
+			|| headAimConstraint == null
+			|| torsoAimPoint == null
+			|| weaponAimPoint == null
+			|| weaponAimPointL == null)
 		{
 			return;
 		}
@@ -1889,13 +1917,26 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
-		headAimTargetProxyRight = CreateHeadAimTargetProxy("HeadAimTargetProxy_R", weaponAimPoint.position);
-		headAimTargetProxyLeft = CreateHeadAimTargetProxy("HeadAimTargetProxy_L", weaponAimPointL.position);
+		headAimTargetProxyCentered = CreateHeadAimTargetProxy(
+			"HeadAimTargetProxy_Centered",
+			torsoAimPoint.position,
+			torsoAimPoint.parent);
+		headAimTargetProxyRight = CreateHeadAimTargetProxy(
+			"HeadAimTargetProxy_R",
+			weaponAimPoint.position,
+			weaponAimPoint.parent);
+		headAimTargetProxyLeft = CreateHeadAimTargetProxy(
+			"HeadAimTargetProxy_L",
+			weaponAimPointL.position,
+			weaponAimPointL.parent);
 
+		var centeredSource = sources[0];
 		var rightSource = sources[1];
 		var leftSource = sources[2];
+		centeredSource.transform = headAimTargetProxyCentered;
 		rightSource.transform = headAimTargetProxyRight;
 		leftSource.transform = headAimTargetProxyLeft;
+		sources[0] = centeredSource;
 		sources[1] = rightSource;
 		sources[2] = leftSource;
 		headAimConstraint.data.sourceObjects = sources;
@@ -1913,10 +1954,10 @@ public class BodyController : MonoBehaviour
 		SyncHeadAimTargetProxies();
 	}
 
-	private Transform CreateHeadAimTargetProxy(string proxyName, Vector3 position)
+	private Transform CreateHeadAimTargetProxy(string proxyName, Vector3 position, Transform proxyParent)
 	{
 		GameObject proxy = new GameObject(proxyName);
-		proxy.transform.SetParent(transform, true);
+		proxy.transform.SetParent(proxyParent != null ? proxyParent : transform, true);
 		proxy.transform.position = position;
 		proxy.transform.rotation = transform.rotation;
 		return proxy.transform;
@@ -1929,6 +1970,10 @@ public class BodyController : MonoBehaviour
 			return;
 		}
 
+		if (headAimTargetProxyCentered != null)
+		{
+			headAimTargetProxyCentered.position = GetCenteredHeadAimTargetProxyPosition();
+		}
 		if (headAimTargetProxyRight != null)
 		{
 			headAimTargetProxyRight.position = GetHeadAimTargetProxyPosition(false);
@@ -1959,7 +2004,65 @@ public class BodyController : MonoBehaviour
 		}
 
 		Transform aimPoint = useLeft ? weaponAimPointL : weaponAimPoint;
-		return aimPoint != null ? aimPoint.position : transform.position;
+		GetLogicalHeadAimFrame(useLeft, out Vector3 logicalOrigin, out Vector3 logicalDirection);
+		return GetCloseRangeHeadAimProxyPosition(aimPoint, logicalOrigin, logicalDirection);
+	}
+
+	private Vector3 GetCenteredHeadAimTargetProxyPosition()
+	{
+		GetLogicalHeadAimFrame(false, out Vector3 logicalOrigin, out Vector3 logicalDirection);
+		return GetCloseRangeHeadAimProxyPosition(torsoAimPoint, logicalOrigin, logicalDirection);
+	}
+
+	private void GetLogicalHeadAimFrame(bool useLeft, out Vector3 origin, out Vector3 direction)
+	{
+		Transform logicalHead = useLeft
+			? (headObjectL != null ? headObjectL.transform : null)
+			: (headObject != null ? headObject.transform : null);
+
+		origin = logicalHead != null ? logicalHead.position : GetAimLockOrigin();
+		direction = logicalHead != null
+			? logicalHead.forward
+			: GetTorsoYawPitchRotation() * Vector3.forward;
+		if (direction.sqrMagnitude <= 0.0001f)
+		{
+			direction = transform.forward;
+		}
+		direction.Normalize();
+	}
+
+	private Vector3 GetCloseRangeHeadAimProxyPosition(
+		Transform realAimPoint,
+		Vector3 logicalOrigin,
+		Vector3 logicalDirection)
+	{
+		if (realAimPoint == null)
+		{
+			return transform.position;
+		}
+
+		Vector3 realTarget = realAimPoint.position;
+		float startDistance = Mathf.Max(0f, closeHeadAimCorrectionStartDistance);
+		Vector3 intendedVector = realTarget - logicalOrigin;
+		float logicalDistance = intendedVector.magnitude;
+		if (startDistance <= 0f || logicalDistance >= startDistance || logicalDistance <= 0.0001f)
+		{
+			return realTarget;
+		}
+
+		float fullDistance = Mathf.Clamp(closeHeadAimCorrectionFullDistance, 0f, startDistance);
+		float blendRange = startDistance - fullDistance;
+		float blend = blendRange <= 0.0001f
+			? 1f
+			: Mathf.Clamp01((startDistance - logicalDistance) / blendRange);
+		blend = Mathf.SmoothStep(0f, 1f, blend);
+
+		Vector3 stableDirection = logicalDirection.sqrMagnitude > 0.0001f
+			? logicalDirection.normalized
+			: intendedVector / logicalDistance;
+		float projectionDistance = Mathf.Max(logicalDistance, closeHeadAimProjectionDistance);
+		Vector3 projectedTarget = logicalOrigin + stableDirection * projectionDistance;
+		return Vector3.Lerp(realTarget, projectedTarget, blend);
 	}
 
 	private bool TryGetBreakoutAimAssistViewTargetPoint(bool useLeft, out Vector3 targetPoint)
@@ -2946,6 +3049,25 @@ public class BodyController : MonoBehaviour
 		UpdateBreakoutAimAssistViewTravel();
 		UpdateBreakoutAimAssistPreviewTarget();
 		UpdateBreakoutAimAssistDebugVolumes();
+
+		if (!isDead && !isAI)
+		{
+			frameHeadRotation = input != null ? input.getHeadRotation() : Vector2.zero;
+			RestoreMovementStandbyVisualAimPoints();
+			PrepareCenteredHeadAnchorsForFrame();
+			UpdateAimStartHoldsBeforeLook();
+			DoRotation();
+			GetAimPoint();
+			ApplyOffhandMirrorAimPoint();
+			UpdatePendingMoveAimYaw();
+			UpdateAimSwapBlend();
+			UpdateDualArmHeadAimBlend();
+			ApplyMovementStandbyVisualPose();
+			SyncHeadAimTargetProxies();
+			UpdateStandbyElbowTargets();
+		}
+
+		UpdateAimPointIndicatorVisibility();
 	}
 
 	private void FixedUpdate()
@@ -2962,23 +3084,11 @@ public class BodyController : MonoBehaviour
 			}
 			else
 			{
-				fixedTickHeadRotation = input != null ? input.getHeadRotation() : Vector2.zero;
-				RestoreMovementStandbyVisualAimPoints();
 				ExecutePhysicsBasedInputs();
-				GetAimPoint();
-				ApplyOffhandMirrorAimPoint();
-				DoRotation();
-				UpdatePendingMoveAimYaw();
-				UpdateAimSwapBlend();
-				UpdateDualArmHeadAimBlend();
-				ApplyMovementStandbyVisualPose();
-				SyncHeadAimTargetProxies();
-				UpdateStandbyElbowTargets();
 			}
 			doSiphoning();
 			doLimbRepairs();
 		}
-		UpdateAimPointIndicatorVisibility();
 		legs.DoMoveDeacceleration();
 		legs.RecoverFromTagging(1);
 		legs.UpdateMovementTick(Time.deltaTime);

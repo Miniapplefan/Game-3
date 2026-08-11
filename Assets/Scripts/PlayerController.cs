@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+[DefaultExecutionOrder(-100)]
 public class PlayerController : MonoBehaviour, InputController
 {
     public KeyCode forwardKey;
@@ -81,16 +82,6 @@ public class PlayerController : MonoBehaviour, InputController
 
     public Vector2 getHeadRotation()
     {
-        mouseYrotation = Input.GetAxis("Mouse X") * sensitivity * Time.fixedDeltaTime;
-        mouseXrotation = Input.GetAxis("Mouse Y") * sensitivity * Time.fixedDeltaTime;
-
-        //if(Input.GetAxis("Mouse X") != 0)
-        //{
-        //    Debug.Log("mouse input registered");
-        //}
-
-        mouseXrotation = Mathf.Clamp(mouseXrotation, -90, 90);
-
         return new Vector2(mouseXrotation, mouseYrotation);
     }
 
@@ -243,6 +234,10 @@ public class PlayerController : MonoBehaviour, InputController
     // Update is called once per frame
     void Update()
     {
+        mouseYrotation = Input.GetAxis("Mouse X") * sensitivity * Time.deltaTime;
+        mouseXrotation = Input.GetAxis("Mouse Y") * sensitivity * Time.deltaTime;
+        mouseXrotation = Mathf.Clamp(mouseXrotation, -90f, 90f);
+
         pressingForward = Input.GetKey(forwardKey);
         pressingBackward = Input.GetKey(backwardKey);
         pressingLeft = Input.GetKey(leftKey);
