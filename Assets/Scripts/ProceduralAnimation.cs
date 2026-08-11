@@ -46,6 +46,13 @@ public class ProceduralAnimation : MonoBehaviour
     public float minFeetDistance = 0.2f;
     public bool running = false;
 
+    [Header("Idle Stance Reorientation")]
+    [SerializeField, Min(0f)] private float stopSpeedThreshold = 1f;
+    [SerializeField, Min(0f)] private float resumeSpeedThreshold = 1.25f;
+    [SerializeField, Min(0f)] private float stopConfirmationTime = 0.15f;
+    [SerializeField, Min(0f)] private float idleStanceRotationSpeed = 360f;
+    [SerializeField, Min(0f)] private float idleAlignmentTolerance = 1f;
+
     private Vector3 initLeftFootPos;
     private Vector3 initRightFootPos;
 
@@ -69,8 +76,20 @@ public class ProceduralAnimation : MonoBehaviour
     private FootState leftFootState = FootState.Grounded;
     private FootState rightFootState = FootState.Grounded;
 
+    private enum LocomotionState
+    {
+        Moving,
+        ConfirmingStop,
+        Reorienting,
+        Idle,
+        Resuming
+    }
+
+    private LocomotionState locomotionState = LocomotionState.Moving;
+    private float stopConfirmationTimer;
+
     private string lastFootCase = "";
-    private int lastSign = 0;
+    private int lastSign = 1;
     private float lastZ = 1;
     private bool backwards = false;
 
@@ -105,43 +124,55 @@ public class ProceduralAnimation : MonoBehaviour
             velocity = lastVelocity;
         lastVelocity = velocity;
 
-        int sign = lastSign;
-        //&& Mathf.Abs(velocity.z) > 0f
-        //Debug.Log(Vector3.Dot(velocity.normalized, transform.forward));
-        sign = (Vector3.Dot(velocity.normalized, transform.forward) < 0 ? -1 : 1);
-        //Debug.Log(Vector3.Dot(velocity.normalized, transform.forward));
-        if (Mathf.Abs(Vector3.Dot(velocity.normalized, transform.forward)) < 0.7f)
-        {
-            sign = 1;
-        }
-        //Debug.Log("x:" + signOfNum(velocity.x) + " z:" + signOfNum(velocity.z) + " lastZ:" + signOfNum(lastZ));
-        //if (velocity.x > 1 || velocity.x < -1)
-        //{
-        //    sign = 1;
-        //}
-        //if (velocity.z > 1 || velocity.z < -1)
-        //{
-        //    sign = (Vector3.Dot(velocity.normalized, transform.forward) < 0 ? -1 : 1);
-        //}
-        lastSign = sign;
+        Vector3 planarVelocity = Vector3.ProjectOnPlane(velocity, Vector3.up);
+        float planarSpeed = planarVelocity.magnitude;
+        Vector3 planarDirection = planarSpeed > 0.0001f ? planarVelocity / planarSpeed : Vector3.zero;
 
-        //Debug.Log(velocity.magnitude);
+        UpdateLocomotionState(planarSpeed);
+
+        int sign = GetTravelSign(planarDirection);
+        Quaternion movementRotation;
+        bool hasMovementRotation = TryGetMovementRotation(sign, planarDirection, out movementRotation);
+
         scaler.localScale = new Vector3(scaler.localScale.x, stepHeight * 2f * 7.7f, stepLength * 7.7f);
 
-        scaler.rotation = Quaternion.LookRotation(sign * velocity.normalized, Vector3.up);
-        if (velocity.magnitude > 1)
+        if ((locomotionState == LocomotionState.Moving || locomotionState == LocomotionState.ConfirmingStop) && hasMovementRotation)
+        {
+            scaler.rotation = movementRotation;
+        }
+        else if (locomotionState == LocomotionState.Resuming && hasMovementRotation)
+        {
+            scaler.rotation = Quaternion.RotateTowards(
+                scaler.rotation,
+                movementRotation,
+                idleStanceRotationSpeed * Time.fixedDeltaTime);
+
+            if (Quaternion.Angle(scaler.rotation, movementRotation) <= idleAlignmentTolerance)
+            {
+                scaler.rotation = movementRotation;
+                locomotionState = LocomotionState.Moving;
+            }
+        }
+
+        bool locomotionActive = locomotionState == LocomotionState.Moving
+            || locomotionState == LocomotionState.ConfirmingStop
+            || locomotionState == LocomotionState.Resuming;
+
+        if (locomotionActive && planarSpeed > stopSpeedThreshold)
         {
             pivot.Rotate(Vector3.right, sign * angularSpeed, Space.Self);
         }
 
-        stepLength = Mathf.Lerp(stepLength, (velocity.magnitude / 7.7f) * targetStepLength, velocity.magnitude);
+        stepLength = Mathf.Lerp(stepLength, (planarSpeed / 7.7f) * targetStepLength, planarSpeed);
 
-        if (velocity.magnitude < 1)
+        if (planarSpeed < stopSpeedThreshold)
         {
             stepLength = Mathf.Lerp(stepLength, targetStepLength, 0.5f);
         }
 
-        if (velocity.magnitude < 1 && (leftFootTargetRig.localPosition.y > 0.2f || rightFootTargetRig.localPosition.y > 0.2f) && lastFootCase == "")
+        if (locomotionState == LocomotionState.Reorienting
+            && (leftFootTargetRig.localPosition.y > 0.2f || rightFootTargetRig.localPosition.y > 0.2f)
+            && lastFootCase == "")
         {
             if (leftFootTargetRig.localPosition.y > 0.2f && leftFootTargetRig.localPosition.z >= rightFootTargetRig.localPosition.z)
             {
@@ -165,40 +196,19 @@ public class ProceduralAnimation : MonoBehaviour
             }
         }
 
-        // if (velocity.magnitude < 1
-        //     && (
-        //     Vector3.Distance(leftFootTargetRig.position, rightFootTarget.position) <
-        //     Vector3.Distance(rightFootTargetRig.position, rightFootTarget.position)
-        //     ||
-        //     Vector3.Distance(rightFootTargetRig.position, leftFootTarget.position) <
-        //     Vector3.Distance(leftFootTargetRig.position, leftFootTarget.position)))
-        // {
-        //     //Transform tempTarget = leftFootTarget;
-        //     //leftFootTarget = rightFootTarget;
-        //     //rightFootTarget = tempTarget;
-        //     //Vector3.Dot(pivot.localScale, new Vector3(-1, -1, 1));
-        // }
+        ContinueLandingStep(sign);
+
+        if (locomotionState == LocomotionState.Reorienting || locomotionState == LocomotionState.Idle)
+        {
+            RotateScalerTowardIdleStance();
+        }
 
         Vector3 desiredPositionLeft = leftFootTarget.position;
         Vector3 desiredPositionRight = rightFootTarget.position;
 
-        if (leftFootTargetRig.localPosition.y < 0.2)
-        {
-            leftFootState = FootState.Grounded;
-        }
-        else
-        {
-            leftFootState = FootState.InAir;
-        }
-
-        if (rightFootTargetRig.localPosition.y < 0.2)
-        {
-            rightFootState = FootState.Grounded;
-        }
-        else
-        {
-            rightFootState = FootState.InAir;
-        }
+        Vector3 footForward = hasMovementRotation
+            ? movementRotation * Vector3.forward
+            : Vector3.ProjectOnPlane(scaler.forward, Vector3.up).normalized;
 
         Vector3[] posNormLeft = CastOnSurface(desiredPositionLeft, 2f, Vector3.up);
         //if (posNormLeft[0].y > desiredPositionLeft.y)
@@ -226,7 +236,7 @@ public class ProceduralAnimation : MonoBehaviour
         }
         if (posNormLeft[1] != Vector3.zero)
         {
-            leftFootTargetRig.rotation = Quaternion.LookRotation(sign * velocity.normalized, posNormLeft[1]);
+            leftFootTargetRig.rotation = Quaternion.LookRotation(footForward, posNormLeft[1]);
         }
 
         Vector3[] posNormRight = CastOnSurface(desiredPositionRight, 2f, Vector3.up);
@@ -240,7 +250,7 @@ public class ProceduralAnimation : MonoBehaviour
         //}
         if (posNormRight[0].y > desiredPositionRight.y)
         {
-            if (rightFootTarget.localPosition.y > 0 || velocity.magnitude < 1)
+            if (rightFootTarget.localPosition.y > 0 || planarSpeed < stopSpeedThreshold)
             {
                 rightFootTargetRig.position = new Vector3(posNormRight[0].x, posNormRight[0].y, desiredPositionRight.z);
             }
@@ -255,8 +265,11 @@ public class ProceduralAnimation : MonoBehaviour
         }
         if (posNormRight[1] != Vector3.zero)
         {
-            rightFootTargetRig.rotation = Quaternion.LookRotation(sign * velocity.normalized, posNormRight[1]);
+            rightFootTargetRig.rotation = Quaternion.LookRotation(footForward, posNormRight[1]);
         }
+
+        leftFootState = leftFootTargetRig.localPosition.y < 0.2f ? FootState.Grounded : FootState.InAir;
+        rightFootState = rightFootTargetRig.localPosition.y < 0.2f ? FootState.Grounded : FootState.InAir;
 
         lastLeftFootPos = leftFootTargetRig.position;
         lastRightFootPos = rightFootTargetRig.position;
@@ -269,25 +282,160 @@ public class ProceduralAnimation : MonoBehaviour
         //    scaler.localPosition = new Vector3(0f, heightReduction, 0f);
         //}
 
-        if (lastFootCase == "A" || lastFootCase == "B")
+        if (locomotionState == LocomotionState.Reorienting
+            && leftFootState == FootState.Grounded
+            && rightFootState == FootState.Grounded
+            && lastFootCase == ""
+            && GetIdleAlignmentError() <= idleAlignmentTolerance)
         {
-            pivot.Rotate(Vector3.right, sign * angularSpeed / 4, Space.Self);
-            if (leftFootTargetRig.localPosition.y < 0.2f && rightFootTargetRig.localPosition.y < 0.2f)
-            {
-                lastFootCase = "";
-            }
+            locomotionState = LocomotionState.Idle;
         }
-        if (lastFootCase == "C" || lastFootCase == "D")
-        {
-            pivot.Rotate(Vector3.right, -sign * angularSpeed / 4, Space.Self);
-            if (leftFootTargetRig.localPosition.y < 0.2f && rightFootTargetRig.localPosition.y < 0.2f)
-            {
-                lastFootCase = "";
-            }
-        }
-
 
         lastBodyPos = transform.position;
+    }
+
+    private void UpdateLocomotionState(float planarSpeed)
+    {
+        switch (locomotionState)
+        {
+            case LocomotionState.Moving:
+                if (planarSpeed < stopSpeedThreshold)
+                {
+                    locomotionState = LocomotionState.ConfirmingStop;
+                    stopConfirmationTimer = Time.fixedDeltaTime;
+
+                    if (stopConfirmationTimer >= stopConfirmationTime)
+                    {
+                        locomotionState = LocomotionState.Reorienting;
+                    }
+                }
+                break;
+
+            case LocomotionState.ConfirmingStop:
+                if (planarSpeed >= resumeSpeedThreshold)
+                {
+                    locomotionState = LocomotionState.Moving;
+                    stopConfirmationTimer = 0f;
+                }
+                else if (planarSpeed < stopSpeedThreshold)
+                {
+                    stopConfirmationTimer += Time.fixedDeltaTime;
+                    if (stopConfirmationTimer >= stopConfirmationTime)
+                    {
+                        locomotionState = LocomotionState.Reorienting;
+                    }
+                }
+                else
+                {
+                    stopConfirmationTimer = 0f;
+                }
+                break;
+
+            case LocomotionState.Reorienting:
+            case LocomotionState.Idle:
+                if (planarSpeed >= resumeSpeedThreshold)
+                {
+                    locomotionState = LocomotionState.Resuming;
+                    stopConfirmationTimer = 0f;
+                    lastFootCase = "";
+                }
+                break;
+
+            case LocomotionState.Resuming:
+                if (planarSpeed < stopSpeedThreshold)
+                {
+                    locomotionState = LocomotionState.ConfirmingStop;
+                    stopConfirmationTimer = Time.fixedDeltaTime;
+                }
+                break;
+        }
+    }
+
+    private int GetTravelSign(Vector3 planarDirection)
+    {
+        if (planarDirection.sqrMagnitude < 0.0001f)
+        {
+            return lastSign;
+        }
+
+        float forwardDot = Vector3.Dot(planarDirection, transform.forward);
+        int sign = forwardDot < 0f ? -1 : 1;
+
+        if (Mathf.Abs(forwardDot) < 0.7f)
+        {
+            sign = 1;
+        }
+
+        lastSign = sign;
+        return sign;
+    }
+
+    private bool TryGetMovementRotation(int sign, Vector3 planarDirection, out Quaternion movementRotation)
+    {
+        Vector3 movementForward = sign * planarDirection;
+        if (movementForward.sqrMagnitude < 0.0001f)
+        {
+            movementRotation = scaler.rotation;
+            return false;
+        }
+
+        movementRotation = Quaternion.LookRotation(movementForward, Vector3.up);
+        return true;
+    }
+
+    private void ContinueLandingStep(int sign)
+    {
+        if (lastFootCase == "A" || lastFootCase == "B")
+        {
+            pivot.Rotate(Vector3.right, sign * angularSpeed / 4f, Space.Self);
+        }
+        else if (lastFootCase == "C" || lastFootCase == "D")
+        {
+            pivot.Rotate(Vector3.right, -sign * angularSpeed / 4f, Space.Self);
+        }
+
+        if (lastFootCase != ""
+            && leftFootTargetRig.localPosition.y < 0.2f
+            && rightFootTargetRig.localPosition.y < 0.2f)
+        {
+            lastFootCase = "";
+        }
+    }
+
+    private void RotateScalerTowardIdleStance()
+    {
+        Vector3 currentFootAxis = Vector3.ProjectOnPlane(
+            rightFootTarget.position - leftFootTarget.position,
+            Vector3.up);
+        Vector3 desiredFootAxis = Vector3.ProjectOnPlane(transform.right, Vector3.up);
+
+        if (currentFootAxis.sqrMagnitude < 0.0001f || desiredFootAxis.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        float correctionAngle = Vector3.SignedAngle(currentFootAxis, desiredFootAxis, Vector3.up);
+        Quaternion targetRotation = Quaternion.AngleAxis(correctionAngle, Vector3.up) * scaler.rotation;
+        float maxDegreesDelta = idleStanceRotationSpeed * Time.fixedDeltaTime;
+
+        scaler.rotation = maxDegreesDelta > 0f
+            ? Quaternion.RotateTowards(scaler.rotation, targetRotation, maxDegreesDelta)
+            : targetRotation;
+    }
+
+    private float GetIdleAlignmentError()
+    {
+        Vector3 currentFootAxis = Vector3.ProjectOnPlane(
+            rightFootTarget.position - leftFootTarget.position,
+            Vector3.up);
+        Vector3 desiredFootAxis = Vector3.ProjectOnPlane(transform.right, Vector3.up);
+
+        if (currentFootAxis.sqrMagnitude < 0.0001f || desiredFootAxis.sqrMagnitude < 0.0001f)
+        {
+            return 0f;
+        }
+
+        return Mathf.Abs(Vector3.SignedAngle(currentFootAxis, desiredFootAxis, Vector3.up));
     }
 
 

@@ -6946,6 +6946,16 @@ MonoBehaviour:
   bounceAmplitude: 0
   minFeetDistance: 0.2
   running: 0
+  idleStanceWidth: 0.3
+  idleLeadSeparation: 0.12
+  stopSpeedThreshold: 1
+  resumeSpeedThreshold: 1.25
+  stopConfirmationTime: 0.15
+  settleStepDuration: 0.25
+  settlePositionTolerance: 0.02
+  maxSettleHorizontalDistance: 0.75
+  maxSettleVerticalDistance: 0.25
+  resumeBlendDuration: 0.12
 --- !u!114 &5897900684876579458
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11683,6 +11693,16 @@ MonoBehaviour:
   bounceAmplitude: 0
   minFeetDistance: 0.2
   running: 0
+  idleStanceWidth: 0.3
+  idleLeadSeparation: 0.12
+  stopSpeedThreshold: 1
+  resumeSpeedThreshold: 1.25
+  stopConfirmationTime: 0.15
+  settleStepDuration: 0.25
+  settlePositionTolerance: 0.02
+  maxSettleHorizontalDistance: 0.75
+  maxSettleVerticalDistance: 0.25
+  resumeBlendDuration: 0.12
 --- !u!114 &5897900685611893403
 MonoBehaviour:
   m_ObjectHideFlags: 0
