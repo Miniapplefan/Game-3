@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.AI;
 
 [RequireComponent(typeof(NavMeshAgent))]
-public class AgentMoveBehavior : MonoBehaviour
+public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 {
 	private BodyController bodyController;
 	private BodyState bodyState;
@@ -41,6 +41,7 @@ public class AgentMoveBehavior : MonoBehaviour
 		//AgentBehaviour.Events.OnTargetInRange += EventsOnTargetInRange;
 		AgentBehaviour.Events.OnTargetChanged += EventsOnTargetChanged;
 		AgentBehaviour.Events.OnTargetOutOfRange += EventsOnTargetOutOfRange;
+		AgentBehaviour.Events.OnMove += EventsOnMove;
 	}
 
 	private void OnDisable()
@@ -48,6 +49,7 @@ public class AgentMoveBehavior : MonoBehaviour
 		// AgentBehaviour.Events.OnTargetInRange -= EventsOnTargetInRange;
 		AgentBehaviour.Events.OnTargetChanged -= EventsOnTargetChanged;
 		AgentBehaviour.Events.OnTargetOutOfRange -= EventsOnTargetOutOfRange;
+		AgentBehaviour.Events.OnMove -= EventsOnMove;
 	}
 
 	private void EventsOnTargetOutOfRange(ITarget target) { }
@@ -56,6 +58,13 @@ public class AgentMoveBehavior : MonoBehaviour
 	{
 		if (target == null)
 		{
+			CurrentTarget = null;
+			ArrivalStallTimer = 0f;
+			LastRemainingDistance = float.PositiveInfinity;
+			if (NavMeshAgent.enabled && NavMeshAgent.isOnNavMesh)
+			{
+				NavMeshAgent.ResetPath();
+			}
 			return;
 		}
 
@@ -63,13 +72,58 @@ public class AgentMoveBehavior : MonoBehaviour
 		LastPosition = CurrentTarget.Position;
 		ArrivalStallTimer = 0f;
 		LastRemainingDistance = float.PositiveInfinity;
-		if (NavMeshAgent.enabled)
+		if (NavMeshAgent.enabled && NavMeshAgent.isOnNavMesh)
 		{
+			NavMeshAgent.isStopped = false;
 			NavMeshAgent.ResetPath();
 			NavMeshAgent.SetDestination(target.Position);
 		}
 		NavMeshAgent.updatePosition = true;
 		//AIController.SetAimTarget(target.Position + EyeLevel);
+	}
+
+	private void EventsOnMove(ITarget target)
+	{
+		if (target == null || !NavMeshAgent.enabled || !NavMeshAgent.isOnNavMesh)
+		{
+			return;
+		}
+
+		if (!ReferenceEquals(CurrentTarget, target))
+		{
+			EventsOnTargetChanged(target, false);
+			return;
+		}
+
+		NavMeshAgent.isStopped = false;
+		if (!NavMeshAgent.pathPending && !NavMeshAgent.hasPath)
+		{
+			NavMeshAgent.SetDestination(target.Position);
+		}
+	}
+
+	public void ResetForPoolReuse()
+	{
+		CurrentTarget = null;
+		LastPosition = transform.position;
+		ArrivalStallTimer = 0f;
+		LastRemainingDistance = float.PositiveInfinity;
+
+		if (NavMeshAgent == null)
+		{
+			NavMeshAgent = GetComponent<NavMeshAgent>();
+		}
+
+		if (NavMeshAgent != null)
+		{
+			NavMeshAgent.updatePosition = true;
+			if (NavMeshAgent.enabled && NavMeshAgent.isOnNavMesh)
+			{
+				NavMeshAgent.isStopped = false;
+				NavMeshAgent.ResetPath();
+				NavMeshAgent.velocity = Vector3.zero;
+			}
+		}
 	}
 
 	// private void EventsOnTargetInRange(ITarget target)
@@ -80,6 +134,10 @@ public class AgentMoveBehavior : MonoBehaviour
 	private void Update()
 	{
 		if (bodyState.isDead) { NavMeshAgent.speed = 0; return; }
+		if (!NavMeshAgent.enabled || !NavMeshAgent.isOnNavMesh)
+		{
+			return;
+		}
 		//NavMeshAgent.acceleration = bodyController.legs.getMoveSpeed() * (bodyController.legs.moveAcceleration / 5) * Time.deltaTime;
 		//NavMeshAgent.speed = 3.5f * bodyController.legs.getMoveSpeed();
 
@@ -126,7 +184,7 @@ public class AgentMoveBehavior : MonoBehaviour
 
 	public void RefreshCurrentDestination()
 	{
-		if (CurrentTarget == null || !NavMeshAgent.enabled)
+		if (CurrentTarget == null || !NavMeshAgent.enabled || !NavMeshAgent.isOnNavMesh)
 		{
 			return;
 		}
@@ -140,7 +198,7 @@ public class AgentMoveBehavior : MonoBehaviour
 
 	private bool HasEffectivelyArrived()
 	{
-		if (CurrentTarget == null || !NavMeshAgent.enabled)
+		if (CurrentTarget == null || !NavMeshAgent.enabled || !NavMeshAgent.isOnNavMesh)
 		{
 			return false;
 		}

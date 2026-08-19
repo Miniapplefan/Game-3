@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class AimAssistTarget : MonoBehaviour
+public class AimAssistTarget : MonoBehaviour, IEnemyPoolResettable
 {
     [Tooltip("Optional point used for aim assist targeting and indicator placement.")]
     public Transform targetPoint;
@@ -93,6 +93,18 @@ public class AimAssistTarget : MonoBehaviour
     public Transform GetTargetRoot()
     {
         return transform.root;
+    }
+
+    public void ResetForPoolReuse()
+    {
+        SetAimIndicatorActive(false);
+        bodyState = GetComponent<BodyState>();
+        if (bodyState == null)
+        {
+            bodyState = GetComponentInChildren<BodyState>();
+        }
+
+        ResolvePlayerBodyController();
     }
 
     void ResolvePlayerBodyController()

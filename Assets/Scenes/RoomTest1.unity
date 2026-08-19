@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.12731725, g: 0.13414744, b: 0.12107873, a: 1}
+  m_IndirectSpecularColor: {r: 0.12731749, g: 0.13414757, b: 0.1210787, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -137,7 +137,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -198,16 +198,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5134508460515516453, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 4388020593017561413, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!4 &46679446 stripped
 Transform:
@@ -317,7 +308,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -378,16 +369,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5134508460515516453, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 4388020593017561413, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1001 &145850163
 PrefabInstance:
@@ -645,7 +627,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &229631144
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -673,7 +655,7 @@ MonoBehaviour:
   - {fileID: 1312817423}
   - {fileID: 757896835}
   limitWaveCount: 1
-  numberOfWaves: 6
+  numberOfWaves: 8
   maxActiveEnemies: 16
   waveSize: 8
   minWaveInterval: 17
@@ -681,6 +663,9 @@ MonoBehaviour:
   minTrickleInterval: 6
   maxTrickleInterval: 10
   corpseLifetime: 10
+  prewarmPoolSize: 10
+  allowPoolExpansion: 1
+  navMeshSpawnSampleRadius: 2
   autoStart: 1
 --- !u!4 &229631145
 Transform:
@@ -1114,7 +1099,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2103951502302954486, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: GoapRunner
@@ -1175,16 +1160,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5134508460515516453, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 4388020593017561413, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1001 &845309673
 PrefabInstance:
@@ -1585,7 +1561,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 566777337892023873, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7596853188987542045, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
       propertyPath: m_Camera
@@ -1634,16 +1610,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5680541130419838744, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 5134508460515516453, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
-    - targetCorrespondingSourceObject: {fileID: 4388020593017561413, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 1ef14383124774e63b20a26d7e07ebb2, type: 3}
 --- !u!1 &1062438531
 GameObject:
@@ -19955,7 +19922,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 143.20699
+      value: 147.24615
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture

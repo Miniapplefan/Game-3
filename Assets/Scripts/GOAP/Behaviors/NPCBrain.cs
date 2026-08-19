@@ -7,7 +7,7 @@ using System.Linq;
 using System;
 
 [RequireComponent(typeof(AgentBehaviour))]
-public class NPCBrain : MonoBehaviour
+public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 {
 	private const float MinTargetAwarenessInterval = 0.05f;
 	private static AttackConfigSO CachedAttackConfig;
@@ -50,6 +50,41 @@ public class NPCBrain : MonoBehaviour
 
 	private void Start()
 	{
+		SelectInitialGoal();
+	}
+
+	public void ResetForPoolReuse()
+	{
+		currentGoalInertia = 0f;
+		lastDecisionTime = 0f;
+		currentGoalDebug = string.Empty;
+		nextAwarenessPollTime = Time.time + GetAwarenessPollJitter();
+		lastTargetSeenTime = float.NegativeInfinity;
+		AttackConfig = ResolveAttackConfig();
+
+		if (AgentBehaviour == null)
+		{
+			AgentBehaviour = GetComponent<AgentBehaviour>();
+		}
+
+		if (AgentBehaviour == null || AgentBehaviour.GoapSet == null)
+		{
+			return;
+		}
+
+		AgentBehaviour.WorldData.States.Clear();
+		AgentBehaviour.WorldData.Targets.Clear();
+		AgentBehaviour.ClearGoal();
+		SelectInitialGoal();
+	}
+
+	private void SelectInitialGoal()
+	{
+		if (AgentBehaviour == null || AgentBehaviour.GoapSet == null)
+		{
+			return;
+		}
+
 		if (HasHostileTarget())
 		{
 			AgentBehaviour.SetGoal<OverheatHostileGoal>(false);

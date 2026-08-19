@@ -85,7 +85,20 @@ public class BodyState : MonoBehaviour
 
 		if (bc.isAI)
 		{
-			AttackConfig = GetComponentInParent<GoapSetBinder>().GoapRunner.GetComponent<DependencyInjector>().AttackConfig;
+			GoapSetBinder binder = GetComponentInParent<GoapSetBinder>(true);
+			DependencyInjector injector = binder != null && binder.GoapRunner != null
+				? binder.GoapRunner.GetComponent<DependencyInjector>()
+				: null;
+
+			if (injector != null)
+			{
+				AttackConfig = injector.AttackConfig;
+			}
+			else
+			{
+				Debug.LogWarning($"{nameof(BodyState)} on '{name}' could not resolve its GOAP attack configuration.", this);
+			}
+
 			InitializeFireReadiness();
 		}
 	}
@@ -111,6 +124,38 @@ public class BodyState : MonoBehaviour
 	private void OnDisable()
 	{
 		ClearSuppressiveAimGunOverlaps();
+	}
+
+	public void ResetForPoolReuse()
+	{
+		ClearSuppressiveAimGunOverlaps();
+		bodyHeat = 0f;
+		bodyIsOverheated = false;
+		isDead = false;
+		dangerLevel = 0f;
+		hasLOS = false;
+		isBeingAimedAt = false;
+		isAimed = false;
+		hitStunAmount = 0f;
+		hitStunDecayDelayTimer = 0f;
+		targetBodyState = null;
+		siphonTarget = null;
+		desiredGunToUse = null;
+		losCheckIntervalCache = 0f;
+		AIMovingHasLastRootPosition = false;
+		AIMovingCachedFrame = -1;
+		AIMovingCachedValue = false;
+
+		if (bodyController != null && bodyController.isAI)
+		{
+			InitializeFireReadiness();
+		}
+		else
+		{
+			fireReadinessInitialized = false;
+			FireReadinessState = EnemyFireReadinessState.Unset;
+			TimeToAim = 0f;
+		}
 	}
 
 	void UpdateAIState()

@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class UIControllerNPC : MonoBehaviour
+public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
 {
     public GameObject leftAimIndicatorLine;
     public GameObject rightAimIndicatorLine;
@@ -144,6 +144,27 @@ public class UIControllerNPC : MonoBehaviour
         {
             playerBodyController = playerController.GetComponent<BodyController>();
         }
+    }
+
+    public void ResetForPoolReuse()
+    {
+        aimIndicatorsVisible = true;
+        aimAssistIndicatorVisible = false;
+        healthIndicatorVisible = true;
+        damageIndicatorVisible = false;
+        healthBarVisible = false;
+        healthBarDeltaVisible = false;
+        hasTakenDamage = false;
+        damageIndicatorHideTimer = 0f;
+        healthBarDeltaHideTimer = 0f;
+        lastDisplayedHealth = float.NaN;
+        maxHealth = float.NaN;
+
+        if (AimIndicator != null) AimIndicator.SetActive(false);
+        if (healthIndicator != null) healthIndicator.gameObject.SetActive(true);
+        if (damageIndicator != null) damageIndicator.gameObject.SetActive(false);
+        if (healthBar != null) healthBar.gameObject.SetActive(false);
+        if (healthBarDelta != null) healthBarDelta.gameObject.SetActive(false);
     }
 
     void SetAimAssistIndicatorActive(bool active)

@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.AI;
 
 [RequireComponent(typeof(NavMeshAgent))]
-public class AgentLookBehavior : MonoBehaviour
+public class AgentLookBehavior : MonoBehaviour, IEnemyPoolResettable
 {
   private AIController AIController;
   private NavMeshAgent NavMeshAgent;
@@ -66,6 +66,12 @@ public class AgentLookBehavior : MonoBehaviour
       LastPosition = CurrentTarget.Position;
       AIController.SetAimTarget(CurrentTarget.Position + EyeLevel);
     }
+  }
+
+  public void ResetForPoolReuse()
+  {
+    CurrentTarget = null;
+    LastPosition = transform.position;
   }
 
 }

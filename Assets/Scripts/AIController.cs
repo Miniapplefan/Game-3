@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class AIController : MonoBehaviour, InputController
+public class AIController : MonoBehaviour, InputController, IEnemyPoolResettable
 {
     public KeyCode forwardKey;
     public KeyCode backwardKey;
@@ -177,6 +177,22 @@ public class AIController : MonoBehaviour, InputController
     public void SetAimTarget(Vector3 target)
     {
         AimTarget = target;
+    }
+
+    public void ResetForPoolReuse()
+    {
+        pressingForward = false;
+        pressingBackward = false;
+        pressingLeft = false;
+        pressingRight = false;
+        pressingSiphon = false;
+        pressingFire1 = false;
+        pressingFire2 = false;
+        pressingFire3 = false;
+        didScroll = false;
+        mouseXrotation = 0f;
+        mouseYrotation = 0f;
+        AimTarget = Vector3.zero;
     }
 
     private void AimAtCurrentAimTarget()

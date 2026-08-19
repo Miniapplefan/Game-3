@@ -28,7 +28,7 @@ public readonly struct GunReloadAudioInfo
 	}
 }
 
-public class Gun : MonoBehaviour
+public class Gun : MonoBehaviour, IEnemyPoolResettable
 {
 	public GunDataScriptableObject gunData;
 	public Transform ModelRoot => modelRoot;
@@ -173,6 +173,32 @@ public class Gun : MonoBehaviour
 	{
 		hasNpcBallisticAimPoint = false;
 		npcBallisticAimPoint = Vector3.zero;
+	}
+
+	public void ResetForPoolReuse()
+	{
+		if (gunData == null || gunData.shootConfig == null)
+		{
+			return;
+		}
+
+		StopAllCoroutines();
+		currentShotsInMag = gunData.shootConfig.magSize;
+		isReloading = false;
+		isFiringBurst = false;
+		isFiring = false;
+		reloadTimeCache = gunData.shootConfig.reloadTime;
+		reloadAudioDelaySeconds = 0f;
+		reloadCompletionUsesAudioTime = false;
+		chargeTimeLeftCache = 0f;
+		prepTimeLeftCache = gunData.shootConfig.prepTime;
+		ClearNpcBallisticAimPoint();
+
+		if (prepInd != null)
+		{
+			prepInd.localScale = prepIndicatorSizeCache;
+			prepInd.gameObject.SetActive(false);
+		}
 	}
 
 	public bool Shoot(bool triggerPressedThisFrame = false)

@@ -12,7 +12,7 @@ public struct BoneJointPair
 	public ConfigurableJoint joint;
 }
 
-public class ActiveRagdollController : MonoBehaviour
+public class ActiveRagdollController : MonoBehaviour, IEnemyPoolResettable
 {
 	public BoneJointPair[] bonesAndJoints;
 	private Quaternion[] _initialJointsRotation;
@@ -160,6 +160,27 @@ public class ActiveRagdollController : MonoBehaviour
 		bodyState = GetComponentInParent<BodyState>();
 		ownerIsPlayer = bodyController != null && bodyController.GetComponentInParent<PlayerController>() != null;
 
+	}
+
+	public void ResetForPoolReuse()
+	{
+		rightAssistedAimTravel.active = false;
+		rightAssistedAimTravel.elapsed = 0f;
+		leftAssistedAimTravel.active = false;
+		leftAssistedAimTravel.elapsed = 0f;
+		wasAimingRight = false;
+		wasAimingLeft = false;
+		currentMovementAimError = Vector2.zero;
+		targetMovementAimError = Vector2.zero;
+		movementAimErrorRetargetTimer = 0f;
+		movementAimErrorRotation = Quaternion.identity;
+		currentMovementShotError = Vector2.zero;
+		movementShotErrorRotation = Quaternion.identity;
+		positionVelocity = Vector3.zero;
+		rotationVelocity = Vector3.zero;
+		TargetDirection = transform.forward;
+		_targetRotation = transform.rotation;
+		lastVelocity = rb != null ? rb.velocity : Vector3.zero;
 	}
 
 	// Update is called once per frame

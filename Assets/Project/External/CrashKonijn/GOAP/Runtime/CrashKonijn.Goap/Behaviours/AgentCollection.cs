@@ -23,6 +23,7 @@ namespace CrashKonijn.Goap.Behaviours
         public void Remove(IMonoAgent agent)
         {
             this.agents.Remove(agent);
+            this.queue.Remove(agent);
         }
 
         public void Enqueue(IMonoAgent agent)

@@ -9,7 +9,7 @@ using UnityEngine.Serialization;
 using static BodyInfo;
 using static Limb;
 
-public class BodyController : MonoBehaviour
+public class BodyController : MonoBehaviour, IEnemyPoolResettable
 {
 	private const int PlayerDamageAuraRewardTenths = 1;
 	private const int PlayerKillAuraRewardTenths = 10;
@@ -473,6 +473,126 @@ public class BodyController : MonoBehaviour
 
 
 		head.RaiseDeath += Die;
+	}
+
+	public void PrepareForPoolActivation()
+	{
+		isDead = false;
+		if (bodyState != null)
+		{
+			bodyState.isDead = false;
+		}
+	}
+
+	public void ResetForPoolReuse()
+	{
+		if (systemControllers == null)
+		{
+			return;
+		}
+
+		StopAllCoroutines();
+		CancelAllBreakoutAimAssistTravel();
+		if (siphon != null && siphon.siphonTarget != null)
+		{
+			siphon.siphonTarget.notBeingSiphoned(siphon);
+		}
+		PrepareForPoolActivation();
+		isAimingRight = false;
+		isAimingLeft = false;
+		startedAimingRight = false;
+		startedAimingLeft = false;
+		keepCameraAimWithoutArm = false;
+		keepCameraAimUsesLeft = false;
+		hasPendingMoveAimYaw = false;
+		pendingMoveAimYawElapsed = 0f;
+		freezeHeadDuringMoveAimYaw = false;
+		movingAimYawActive = false;
+		smoothedMovingAimYaw = 0f;
+		moveAimYawSourceIsLeft = false;
+		moveAimYawSourceWasRight = false;
+		pendingMoveAimToggleOff = false;
+		hasFrozenCameraRotation = false;
+		forceAimToTorsoRight = false;
+		forceAimToTorsoLeft = false;
+		useStoredAimRight = false;
+		useStoredAimLeft = false;
+		hasStoredRelativeAimRight = false;
+		hasStoredRelativeAimLeft = false;
+		offhandMirrorActive = false;
+		offhandMirrorSourceIsLeft = false;
+		offhandMirrorCameraUsesLeft = false;
+		offhandMirrorStoredAimingRight = false;
+		offhandMirrorStoredAimingLeft = false;
+		offhandMirrorStoredStartedRight = false;
+		offhandMirrorStoredStartedLeft = false;
+		offhandMirrorStoredKeepCameraAimWithoutArm = false;
+		offhandMirrorStoredKeepCameraAimUsesLeft = false;
+		offhandMirrorRestoreOffhandOnRelease = true;
+		aimStartHoldTimerRight = 0f;
+		aimStartHoldTimerLeft = 0f;
+		holdAimStartRightUntilInput = false;
+		holdAimStartLeftUntilInput = false;
+		aimStartHoldUsesAssistedTravelRight = false;
+		aimStartHoldUsesAssistedTravelLeft = false;
+		rightAssistedViewTravel.active = false;
+		leftAssistedViewTravel.active = false;
+		isAimSwapInProgress = false;
+		aimSwapElapsed = 0f;
+		dualArmHeadParkedWeightVelocity = 0f;
+		standbyDelayTimer = 0f;
+		deferStandbyRight = false;
+		deferStandbyLeft = false;
+		movementStandbyVisualActive = false;
+		hasMovementStandbyStoredAimRight = false;
+		hasMovementStandbyStoredAimLeft = false;
+		nextAimScrollToggleTime = 0f;
+		freezeAimPointRight = false;
+		freezeAimPointLeft = false;
+		releaseFrozenAimPointsOnSwapComplete = false;
+		isLeaningLeft = false;
+		isLeaningRight = false;
+		startedLeaningLeft = false;
+		startedLeaningRight = false;
+		isKnockbacked = false;
+		knockbackTimer = 0f;
+		knockbackSettledTimer = 0f;
+		agentDestination = Vector3.zero;
+		damagedLimbs.Clear();
+		toRepair.Clear();
+		BreakoutAimAssistPreviewTarget = null;
+		BreakoutAimAssistPreviewBodyTarget = null;
+
+		if (isAI)
+		{
+			aiHealth = UnityEngine.Random.Range(2, 25);
+		}
+
+		rb = rb != null ? rb : GetComponent<Rigidbody>();
+		systemControllers = InitSystems();
+		SubscribeSystemEvents();
+
+		if (bodyState != null)
+		{
+			bodyState.Init(systemControllers, heatContainer, this);
+			bodyState.ResetForPoolReuse();
+		}
+
+		if (heatContainer != null)
+		{
+			heatContainer.currentTemperature = heatContainer.ambientTemperature;
+			heatContainer.isBeingFlamed = false;
+			heatContainer.isInTransferZone = false;
+		}
+
+		if (agent != null && agent.enabled && agent.isOnNavMesh)
+		{
+			agent.isStopped = false;
+			agent.ResetPath();
+			agent.velocity = Vector3.zero;
+		}
+
+		UpdateAimPointIndicatorVisibility();
 	}
 
 	SystemModel GetSystem(BodyInfo.systemID sysID)
