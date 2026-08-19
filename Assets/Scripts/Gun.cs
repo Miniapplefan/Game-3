@@ -74,12 +74,14 @@ public class Gun : MonoBehaviour
 	private Vector3 npcBallisticAimPoint;
 	private BodyController bodyController;
 	private ActiveRagdollController activeRagdollController;
+	private GunSelector gunSelector;
 
 
-	public void SetParent(GameObject parent, Rigidbody weap)
+	public void SetParent(GameObject parent, Rigidbody weap, GunSelector ownerSelector = null)
 	{
 		weaponSlotLocation = parent != null ? parent.transform : null;
 		weapon = weap;
+		gunSelector = ownerSelector;
 	}
 
 	// Start is called before the first frame update
@@ -286,6 +288,7 @@ public class Gun : MonoBehaviour
 						gunData.shootConfig.HitMask
 					))
 				{
+					gunSelector?.LogPlayerHitscanCollider(hit.collider);
 					StartCoroutine(
 						PlayTrail(
 							shootSystem.transform.position,

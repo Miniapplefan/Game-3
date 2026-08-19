@@ -44,6 +44,11 @@ public class GunSelector : MonoBehaviour
 	[SerializeField] private Transform forearmForwardFallback;
 
 	[Space]
+	[Header("Debug")]
+	[Tooltip("Logs the collider hit by each player hitscan shot fired through this selector.")]
+	[SerializeField] private bool logPlayerHitscanColliders;
+
+	[Space]
 	[Header("Runtime Filled")]
 	public Gun ActiveGun1;
 	public Gun ActiveGun2;
@@ -468,8 +473,21 @@ public class GunSelector : MonoBehaviour
 		GameObject gunObject = new GameObject(gunData.GunName);
 		Gun gun = gunObject.AddComponent<Gun>();
 		gun.gunData = gunData;
-		gun.SetParent(slot, weapon);
+		gun.SetParent(slot, weapon, this);
 		return gun;
+	}
+
+	public void LogPlayerHitscanCollider(Collider hitCollider)
+	{
+		if (!logPlayerHitscanColliders || hitCollider == null)
+		{
+			return;
+		}
+
+		Debug.Log(
+			$"Player hitscan hit collider '{hitCollider.name}' ({hitCollider.GetType().Name}).",
+			hitCollider
+		);
 	}
 
 	void OnDrawGizmos()

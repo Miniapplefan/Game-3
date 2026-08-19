@@ -4454,6 +4454,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 5897900684415709204, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900684415709205, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Enabled
       value: 0
@@ -4523,6 +4527,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684810944710, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900684810944729, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Enabled
       value: 0
       objectReference: {fileID: 0}
@@ -4610,6 +4618,22 @@ PrefabInstance:
       propertyPath: m_Data.m_SourceObjects.m_Item0.transform
       value: 
       objectReference: {fileID: 3695633387947968428}
+    - target: {fileID: 5897900685165210133, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Size.z
+      value: 0.31890202
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685165210133, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Center.x
+      value: -0.0034216193
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685165210133, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Center.y
+      value: 0.026040673
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685165210133, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Center.z
+      value: 0.16653822
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900685165210134, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_CollisionDetection
       value: 1
@@ -4765,6 +4789,14 @@ PrefabInstance:
     - target: {fileID: 5897900685165210152, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_ConnectedAnchor.z
       value: 0.42957368
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685165210153, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Radius
+      value: 0.27
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685165210153, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Center.z
+      value: 0.18
       objectReference: {fileID: 0}
     - target: {fileID: 5897900685165210154, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Height
@@ -5007,6 +5039,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5897900685543239738, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5897900685543239741, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Enabled
       value: 0
       objectReference: {fileID: 0}
