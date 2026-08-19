@@ -277,6 +277,12 @@ MonoBehaviour:
   marchingCubesDamage: 1
   telegraphMaxDistance: 0
   bulletTimeChannel: 1
+  enablePlayerGraze: 1
+  grazeDistance: 0.35
+  grazeMask:
+    serializedVersion: 2
+    m_Bits: 64
+  grazeTint: {r: 0.8160377, g: 0.9246056, b: 1, a: 1}
   lifetime: 10
 --- !u!136 &7999339846884550878
 CapsuleCollider:
@@ -297,7 +303,7 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.052
+  m_Radius: 0.35009998
   m_Height: 10
   m_Direction: 2
   m_Center: {x: 0, y: 0, z: 5}

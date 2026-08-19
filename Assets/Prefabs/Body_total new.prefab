@@ -11136,6 +11136,7 @@ MonoBehaviour:
   enableAuraPressureDecay: 1
   auraPressureThreshold: 2
   auraPressureHalfLife: 4
+  grazeAuraRewardTenths: 1
   currentAuraGrip: 0
   maxAuraGrip: 3
   auraGripGainMultiplier: 1

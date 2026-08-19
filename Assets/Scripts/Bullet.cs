@@ -5,6 +5,13 @@ using UnityEngine;
 
 public class Bullet : MonoBehaviour
 {
+    private enum BulletTelegraphState
+    {
+        Neutral,
+        Graze,
+        Lethal
+    }
+
     public float speed;
     public MeshRenderer bulletTipMesh;
     public MeshRenderer bulletBodyMesh;
@@ -20,8 +27,12 @@ public class Bullet : MonoBehaviour
     [SerializeField] float telegraphMaxDistance = 0f;
     [SerializeField] private BulletTimeChannel bulletTimeChannel = BulletTimeChannel.EnemyBullet;
 
-    bool shouldTelegraph = false;
-    bool isTelegraph = false;
+    [Header("Player Graze")]
+    [SerializeField] private bool enablePlayerGraze = true;
+    [SerializeField, Min(0f)] private float grazeDistance = 0.35f;
+    [SerializeField] private LayerMask grazeMask;
+    [SerializeField, ColorUsage(false, false)] private Color grazeTint = new Color(0.9f, 0.96f, 1f, 1f);
+
     bool hasPlayerCandidate = false;
 
     PlayerController playerCandidate;
@@ -34,10 +45,22 @@ public class Bullet : MonoBehaviour
     private bool released;
     private bool trailEnabled = true;
     private AudioLoopHandle lethalWarningLoop;
+    private BulletTelegraphState telegraphState = BulletTelegraphState.Neutral;
+    private MaterialPropertyBlock grazeTintProperties;
+
+    private static readonly int ColorPropertyId = Shader.PropertyToID("_Color");
+
+    private const int GrazeOverlapCapacity = 32;
+    private readonly Collider[] grazeOverlapResults = new Collider[GrazeOverlapCapacity];
+    private BodyController pendingGrazePlayer;
+    private Collider[] pendingGrazePlayerColliders;
+    private Vector3 pendingGrazeTravelDirection;
+    private bool grazeResolved;
 
     void Awake()
     {
         telegraphCollider = GetComponent<CapsuleCollider>();
+        grazeTintProperties = new MaterialPropertyBlock();
         if (telegraphMaxDistance <= 0f)
         {
             telegraphMaxDistance = ComputeTelegraphDistance();
@@ -46,10 +69,20 @@ public class Bullet : MonoBehaviour
         {
             telegraphMask = hitMask;
         }
+        if (grazeMask == 0)
+        {
+            grazeMask = telegraphMask;
+        }
 
-        bulletTipMesh.material = noHitTelegraphMaterial;
-        bulletBodyMesh.material = noHitTelegraphMaterial;
-        if (trail != null) trail.material = noHitTelegraphMaterial;
+        ConfigureTelegraphCollider();
+        ApplyTelegraphVisuals(BulletTelegraphState.Neutral);
+    }
+
+    void OnValidate()
+    {
+        grazeDistance = Mathf.Max(0f, grazeDistance);
+        telegraphCollider = GetComponent<CapsuleCollider>();
+        ConfigureTelegraphCollider();
     }
 
     void OnEnable()
@@ -65,8 +98,7 @@ public class Bullet : MonoBehaviour
         playerOverlaps.Clear();
         playerCandidate = null;
         hasPlayerCandidate = false;
-        shouldTelegraph = false;
-        isTelegraph = false;
+        telegraphState = BulletTelegraphState.Neutral;
     }
 
     // Update is called once per frame
@@ -90,9 +122,10 @@ public class Bullet : MonoBehaviour
         }
 
         transform.position = endPosition;
+        UpdatePlayerGraze(startPosition, endPosition);
 
-        shouldTelegraph = hasPlayerCandidate && HasLineOfSightToPlayer();
-        UpdateTelegraphState();
+        BulletTelegraphState targetTelegraphState = EvaluateTelegraphState();
+        UpdateTelegraphState(targetTelegraphState);
     }
 
     private bool HandleCollision(Vector3 startPosition, Vector3 endPosition)
@@ -113,6 +146,158 @@ public class Bullet : MonoBehaviour
         }
 
         return false;
+    }
+
+    private void UpdatePlayerGraze(Vector3 startPosition, Vector3 endPosition)
+    {
+        if (!enablePlayerGraze || grazeResolved)
+        {
+            return;
+        }
+
+        Vector3 travelDelta = endPosition - startPosition;
+        if (travelDelta.sqrMagnitude <= Mathf.Epsilon)
+        {
+            return;
+        }
+
+        if (pendingGrazePlayer == null)
+        {
+            pendingGrazePlayer = FindGrazePlayer(startPosition, endPosition);
+            if (pendingGrazePlayer == null)
+            {
+                return;
+            }
+
+            pendingGrazeTravelDirection = travelDelta.normalized;
+            pendingGrazePlayerColliders = pendingGrazePlayer.GetComponentsInChildren<Collider>(true);
+        }
+
+        if (!IsEligibleGrazePlayer(pendingGrazePlayer))
+        {
+            ClearPendingGraze();
+            return;
+        }
+
+        if (!HasPassedGrazePlayer(endPosition))
+        {
+            return;
+        }
+
+        grazeResolved = true;
+        AuraManager auraManager = pendingGrazePlayer.auraManager;
+        if (auraManager == null)
+        {
+            auraManager = pendingGrazePlayer.GetComponent<AuraManager>();
+            pendingGrazePlayer.auraManager = auraManager;
+        }
+
+        if (auraManager != null)
+        {
+            auraManager.TryRegisterGraze();
+        }
+
+        ClearPendingGraze();
+    }
+
+    private BodyController FindGrazePlayer(Vector3 startPosition, Vector3 endPosition)
+    {
+        float outerRadius = Mathf.Max(0f, collisionRadius) + Mathf.Max(0f, grazeDistance);
+        int overlapCount = Physics.OverlapCapsuleNonAlloc(
+            startPosition,
+            endPosition,
+            outerRadius,
+            grazeOverlapResults,
+            grazeMask,
+            QueryTriggerInteraction.Ignore
+        );
+
+        for (int i = 0; i < overlapCount; i++)
+        {
+            Collider overlap = grazeOverlapResults[i];
+            grazeOverlapResults[i] = null;
+            if (overlap == null || overlap.GetComponentInParent<PlayerController>() == null)
+            {
+                continue;
+            }
+
+            BodyController bodyController = overlap.GetComponentInParent<BodyController>();
+            if (IsEligibleGrazePlayer(bodyController))
+            {
+                ClearGrazeOverlapResults(i + 1, overlapCount);
+                return bodyController;
+            }
+        }
+
+        return null;
+    }
+
+    private bool HasPassedGrazePlayer(Vector3 bulletPosition)
+    {
+        if (pendingGrazePlayerColliders == null || pendingGrazeTravelDirection.sqrMagnitude <= Mathf.Epsilon)
+        {
+            return false;
+        }
+
+        bool foundPlayerCollider = false;
+        float forwardmostProjection = float.NegativeInfinity;
+        Vector3 absoluteDirection = new Vector3(
+            Mathf.Abs(pendingGrazeTravelDirection.x),
+            Mathf.Abs(pendingGrazeTravelDirection.y),
+            Mathf.Abs(pendingGrazeTravelDirection.z)
+        );
+
+        foreach (Collider playerCollider in pendingGrazePlayerColliders)
+        {
+            if (playerCollider == null
+                || !playerCollider.enabled
+                || !playerCollider.gameObject.activeInHierarchy
+                || playerCollider.isTrigger
+                || !LayerIsInMask(playerCollider.gameObject.layer, grazeMask))
+            {
+                continue;
+            }
+
+            Bounds bounds = playerCollider.bounds;
+            float colliderProjection = Vector3.Dot(bounds.center, pendingGrazeTravelDirection)
+                + Vector3.Dot(bounds.extents, absoluteDirection);
+            forwardmostProjection = Mathf.Max(forwardmostProjection, colliderProjection);
+            foundPlayerCollider = true;
+        }
+
+        if (!foundPlayerCollider)
+        {
+            return false;
+        }
+
+        float outerRadius = Mathf.Max(0f, collisionRadius) + Mathf.Max(0f, grazeDistance);
+        float bulletProjection = Vector3.Dot(bulletPosition, pendingGrazeTravelDirection);
+        return bulletProjection > forwardmostProjection + outerRadius;
+    }
+
+    private static bool IsEligibleGrazePlayer(BodyController bodyController)
+    {
+        return bodyController != null && !bodyController.isAI && !bodyController.isDead;
+    }
+
+    private static bool LayerIsInMask(int layer, LayerMask mask)
+    {
+        return (mask.value & (1 << layer)) != 0;
+    }
+
+    private void ClearGrazeOverlapResults(int startIndex, int endIndex)
+    {
+        for (int i = startIndex; i < endIndex; i++)
+        {
+            grazeOverlapResults[i] = null;
+        }
+    }
+
+    private void ClearPendingGraze()
+    {
+        pendingGrazePlayer = null;
+        pendingGrazePlayerColliders = null;
+        pendingGrazeTravelDirection = Vector3.zero;
     }
 
     private void ProcessHit(RaycastHit hit, Vector3 incomingDirection)
@@ -177,18 +362,64 @@ public class Bullet : MonoBehaviour
         return false;
     }
 
-    private void UpdateTelegraphState()
+    private bool HasGrazeTrajectoryToPlayer()
     {
-        bool stateChanged = shouldTelegraph != isTelegraph;
-        if (stateChanged)
+        if (!enablePlayerGraze || playerCandidate == null)
         {
-            Material targetMaterial = shouldTelegraph ? hitTelegraphMaterial : noHitTelegraphMaterial;
-            if (bulletTipMesh != null) bulletTipMesh.material = targetMaterial;
-            if (bulletBodyMesh != null) bulletBodyMesh.material = targetMaterial;
-            if (trail != null) trail.material = targetMaterial;
+            return false;
         }
 
-        if (shouldTelegraph)
+        float maxDistance = telegraphMaxDistance > 0f ? telegraphMaxDistance : Mathf.Infinity;
+        float outerRadius = Mathf.Max(0f, collisionRadius) + Mathf.Max(0f, grazeDistance);
+        if (!Physics.SphereCast(
+            transform.position,
+            outerRadius,
+            transform.forward,
+            out RaycastHit hit,
+            maxDistance,
+            grazeMask,
+            QueryTriggerInteraction.Ignore
+        ))
+        {
+            return false;
+        }
+
+        PlayerController hitPlayer = hit.collider.GetComponentInParent<PlayerController>();
+        if (hitPlayer == null || hitPlayer != playerCandidate)
+        {
+            return false;
+        }
+
+        return IsEligibleGrazePlayer(hit.collider.GetComponentInParent<BodyController>());
+    }
+
+    private BulletTelegraphState EvaluateTelegraphState()
+    {
+        if (!hasPlayerCandidate)
+        {
+            return BulletTelegraphState.Neutral;
+        }
+
+        if (HasLineOfSightToPlayer())
+        {
+            return BulletTelegraphState.Lethal;
+        }
+
+        return HasGrazeTrajectoryToPlayer()
+            ? BulletTelegraphState.Graze
+            : BulletTelegraphState.Neutral;
+    }
+
+    private void UpdateTelegraphState(BulletTelegraphState targetState, bool forceVisualRefresh = false)
+    {
+        bool stateChanged = targetState != telegraphState;
+        if (stateChanged || forceVisualRefresh)
+        {
+            ApplyTelegraphVisuals(targetState);
+        }
+
+        bool isLethal = targetState == BulletTelegraphState.Lethal;
+        if (isLethal)
         {
             if (lethalWarningLoop == null || !lethalWarningLoop.IsValid)
             {
@@ -207,7 +438,42 @@ public class Bullet : MonoBehaviour
             lethalWarningLoop.SetActive(false);
         }
 
-        isTelegraph = shouldTelegraph;
+        telegraphState = targetState;
+    }
+
+    private void ApplyTelegraphVisuals(BulletTelegraphState targetState)
+    {
+        Material targetMaterial = targetState == BulletTelegraphState.Lethal
+            ? hitTelegraphMaterial
+            : noHitTelegraphMaterial;
+        MaterialPropertyBlock properties = null;
+
+        if (targetState == BulletTelegraphState.Graze)
+        {
+            if (grazeTintProperties == null)
+            {
+                grazeTintProperties = new MaterialPropertyBlock();
+            }
+
+            grazeTintProperties.Clear();
+            grazeTintProperties.SetColor(ColorPropertyId, grazeTint);
+            properties = grazeTintProperties;
+        }
+
+        ApplyTelegraphVisual(bulletTipMesh, targetMaterial, properties);
+        ApplyTelegraphVisual(bulletBodyMesh, targetMaterial, properties);
+        ApplyTelegraphVisual(trail, targetMaterial, properties);
+    }
+
+    private static void ApplyTelegraphVisual(Renderer renderer, Material material, MaterialPropertyBlock properties)
+    {
+        if (renderer == null)
+        {
+            return;
+        }
+
+        renderer.sharedMaterial = material;
+        renderer.SetPropertyBlock(properties);
     }
 
     private void ReleaseLethalWarningLoop()
@@ -251,6 +517,20 @@ public class Bullet : MonoBehaviour
         return Mathf.Max(0f, forwardDistance);
     }
 
+    private void ConfigureTelegraphCollider()
+    {
+        if (telegraphCollider == null)
+        {
+            return;
+        }
+
+        float lethalCandidateRadius = Mathf.Max(0f, collisionRadius * telegraphRadiusMultiplier);
+        float grazeCandidateRadius = Mathf.Max(0f, collisionRadius) + Mathf.Max(0f, grazeDistance);
+        telegraphCollider.radius = enablePlayerGraze
+            ? Mathf.Max(lethalCandidateRadius, grazeCandidateRadius)
+            : lethalCandidateRadius;
+    }
+
     private void OnTriggerEnter(Collider other)
     {
         PlayerController player = other.GetComponentInParent<PlayerController>();
@@ -283,17 +563,16 @@ public class Bullet : MonoBehaviour
     private void ResetState()
     {
         ReleaseLethalWarningLoop();
-        shouldTelegraph = false;
-        isTelegraph = false;
         hasPlayerCandidate = false;
         playerCandidate = null;
         playerOverlaps.Clear();
+        grazeResolved = false;
+        ClearPendingGraze();
+        ClearGrazeOverlapResults(0, grazeOverlapResults.Length);
 
-        if (bulletTipMesh != null) bulletTipMesh.material = noHitTelegraphMaterial;
-        if (bulletBodyMesh != null) bulletBodyMesh.material = noHitTelegraphMaterial;
+        UpdateTelegraphState(BulletTelegraphState.Neutral, true);
         if (trail != null)
         {
-            trail.material = noHitTelegraphMaterial;
             trail.enabled = trailEnabled;
             trail.emitting = trailEnabled;
             trail.Clear();

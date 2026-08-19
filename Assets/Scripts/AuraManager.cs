@@ -40,6 +40,9 @@ public class AuraManager : MonoBehaviour
     [SerializeField] private float auraPressureThreshold = 4f;
     [SerializeField] private float auraPressureHalfLife = 4f;
 
+    [Header("Graze")]
+    [SerializeField] private int grazeAuraRewardTenths = 1;
+
     [SerializeField] private float currentAuraGrip;
     [SerializeField] private float maxAuraGrip = 3f;
     [SerializeField] private float auraGripGainMultiplier = 1f;
@@ -71,6 +74,7 @@ public class AuraManager : MonoBehaviour
     public float Threshold2PulseThreshold => threshold2Pulse != null ? threshold2Pulse.normalizedThreshold : 0f;
     public int AvailableBulletTimePulseCount => (HasThreshold1Pulse ? 1 : 0) + (HasThreshold2Pulse ? 1 : 0);
     public bool HasAvailableBulletTimePulse => AvailableBulletTimePulseCount > 0;
+    public event System.Action GrazeAwarded;
 
     private float timeSinceLastAuraGain;
     private float gripDecayAuraSnapshot;
@@ -94,6 +98,7 @@ public class AuraManager : MonoBehaviour
         currentAura = Mathf.Max(baseAura, currentAura);
         auraPressureThreshold = Mathf.Max(baseAura, auraPressureThreshold);
         auraPressureHalfLife = Mathf.Max(0.0001f, auraPressureHalfLife);
+        grazeAuraRewardTenths = Mathf.Max(0, grazeAuraRewardTenths);
         currentAuraGrip = Mathf.Clamp(currentAuraGrip, 0f, Mathf.Max(0f, maxAuraGrip));
         maxAuraGrip = Mathf.Max(0f, maxAuraGrip);
         auraGripGainMultiplier = Mathf.Max(0f, auraGripGainMultiplier);
@@ -118,6 +123,19 @@ public class AuraManager : MonoBehaviour
         GrantPulsesForNewThresholdCrossings();
         gripDecayAuraSnapshot = currentAura;
         timeSinceLastAuraGain = 0f;
+    }
+
+    public bool TryRegisterGraze()
+    {
+        int rewardTenths = Mathf.Max(0, grazeAuraRewardTenths);
+        if (rewardTenths <= 0)
+        {
+            return false;
+        }
+
+        AddAuraTenths(rewardTenths);
+        GrazeAwarded?.Invoke();
+        return true;
     }
 
     void Update()
