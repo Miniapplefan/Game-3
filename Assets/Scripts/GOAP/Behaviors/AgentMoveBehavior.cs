@@ -20,6 +20,13 @@ public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 	[SerializeField] private float ArrivalVelocityThreshold = 0.05f;
 	[SerializeField] private float ArrivalProgressEpsilon = 0.02f;
 	[SerializeField] private bool drawPathDebug = false;
+	[SerializeField] private bool showMovementDebugMarkers = false;
+	private Transform destinationDebugTransform;
+	private Transform targetDebugTransform;
+	private MeshRenderer destinationDebugRenderer;
+	private MeshRenderer targetDebugRenderer;
+	private MaterialPropertyBlock debugMarkerProperties;
+	private bool debugMarkersVisible;
 	private Vector3 EyeLevel = new Vector3(0, 2.33f, 0);
 	private Vector3 LastPosition;
 	private float ArrivalStallTimer;
@@ -32,6 +39,8 @@ public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 		AIController = GetComponentInChildren<AIController>();
 		bodyController = GetComponentInChildren<BodyController>();
 		bodyState = GetComponentInChildren<BodyState>();
+		CacheDebugMarkerReferences();
+		SetDebugMarkerVisibility(false);
 		navMeshSurface = FindObjectOfType<NavMeshSurface>();
 		NavMeshAgent.autoRepath = true;
 	}
@@ -108,6 +117,7 @@ public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 		LastPosition = transform.position;
 		ArrivalStallTimer = 0f;
 		LastRemainingDistance = float.PositiveInfinity;
+		SetDebugMarkerVisibility(false);
 
 		if (NavMeshAgent == null)
 		{
@@ -133,6 +143,15 @@ public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 
 	private void Update()
 	{
+		bool shouldShowDebugMarkers = showMovementDebugMarkers
+			&& bodyState != null
+			&& !bodyState.isDead
+			&& CurrentTarget != null
+			&& NavMeshAgent != null
+			&& NavMeshAgent.enabled
+			&& NavMeshAgent.isOnNavMesh;
+		SetDebugMarkerVisibility(shouldShowDebugMarkers);
+
 		if (bodyState.isDead) { NavMeshAgent.speed = 0; return; }
 		if (!NavMeshAgent.enabled || !NavMeshAgent.isOnNavMesh)
 		{
@@ -167,10 +186,11 @@ public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 			LastRemainingDistance = float.PositiveInfinity;
 		}
 
-		bodyState.positionTracker.gameObject.GetComponent<MeshRenderer>().material.color = Color.white;
-		bodyState.positionTracker.transform.position = NavMeshAgent.destination;
-		bodyState.positionTracker2.gameObject.GetComponent<MeshRenderer>().material.color = Color.green;
-		bodyState.positionTracker2.transform.position = CurrentTarget.Position;
+		if (debugMarkersVisible)
+		{
+			destinationDebugTransform.position = NavMeshAgent.destination;
+			targetDebugTransform.position = CurrentTarget.Position;
+		}
 
 		if (MinMoveDistance <= Vector3.Distance(CurrentTarget.Position, LastPosition) && NavMeshAgent.enabled)
 		{
@@ -179,6 +199,68 @@ public class AgentMoveBehavior : MonoBehaviour, IEnemyPoolResettable
 			ArrivalStallTimer = 0f;
 			LastRemainingDistance = float.PositiveInfinity;
 			//AIController.SetAimTarget(CurrentTarget.Position + EyeLevel);
+		}
+	}
+
+	private void CacheDebugMarkerReferences()
+	{
+		if (bodyState == null)
+		{
+			return;
+		}
+
+		if (bodyState.positionTracker != null)
+		{
+			destinationDebugTransform = bodyState.positionTracker.transform;
+			destinationDebugRenderer = bodyState.positionTracker.GetComponent<MeshRenderer>();
+		}
+
+		if (bodyState.positionTracker2 != null)
+		{
+			targetDebugTransform = bodyState.positionTracker2.transform;
+			targetDebugRenderer = bodyState.positionTracker2.GetComponent<MeshRenderer>();
+		}
+
+		debugMarkerProperties = new MaterialPropertyBlock();
+		debugMarkersVisible = (destinationDebugTransform != null && destinationDebugTransform.gameObject.activeSelf)
+			|| (targetDebugTransform != null && targetDebugTransform.gameObject.activeSelf);
+	}
+
+	private void SetDebugMarkerVisibility(bool visible)
+	{
+		bool hasMarkers = destinationDebugTransform != null && targetDebugTransform != null;
+		bool resolvedVisibility = visible && hasMarkers;
+		if (debugMarkersVisible == resolvedVisibility)
+		{
+			return;
+		}
+
+		debugMarkersVisible = resolvedVisibility;
+		if (destinationDebugTransform != null)
+		{
+			destinationDebugTransform.gameObject.SetActive(resolvedVisibility);
+		}
+		if (targetDebugTransform != null)
+		{
+			targetDebugTransform.gameObject.SetActive(resolvedVisibility);
+		}
+
+		if (!resolvedVisibility || debugMarkerProperties == null)
+		{
+			return;
+		}
+
+		if (destinationDebugRenderer != null)
+		{
+			debugMarkerProperties.Clear();
+			debugMarkerProperties.SetColor("_Color", Color.white);
+			destinationDebugRenderer.SetPropertyBlock(debugMarkerProperties);
+		}
+		if (targetDebugRenderer != null)
+		{
+			debugMarkerProperties.Clear();
+			debugMarkerProperties.SetColor("_Color", Color.green);
+			targetDebugRenderer.SetPropertyBlock(debugMarkerProperties);
 		}
 	}
 

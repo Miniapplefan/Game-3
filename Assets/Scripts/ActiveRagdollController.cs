@@ -14,9 +14,17 @@ public struct BoneJointPair
 
 public class ActiveRagdollController : MonoBehaviour, IEnemyPoolResettable
 {
+	private const int DefaultPlayerSolverIterations = 70;
+	private const int DefaultAiSolverIterations = 20;
+	private const int DefaultCorpseSolverIterations = 6;
+
 	public BoneJointPair[] bonesAndJoints;
 	private Quaternion[] _initialJointsRotation;
 	private Rigidbody[] Rigidbodies;
+	[Header("Physics Solver Profiles")]
+	[SerializeField, Min(1)] private int playerSolverIterations = 70;
+	[SerializeField, Min(1)] private int aiSolverIterations = 20;
+	[SerializeField, Min(1)] private int corpseSolverIterations = 6;
 	public Transform AnimatedRightFoot;
 	public Transform AnimatedLeftFoot;
 	public Transform RagdollRightFoot;
@@ -135,6 +143,7 @@ public class ActiveRagdollController : MonoBehaviour, IEnemyPoolResettable
 	// Start is called before the first frame update
 	void Start()
 	{
+		ResolveOwnerReferences();
 		_initialJointsRotation = new Quaternion[bonesAndJoints.Length];
 		for (int i = 0; i < bonesAndJoints.Length; i++)
 		{
@@ -144,26 +153,31 @@ public class ActiveRagdollController : MonoBehaviour, IEnemyPoolResettable
 		//{
 		//    ConfigurableJointExtensions.SetupAsCharacterJoint(bonesAndJoints[i].joint);
 		//}
-		Rigidbodies = this.GetComponentsInChildren<Rigidbody>();
-
-		foreach (Rigidbody rb in Rigidbodies)
-		{
-			rb.solverIterations = 70;
-			//rb.solverVelocityIterations = 20;
-			//rb.maxAngularVelocity = 20;
-		}
-		lastVelocity = rb.velocity;
+		CacheRigidbodies();
+		ApplyAliveSolverProfile();
+		lastVelocity = rb != null ? rb.velocity : Vector3.zero;
 		//previousRotation = proceduralAnimation.pivot.transform.rotation.x;
 
 		//setUp();
-		bodyController = GetComponentInParent<BodyController>();
-		bodyState = GetComponentInParent<BodyState>();
-		ownerIsPlayer = bodyController != null && bodyController.GetComponentInParent<PlayerController>() != null;
+	}
 
+	public void EnterCorpseMode()
+	{
+		ResolveOwnerReferences();
+		if (ownerIsPlayer)
+		{
+			return;
+		}
+
+		CacheRigidbodies();
+		ApplySolverIterations(corpseSolverIterations > 0 ? corpseSolverIterations : DefaultCorpseSolverIterations);
 	}
 
 	public void ResetForPoolReuse()
 	{
+		ResolveOwnerReferences();
+		CacheRigidbodies();
+		ApplyAliveSolverProfile();
 		rightAssistedAimTravel.active = false;
 		rightAssistedAimTravel.elapsed = 0f;
 		leftAssistedAimTravel.active = false;
@@ -181,6 +195,53 @@ public class ActiveRagdollController : MonoBehaviour, IEnemyPoolResettable
 		TargetDirection = transform.forward;
 		_targetRotation = transform.rotation;
 		lastVelocity = rb != null ? rb.velocity : Vector3.zero;
+	}
+
+	private void ResolveOwnerReferences()
+	{
+		if (bodyController == null)
+		{
+			bodyController = GetComponentInParent<BodyController>();
+		}
+
+		if (bodyState == null)
+		{
+			bodyState = GetComponentInParent<BodyState>();
+		}
+
+		ownerIsPlayer = GetComponentInParent<PlayerController>() != null;
+	}
+
+	private void CacheRigidbodies()
+	{
+		if (Rigidbodies == null || Rigidbodies.Length == 0)
+		{
+			Rigidbodies = GetComponentsInChildren<Rigidbody>();
+		}
+	}
+
+	private void ApplyAliveSolverProfile()
+	{
+		int configuredIterations = ownerIsPlayer ? playerSolverIterations : aiSolverIterations;
+		int fallbackIterations = ownerIsPlayer ? DefaultPlayerSolverIterations : DefaultAiSolverIterations;
+		ApplySolverIterations(configuredIterations > 0 ? configuredIterations : fallbackIterations);
+	}
+
+	private void ApplySolverIterations(int iterations)
+	{
+		if (Rigidbodies == null)
+		{
+			return;
+		}
+
+		int clampedIterations = Mathf.Max(1, iterations);
+		foreach (Rigidbody managedRigidbody in Rigidbodies)
+		{
+			if (managedRigidbody != null)
+			{
+				managedRigidbody.solverIterations = clampedIterations;
+			}
+		}
 	}
 
 	// Update is called once per frame

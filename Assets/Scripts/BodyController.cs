@@ -13,6 +13,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 {
 	private const int PlayerDamageAuraRewardTenths = 1;
 	private const int PlayerKillAuraRewardTenths = 10;
+	private const int AimRaycastBufferSize = 64;
 
 	[Header("Reload Audio")]
 	[Min(0f)]
@@ -123,6 +124,17 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	public GameObject aimCam;
 	[SerializeField] private MovePlayerCamera cameraMoveScript;
 	private ActiveRagdollController activeRagdollController;
+	private ProceduralAnimation proceduralAnimation;
+	private NPCBrain npcBrain;
+	private Rigidbody[] cachedDeathRigidbodies;
+	private ConfigurableJoint[] cachedDeathJoints;
+	private Coroutine corpseFreezeCoroutine;
+
+	[Header("AI Corpse Physics")]
+	[SerializeField, Min(0f), Tooltip("Seconds after AI death before corpse rigidbodies begin using interpolation. Interpolation is skipped when this is greater than or equal to the corpse freeze delay.")]
+	private float aiCorpseInterpolationDelay = 0.5f;
+	[SerializeField, Min(0f), Tooltip("Seconds an AI corpse remains physically simulated before its rigidbodies are frozen. Set to 0 to freeze immediately.")]
+	private float aiCorpseSettleDuration = 1.5f;
 	public bool isAimingRight = false;
 	bool startedAimingRight = false;
 	public bool isAimingLeft = false;
@@ -354,8 +366,11 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	RaycastHit hit;
 	public LayerMask aimMask;
 	public Transform torsoAimPoint;
-	private float lastRaycastTime;
-	private float raycastInterval = 0.1f; // Used by the unchanged AI aim update.
+	private float nextAiAimRaycastTime;
+	[SerializeField, Min(0.02f)] private float raycastInterval = 0.1f;
+	private RaycastHit[] aimRaycastHits;
+	private bool warnedAimRaycastBufferFull;
+	private HashSet<Collider> bodyColliderSet;
 	public Collider[] bodyColliders; // Array to hold player's own colliders
 
 	float currentSelfXrotation;
@@ -390,6 +405,12 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		rb = GetComponent<Rigidbody>();
 		ResolveActiveRagdollController();
 		bodyColliders = GetComponentsInChildren<Collider>();
+		bodyColliderSet = new HashSet<Collider>(bodyColliders);
+		aimRaycastHits = new RaycastHit[AimRaycastBufferSize];
+		proceduralAnimation = GetComponentInChildren<ProceduralAnimation>();
+		npcBrain = GetComponentInParent<NPCBrain>();
+		CacheDeathPhysicsComponents();
+		ResetAiAimRaycastSchedule();
 		tempJoint = new JointDrive();
 
 		// coolingGaugeScaleCache = coolingGauge.transform.localScale;
@@ -477,11 +498,18 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 	public void PrepareForPoolActivation()
 	{
+		enabled = true;
 		isDead = false;
 		if (bodyState != null)
 		{
 			bodyState.isDead = false;
 		}
+
+		if (proceduralAnimation != null)
+		{
+			proceduralAnimation.enabled = true;
+		}
+
 	}
 
 	public void ResetForPoolReuse()
@@ -492,12 +520,15 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		StopAllCoroutines();
+		corpseFreezeCoroutine = null;
 		CancelAllBreakoutAimAssistTravel();
 		if (siphon != null && siphon.siphonTarget != null)
 		{
 			siphon.siphonTarget.notBeingSiphoned(siphon);
 		}
 		PrepareForPoolActivation();
+		CacheDeathPhysicsComponents();
+		ResetAiAimRaycastSchedule();
 		isAimingRight = false;
 		isAimingLeft = false;
 		startedAimingRight = false;
@@ -842,13 +873,51 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		bodyState.isDead = true;
 		Died?.Invoke(this);
 
-		ActiveRagdollController arc = GetComponentInChildren<ActiveRagdollController>();
-		arc.enabled = false;
+		ResolveActiveRagdollController();
+		if (activeRagdollController != null)
+		{
+			if (isAI)
+			{
+				activeRagdollController.EnterCorpseMode();
+			}
+			activeRagdollController.enabled = false;
+		}
+
+		if (isAI)
+		{
+			if (proceduralAnimation != null)
+			{
+				proceduralAnimation.enabled = false;
+			}
+
+			if (npcBrain != null)
+			{
+				npcBrain.enabled = false;
+			}
+
+			if (agent != null && agent.enabled)
+			{
+				if (agent.isOnNavMesh)
+				{
+					agent.isStopped = true;
+					agent.ResetPath();
+				}
+				agent.updatePosition = false;
+				agent.updateRotation = false;
+				agent.enabled = false;
+			}
+		}
 
 		Debug.Log("Dead!");
-		Debug.Log(GetComponentsInChildren<ConfigurableJoint>().Length);
-		foreach (ConfigurableJoint j in GetComponentsInChildren<ConfigurableJoint>())
+		CacheDeathPhysicsComponents();
+		Debug.Log(cachedDeathJoints.Length);
+		foreach (ConfigurableJoint j in cachedDeathJoints)
 		{
+			if (j == null)
+			{
+				continue;
+			}
+
 			JointDrive d = new JointDrive();
 			d = j.angularXDrive;
 			d.positionSpring = 0;
@@ -863,15 +932,126 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			j.slerpDrive = d;
 		}
 
-		foreach (Rigidbody r in GetComponentsInChildren<Rigidbody>())
+		foreach (Rigidbody r in cachedDeathRigidbodies)
 		{
+			if (r == null)
+			{
+				continue;
+			}
+
 			//r.sleepThreshold = 0.5f;
 			r.drag = 0;
 			r.angularDrag = 0;
+			if (isAI)
+			{
+				r.interpolation = RigidbodyInterpolation.None;
+			}
 		}
 		ragdollCore.isKinematic = false;
 		ragdollCore.constraints = RigidbodyConstraints.None;
+		UpdateAimPointIndicatorVisibility();
+
+		if (isAI)
+		{
+			corpseFreezeCoroutine = StartCoroutine(FreezeAiCorpseAfterDelay());
+		}
 		//ragdollCore.AddForce(new Vector3(0, 0, -1000));
+	}
+
+	private IEnumerator FreezeAiCorpseAfterDelay()
+	{
+		float freezeDelay = Mathf.Max(0f, aiCorpseSettleDuration);
+		float interpolationDelay = Mathf.Max(0f, aiCorpseInterpolationDelay);
+		bool shouldEnableInterpolation = interpolationDelay < freezeDelay;
+		float elapsedBeforeFreeze = 0f;
+
+		if (shouldEnableInterpolation)
+		{
+			if (interpolationDelay > 0f)
+			{
+				yield return new WaitForSeconds(interpolationDelay);
+			}
+
+			if (!isAI || !isDead)
+			{
+				corpseFreezeCoroutine = null;
+				yield break;
+			}
+
+			CacheDeathPhysicsComponents();
+			foreach (Rigidbody corpseRigidbody in cachedDeathRigidbodies)
+			{
+				if (corpseRigidbody != null && !corpseRigidbody.isKinematic)
+				{
+					corpseRigidbody.interpolation = RigidbodyInterpolation.Interpolate;
+				}
+			}
+
+			elapsedBeforeFreeze = interpolationDelay;
+		}
+
+		float remainingFreezeDelay = freezeDelay - elapsedBeforeFreeze;
+		if (remainingFreezeDelay > 0f)
+		{
+			yield return new WaitForSeconds(remainingFreezeDelay);
+		}
+
+		corpseFreezeCoroutine = null;
+		if (!isAI || !isDead)
+		{
+			yield break;
+		}
+
+		CacheDeathPhysicsComponents();
+		foreach (Rigidbody corpseRigidbody in cachedDeathRigidbodies)
+		{
+			if (corpseRigidbody == null)
+			{
+				continue;
+			}
+
+			if (!corpseRigidbody.isKinematic)
+			{
+				corpseRigidbody.velocity = Vector3.zero;
+				corpseRigidbody.angularVelocity = Vector3.zero;
+			}
+			corpseRigidbody.interpolation = RigidbodyInterpolation.None;
+			corpseRigidbody.collisionDetectionMode = CollisionDetectionMode.Discrete;
+			corpseRigidbody.isKinematic = true;
+		}
+
+		enabled = false;
+	}
+
+	private void CacheDeathPhysicsComponents()
+	{
+		if (cachedDeathRigidbodies == null || cachedDeathRigidbodies.Length == 0)
+		{
+			cachedDeathRigidbodies = GetComponentsInChildren<Rigidbody>();
+		}
+
+		if (cachedDeathJoints == null || cachedDeathJoints.Length == 0)
+		{
+			cachedDeathJoints = GetComponentsInChildren<ConfigurableJoint>();
+		}
+	}
+
+	private void ResetAiAimRaycastSchedule()
+	{
+		float interval = Mathf.Max(0.02f, raycastInterval);
+		uint instanceHash = unchecked((uint)GetInstanceID());
+		float phase = (instanceHash % 1000u) / 1000f;
+		nextAiAimRaycastTime = Time.time + phase * interval;
+
+		if (bodyColliderSet == null && bodyColliders != null)
+		{
+			bodyColliderSet = new HashSet<Collider>(bodyColliders);
+		}
+
+		if (aimRaycastHits == null || aimRaycastHits.Length != AimRaycastBufferSize)
+		{
+			aimRaycastHits = new RaycastHit[AimRaycastBufferSize];
+		}
 	}
 
 	public void DieFacingIncomingDirection(Vector3 incomingDirection)
@@ -1503,46 +1683,52 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		Ray ray = new Ray(origin, forward.normalized);
-		RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
-		if (hits.Length <= 0)
+		if (aimRaycastHits == null || aimRaycastHits.Length != AimRaycastBufferSize)
+		{
+			aimRaycastHits = new RaycastHit[AimRaycastBufferSize];
+		}
+
+		int hitCount = Physics.RaycastNonAlloc(ray, aimRaycastHits, Mathf.Infinity, aimMask);
+		WarnIfAimRaycastBufferIsFull(hitCount);
+		if (hitCount <= 0)
 		{
 			return fallback;
 		}
 
 		RaycastHit? nearestValidHit = null;
-		foreach (var hit in hits)
+		for (int i = 0; i < hitCount; i++)
 		{
-			bool isOwnCollider = false;
-			if (bodyColliders != null)
-			{
-				foreach (var collider in bodyColliders)
-				{
-					if (hit.collider == collider)
-					{
-						isOwnCollider = true;
-						break;
-					}
-				}
-			}
-
-			if (isOwnCollider)
+			RaycastHit currentHit = aimRaycastHits[i];
+			Collider hitCollider = currentHit.collider;
+			if (hitCollider == null || (bodyColliderSet != null && bodyColliderSet.Contains(hitCollider)))
 			{
 				continue;
 			}
 
-			int hitLayer = hit.collider.gameObject.layer;
+			int hitLayer = hitCollider.gameObject.layer;
 			if (hitLayer != 6 && hitLayer != 9)
 			{
 				continue;
 			}
 
-			if (!nearestValidHit.HasValue || hit.distance < nearestValidHit.Value.distance)
+			if (!nearestValidHit.HasValue || currentHit.distance < nearestValidHit.Value.distance)
 			{
-				nearestValidHit = hit;
+				nearestValidHit = currentHit;
 			}
 		}
 
 		return nearestValidHit.HasValue ? nearestValidHit.Value.point : fallback;
+	}
+
+	private void WarnIfAimRaycastBufferIsFull(int hitCount)
+	{
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+		if (!warnedAimRaycastBufferFull && hitCount >= AimRaycastBufferSize)
+		{
+			warnedAimRaycastBufferFull = true;
+			Debug.LogWarning($"{nameof(BodyController)} on '{name}' filled its {AimRaycastBufferSize}-hit aim raycast buffer.", this);
+		}
+#endif
 	}
 
 	void ResetWeaponAimPoint(bool resetPitch = false, bool resetHead = true)
@@ -2852,7 +3038,9 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 	private void DoReload()
 	{
-		if (!isAI && IsPlayerCenteredAim())
+		bool reloadAllPlayerStandbyGuns = !isAI
+			&& (IsPlayerCenteredAim() || ShouldUseMovementStandbyVisualPose());
+		if (reloadAllPlayerStandbyGuns)
 		{
 			Gun rightGun = guns != null ? guns.ActiveGun1 : null;
 			Gun leftGun = gunsL != null ? gunsL.ActiveGun1 : null;
@@ -3166,6 +3354,11 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	// Update is called once per frame
 	void Update()
 	{
+		if (isDead)
+		{
+			return;
+		}
+
 		UpdateBreakoutAimAssistViewTravel();
 		UpdateBreakoutAimAssistPreviewTarget();
 		UpdateBreakoutAimAssistDebugVolumes();
@@ -3192,6 +3385,15 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 	private void FixedUpdate()
 	{
+		if (isDead)
+		{
+			if (!isAI && input is PlayerController playerInput && playerInput.getRestart())
+			{
+				playerInput.doRestart();
+			}
+			return;
+		}
+
 		if (!isDead)
 		{
 			if (isAI)
@@ -4862,133 +5064,111 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 	private void GetAimPointAI()
 	{
-		if (Time.time - lastRaycastTime >= raycastInterval)
+		if (Time.time < nextAiAimRaycastTime)
 		{
-			Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
-			float pitch = aimCam.transform.localEulerAngles.x;
-			if (pitch > 180f) pitch -= 360f;
+			return;
+		}
 
-			Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
-			Vector3 pitchedForward = combinedRot * Vector3.forward;
-			Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
+		nextAiAimRaycastTime = Time.time + Mathf.Max(0.02f, raycastInterval);
 
-			if (freezeHeadDuringMoveAimYaw)
-			{
-				torsoAimPoint.position = torso;
-				return;
-			}
+		Quaternion torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+		float pitch = aimCam.transform.localEulerAngles.x;
+		if (pitch > 180f) pitch -= 360f;
 
-			if (rb.velocity.magnitude > 2.5f)
-			{
-				torsoAimPoint.position = torso;
-				weaponAimPoint.position = torso;
-				weaponAimPointL.position = torso;
-				return;
-			}
+		Quaternion combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
+		Vector3 pitchedForward = combinedRot * Vector3.forward;
+		Vector3 torso = headObjectTransformCache.position + pitchedForward * 20f;
 
-			if (isAimingRight || isAimingLeft)
-			{
-				combinedRot = Quaternion.Euler(aimCam.transform.eulerAngles.x,
-																			 aimCam.transform.eulerAngles.y,
-																			 0f);
-			}
-			else
-			{
-				torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
-
-				pitch = aimCam.transform.localEulerAngles.x;
-				if (pitch > 180f) pitch -= 360f;
-
-				combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
-
-				if (!startedAimingRight && !startedAimingLeft && !freezeHeadDuringMoveAimYaw)
-				{
-					headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
-				}
-			}
-
-			Vector3 forward = combinedRot * Vector3.forward;
-			torso = headObjectTransformCache.position + forward * 20f;
-
-			Ray ray = new Ray(physicalHead.transform.position, forward);
-			RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask);
-
-			if (hits.Length <= 0)
-			{
-				weaponAimPoint.position = torso;
-				torsoAimPoint.position = torso;
-			}
-			else
-			{
-				RaycastHit? bodyHit = null;
-				List<RaycastHit> enviroHits = new List<RaycastHit>();
-
-				foreach (var hit in hits)
-				{
-					bool isOwnCollider = false;
-
-					if (hit.collider.gameObject.layer == 9)
-					{
-						enviroHits.Add(hit);
-						continue;
-					}
-
-					foreach (var collider in bodyColliders)
-					{
-						if (hit.collider == collider)
-						{
-							isOwnCollider = true;
-							break;
-						}
-					}
-
-					if (!isOwnCollider && hit.collider.gameObject.layer == 6)
-					{
-						bodyHit = hit;
-						break;
-					}
-				}
-
-				if (bodyHit.HasValue)
-				{
-					if (enviroHits.Count > 0)
-					{
-						enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
-
-						if (Vector3.Distance(rb.transform.position, bodyHit.Value.point) < Vector3.Distance(rb.transform.position, enviroHits[0].point))
-						{
-							weaponAimPoint.position = bodyHit.Value.point;
-						}
-						else
-						{
-							weaponAimPoint.position = enviroHits[0].point;
-						}
-					}
-					else
-					{
-						weaponAimPoint.position = bodyHit.Value.point;
-					}
-				}
-				else if (enviroHits.Count > 0)
-				{
-					enviroHits.Sort((hit1, hit2) => hit1.distance.CompareTo(hit2.distance));
-					weaponAimPoint.position = enviroHits[0].point;
-				}
-				else
-				{
-					weaponAimPoint.position = torso;
-					weaponAimPointL.position = torso;
-				}
-			}
+		if (freezeHeadDuringMoveAimYaw)
+		{
 			torsoAimPoint.position = torso;
+			return;
+		}
+
+		if (rb.velocity.magnitude > 2.5f)
+		{
+			torsoAimPoint.position = torso;
+			weaponAimPoint.position = torso;
+			weaponAimPointL.position = torso;
+			return;
+		}
+
+		if (isAimingRight || isAimingLeft)
+		{
+			combinedRot = Quaternion.Euler(aimCam.transform.eulerAngles.x,
+															 aimCam.transform.eulerAngles.y,
+															 0f);
 		}
 		else
 		{
-			if (!freezeHeadDuringMoveAimYaw)
+			torsoYaw = Quaternion.Euler(0f, transform.eulerAngles.y, 0f);
+			pitch = aimCam.transform.localEulerAngles.x;
+			if (pitch > 180f) pitch -= 360f;
+			combinedRot = torsoYaw * Quaternion.Euler(pitch, 0f, 0f);
+
+			if (!startedAimingRight && !startedAimingLeft && !freezeHeadDuringMoveAimYaw)
 			{
-				ResetWeaponAimPointAI();
+				headObject.transform.SetPositionAndRotation(headObjectTransformCache.transform.position, headObjectTransformCache.transform.rotation);
 			}
 		}
+
+		Vector3 forward = combinedRot * Vector3.forward;
+		torso = headObjectTransformCache.position + forward * 20f;
+		Ray ray = new Ray(physicalHead.transform.position, forward);
+
+		if (aimRaycastHits == null || aimRaycastHits.Length != AimRaycastBufferSize)
+		{
+			aimRaycastHits = new RaycastHit[AimRaycastBufferSize];
+		}
+
+		int hitCount = Physics.RaycastNonAlloc(ray, aimRaycastHits, Mathf.Infinity, aimMask);
+		WarnIfAimRaycastBufferIsFull(hitCount);
+		RaycastHit? nearestBodyHit = null;
+		RaycastHit? nearestEnvironmentHit = null;
+
+		for (int i = 0; i < hitCount; i++)
+		{
+			RaycastHit currentHit = aimRaycastHits[i];
+			Collider hitCollider = currentHit.collider;
+			if (hitCollider == null)
+			{
+				continue;
+			}
+
+			int hitLayer = hitCollider.gameObject.layer;
+			if (hitLayer == 9)
+			{
+				if (!nearestEnvironmentHit.HasValue || currentHit.distance < nearestEnvironmentHit.Value.distance)
+				{
+					nearestEnvironmentHit = currentHit;
+				}
+				continue;
+			}
+
+			bool isOwnCollider = bodyColliderSet != null && bodyColliderSet.Contains(hitCollider);
+			if (!isOwnCollider && hitLayer == 6
+				&& (!nearestBodyHit.HasValue || currentHit.distance < nearestBodyHit.Value.distance))
+			{
+				nearestBodyHit = currentHit;
+			}
+		}
+
+		if (nearestBodyHit.HasValue
+			&& (!nearestEnvironmentHit.HasValue || nearestBodyHit.Value.distance < nearestEnvironmentHit.Value.distance))
+		{
+			weaponAimPoint.position = nearestBodyHit.Value.point;
+		}
+		else if (nearestEnvironmentHit.HasValue)
+		{
+			weaponAimPoint.position = nearestEnvironmentHit.Value.point;
+		}
+		else
+		{
+			weaponAimPoint.position = torso;
+			weaponAimPointL.position = torso;
+		}
+
+		torsoAimPoint.position = torso;
 	}
 
 	private void ResetWeaponAimPointAI(bool resetPitch = false, bool resetHead = true)

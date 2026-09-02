@@ -2,28 +2,37 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ProceduralAnimation : MonoBehaviour
+public class ProceduralAnimation : MonoBehaviour, IEnemyPoolResettable
 {
     public LayerMask proceduralanimationLayerMask;
 
+    [Header("Surface Probes")]
+    [SerializeField, Min(0.02f)] private float npcSurfaceProbeInterval = 0.04f;
+
+    private BodyController ownerBodyController;
+    private Vector3 cachedLeftSurfacePosition;
+    private Vector3 cachedLeftSurfaceNormal;
+    private Vector3 cachedRightSurfacePosition;
+    private Vector3 cachedRightSurfaceNormal;
+    private float nextSurfaceProbeTime;
+
     /* Some useful functions we may need */
 
-    Vector3[] CastOnSurface(Vector3 point, float halfRange, Vector3 up)
+    private bool TryCastOnSurface(Vector3 point, float halfRange, Vector3 up, out Vector3 surfacePosition, out Vector3 surfaceNormal)
     {
-        Vector3[] res = new Vector3[2];
         RaycastHit hit;
         Ray ray = new Ray(new Vector3(point.x, point.y + halfRange, point.z), -up);
 
         if (Physics.Raycast(ray, out hit, 2f * halfRange, proceduralanimationLayerMask))
         {
-            res[0] = hit.point;
-            res[1] = hit.normal;
+            surfacePosition = hit.point;
+            surfaceNormal = hit.normal;
+            return true;
         }
-        else
-        {
-            res[0] = point;
-        }
-        return res;
+
+        surfacePosition = point;
+        surfaceNormal = Vector3.zero;
+        return false;
     }
 
     /*************************************/
@@ -96,14 +105,46 @@ public class ProceduralAnimation : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        ownerBodyController = GetComponentInParent<BodyController>();
         initLeftFootPos = leftFootTarget.localPosition;
         initRightFootPos = rightFootTarget.localPosition;
+        initBodyPos = transform.localPosition;
+        ResetRuntimeState();
+    }
 
+    public void ResetForPoolReuse()
+    {
+        enabled = true;
+        if (ownerBodyController == null)
+        {
+            ownerBodyController = GetComponentInParent<BodyController>();
+        }
+
+        ResetRuntimeState();
+    }
+
+    private void ResetRuntimeState()
+    {
         lastLeftFootPos = leftFootTarget.position;
         lastRightFootPos = rightFootTarget.position;
-
+        cachedLeftSurfacePosition = leftFootTarget.position;
+        cachedRightSurfacePosition = rightFootTarget.position;
+        cachedLeftSurfaceNormal = Vector3.zero;
+        cachedRightSurfaceNormal = Vector3.zero;
         lastBodyPos = transform.position;
-        initBodyPos = transform.localPosition;
+        velocity = Vector3.zero;
+        lastVelocity = Vector3.zero;
+        locomotionState = LocomotionState.Moving;
+        stopConfirmationTimer = 0f;
+        leftFootState = FootState.Grounded;
+        rightFootState = FootState.Grounded;
+        lastFootCase = string.Empty;
+        lastSign = 1;
+
+        float interval = Mathf.Max(0.02f, npcSurfaceProbeInterval);
+        uint instanceHash = unchecked((uint)GetInstanceID());
+        float phase = (instanceHash % 1000u) / 1000f;
+        nextSurfaceProbeTime = Time.time + phase * interval;
     }
 
     string signOfNum(float n)
@@ -206,11 +247,20 @@ public class ProceduralAnimation : MonoBehaviour
         Vector3 desiredPositionLeft = leftFootTarget.position;
         Vector3 desiredPositionRight = rightFootTarget.position;
 
+        bool ownerIsAi = ownerBodyController != null && ownerBodyController.isAI;
+        if (!ownerIsAi || Time.time >= nextSurfaceProbeTime)
+        {
+            TryCastOnSurface(desiredPositionLeft, 2f, Vector3.up, out cachedLeftSurfacePosition, out cachedLeftSurfaceNormal);
+            TryCastOnSurface(desiredPositionRight, 2f, Vector3.up, out cachedRightSurfacePosition, out cachedRightSurfaceNormal);
+            nextSurfaceProbeTime = Time.time + Mathf.Max(0.02f, npcSurfaceProbeInterval);
+        }
+
         Vector3 footForward = hasMovementRotation
             ? movementRotation * Vector3.forward
             : Vector3.ProjectOnPlane(scaler.forward, Vector3.up).normalized;
 
-        Vector3[] posNormLeft = CastOnSurface(desiredPositionLeft, 2f, Vector3.up);
+        Vector3 posNormLeftPosition = cachedLeftSurfacePosition;
+        Vector3 posNormLeftNormal = cachedLeftSurfaceNormal;
         //if (posNormLeft[0].y > desiredPositionLeft.y)
         //{
         //    leftFootTargetRig.position = posNormLeft[0];
@@ -219,11 +269,11 @@ public class ProceduralAnimation : MonoBehaviour
         //{
         //    leftFootTargetRig.position = desiredPositionLeft;
         //}
-        if (posNormLeft[0].y > desiredPositionLeft.y)
+        if (posNormLeftPosition.y > desiredPositionLeft.y)
         {
             if (leftFootTarget.localPosition.y > 0)
             {
-                leftFootTargetRig.position = new Vector3(posNormLeft[0].x, posNormLeft[0].y, desiredPositionLeft.z);
+                leftFootTargetRig.position = new Vector3(posNormLeftPosition.x, posNormLeftPosition.y, desiredPositionLeft.z);
             }
             else
             {
@@ -234,12 +284,13 @@ public class ProceduralAnimation : MonoBehaviour
         {
             leftFootTargetRig.position = desiredPositionLeft;
         }
-        if (posNormLeft[1] != Vector3.zero)
+        if (posNormLeftNormal != Vector3.zero)
         {
-            leftFootTargetRig.rotation = Quaternion.LookRotation(footForward, posNormLeft[1]);
+            leftFootTargetRig.rotation = Quaternion.LookRotation(footForward, posNormLeftNormal);
         }
 
-        Vector3[] posNormRight = CastOnSurface(desiredPositionRight, 2f, Vector3.up);
+        Vector3 posNormRightPosition = cachedRightSurfacePosition;
+        Vector3 posNormRightNormal = cachedRightSurfaceNormal;
         //if (posNormRight[0].y > desiredPositionRight.y)
         //{
         //    rightFootTargetRig.position = posNormRight[0];
@@ -248,11 +299,11 @@ public class ProceduralAnimation : MonoBehaviour
         //{
         //    rightFootTargetRig.position = desiredPositionRight;
         //}
-        if (posNormRight[0].y > desiredPositionRight.y)
+        if (posNormRightPosition.y > desiredPositionRight.y)
         {
             if (rightFootTarget.localPosition.y > 0 || planarSpeed < stopSpeedThreshold)
             {
-                rightFootTargetRig.position = new Vector3(posNormRight[0].x, posNormRight[0].y, desiredPositionRight.z);
+                rightFootTargetRig.position = new Vector3(posNormRightPosition.x, posNormRightPosition.y, desiredPositionRight.z);
             }
             else
             {
@@ -263,9 +314,9 @@ public class ProceduralAnimation : MonoBehaviour
         {
             rightFootTargetRig.position = desiredPositionRight;
         }
-        if (posNormRight[1] != Vector3.zero)
+        if (posNormRightNormal != Vector3.zero)
         {
-            rightFootTargetRig.rotation = Quaternion.LookRotation(footForward, posNormRight[1]);
+            rightFootTargetRig.rotation = Quaternion.LookRotation(footForward, posNormRightNormal);
         }
 
         leftFootState = leftFootTargetRig.localPosition.y < 0.2f ? FootState.Grounded : FootState.InAir;

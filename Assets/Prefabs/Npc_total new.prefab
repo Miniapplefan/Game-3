@@ -183,6 +183,7 @@ MonoBehaviour:
   ArrivalVelocityThreshold: 1
   ArrivalProgressEpsilon: 0.02
   drawPathDebug: 0
+  showMovementDebugMarkers: 0
 --- !u!114 &3911377827084599671
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -201,6 +202,7 @@ MonoBehaviour:
   lastDecisionTime: 0
   targetAwarenessInterval: 0.2
   loseTargetGraceSeconds: 1
+  goalDecisionInterval: 0.1
   currentGoalDebug: 
   ConsiderWanderVal: 0
   ConsiderOverheatTargetVal: 0
@@ -4319,6 +4321,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 60973815152074384}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: aiCorpseSettleDuration
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: bodyColliders.Array.size
       value: 14
       objectReference: {fileID: 0}
@@ -4334,6 +4340,10 @@ PrefabInstance:
       propertyPath: middleTorsoLeanConstraint
       value: 
       objectReference: {fileID: 60973815872197481}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: aiCorpseInterpolationDelay
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: bodyColliders.Array.data[0]
       value: 

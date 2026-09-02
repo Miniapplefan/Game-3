@@ -104,6 +104,9 @@ public class EndlessWaveManager : MonoBehaviour
 		public NPCBrain Brain;
 		public List<IEnemyPoolResettable> Resetters;
 		public bool ActiveRagdollInitiallyEnabled;
+		public bool NavMeshAgentInitiallyEnabled;
+		public bool NavMeshAgentInitiallyUpdatesPosition;
+		public bool NavMeshAgentInitiallyUpdatesRotation;
 		public bool HasBeenSpawned;
 		public bool IsAvailable;
 	}
@@ -493,6 +496,9 @@ public class EndlessWaveManager : MonoBehaviour
 			IsAvailable = true
 		};
 		enemy.ActiveRagdollInitiallyEnabled = enemy.ActiveRagdoll != null && enemy.ActiveRagdoll.enabled;
+		enemy.NavMeshAgentInitiallyEnabled = enemy.NavMeshAgent != null && enemy.NavMeshAgent.enabled;
+		enemy.NavMeshAgentInitiallyUpdatesPosition = enemy.NavMeshAgent != null && enemy.NavMeshAgent.updatePosition;
+		enemy.NavMeshAgentInitiallyUpdatesRotation = enemy.NavMeshAgent != null && enemy.NavMeshAgent.updateRotation;
 
 		enemyRoot.SetActive(false);
 		pooledEnemies.Add(enemy);
@@ -558,9 +564,10 @@ public class EndlessWaveManager : MonoBehaviour
 
 		if (enemy.NavMeshAgent != null)
 		{
-			enemy.NavMeshAgent.updatePosition = true;
-			enemy.NavMeshAgent.updateRotation = true;
-			if (enemy.NavMeshAgent.isOnNavMesh)
+			enemy.NavMeshAgent.enabled = enemy.NavMeshAgentInitiallyEnabled;
+			enemy.NavMeshAgent.updatePosition = enemy.NavMeshAgentInitiallyUpdatesPosition;
+			enemy.NavMeshAgent.updateRotation = enemy.NavMeshAgentInitiallyUpdatesRotation;
+			if (enemy.NavMeshAgent.enabled && enemy.NavMeshAgent.isOnNavMesh)
 			{
 				enemy.NavMeshAgent.isStopped = false;
 				enemy.NavMeshAgent.ResetPath();
@@ -720,8 +727,6 @@ public class EndlessWaveManager : MonoBehaviour
 				continue;
 			}
 
-			body.velocity = Vector3.zero;
-			body.angularVelocity = Vector3.zero;
 			body.drag = state.Drag;
 			body.angularDrag = state.AngularDrag;
 			body.isKinematic = state.IsKinematic;
@@ -729,7 +734,12 @@ public class EndlessWaveManager : MonoBehaviour
 			body.constraints = state.Constraints;
 			body.collisionDetectionMode = state.CollisionDetectionMode;
 			body.interpolation = state.Interpolation;
-			body.Sleep();
+			if (!body.isKinematic)
+			{
+				body.velocity = Vector3.zero;
+				body.angularVelocity = Vector3.zero;
+				body.Sleep();
+			}
 		}
 
 		if (enemy.ActiveRagdoll != null)

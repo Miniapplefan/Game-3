@@ -88,7 +88,7 @@ public class BulletTimeManager : MonoBehaviour
 	{
 		if (instance == this)
 		{
-			AudioService.TransitionToBulletTimeMix(false, 0f);
+			AudioService.TransitionToBulletTimeMixIfAvailable(false, 0f);
 			instance = null;
 		}
 	}

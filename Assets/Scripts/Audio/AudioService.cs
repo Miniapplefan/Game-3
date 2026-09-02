@@ -6,21 +6,23 @@ public sealed class AudioOneShotHandle
 	private AudioService owner;
 	private readonly int voiceIndex;
 	private readonly int generation;
+	private readonly int sessionGeneration;
 
-	internal AudioOneShotHandle(AudioService owner, int voiceIndex, int generation)
+	internal AudioOneShotHandle(AudioService owner, int voiceIndex, int generation, int sessionGeneration)
 	{
 		this.owner = owner;
 		this.voiceIndex = voiceIndex;
 		this.generation = generation;
+		this.sessionGeneration = sessionGeneration;
 	}
 
-	public bool IsValid => owner != null && owner.IsOneShotHandleValid(voiceIndex, generation);
+	public bool IsValid => owner != null && owner.IsOneShotHandleValid(voiceIndex, generation, sessionGeneration);
 
 	public void FadeOut(float seconds)
 	{
 		if (owner != null)
 		{
-			owner.FadeOutOneShot(voiceIndex, generation, seconds);
+			owner.FadeOutOneShot(voiceIndex, generation, sessionGeneration, seconds);
 		}
 	}
 
@@ -38,21 +40,23 @@ public sealed class AudioLoopHandle
 	private AudioService owner;
 	private readonly int voiceIndex;
 	private readonly int generation;
+	private readonly int sessionGeneration;
 
-	internal AudioLoopHandle(AudioService owner, int voiceIndex, int generation)
+	internal AudioLoopHandle(AudioService owner, int voiceIndex, int generation, int sessionGeneration)
 	{
 		this.owner = owner;
 		this.voiceIndex = voiceIndex;
 		this.generation = generation;
+		this.sessionGeneration = sessionGeneration;
 	}
 
-	public bool IsValid => owner != null && owner.IsLoopHandleValid(voiceIndex, generation);
+	public bool IsValid => owner != null && owner.IsLoopHandleValid(voiceIndex, generation, sessionGeneration);
 
 	public void SetActive(bool active)
 	{
 		if (owner != null)
 		{
-			owner.SetLoopHandleActive(voiceIndex, generation, active);
+			owner.SetLoopHandleActive(voiceIndex, generation, sessionGeneration, active);
 		}
 	}
 
@@ -62,7 +66,7 @@ public sealed class AudioLoopHandle
 		owner = null;
 		if (currentOwner != null)
 		{
-			currentOwner.ReleaseLoopHandle(voiceIndex, generation);
+			currentOwner.ReleaseLoopHandle(voiceIndex, generation, sessionGeneration);
 		}
 	}
 
@@ -81,18 +85,20 @@ public sealed class PreparedAudioCue
 	internal AudioCueDefinition Definition { get; }
 	internal AudioClip Clip { get; }
 	internal float Pitch { get; }
+	internal int SessionGeneration { get; }
 	internal bool Consumed { get; set; }
 
 	public float DurationSeconds => Clip != null
 		? Clip.length / Mathf.Max(0.01f, Mathf.Abs(Pitch))
 		: 0f;
 
-	internal PreparedAudioCue(AudioService owner, AudioCueDefinition definition, AudioClip clip, float pitch)
+	internal PreparedAudioCue(AudioService owner, AudioCueDefinition definition, AudioClip clip, float pitch, int sessionGeneration)
 	{
 		Owner = owner;
 		Definition = definition;
 		Clip = clip;
 		Pitch = pitch;
+		SessionGeneration = sessionGeneration;
 	}
 }
 
@@ -134,22 +140,26 @@ public sealed class AudioService : MonoBehaviour
 	}
 
 	private static AudioService instance;
+	private static bool isShuttingDown;
 	private readonly List<Voice> voices = new List<Voice>(VoiceCount);
 	private readonly List<LoopVoice> loopVoices = new List<LoopVoice>(LoopVoiceCount);
 	private readonly Dictionary<GameAudioCueId, int> lastClipIndices = new Dictionary<GameAudioCueId, int>();
 	private readonly HashSet<string> warnings = new HashSet<string>();
 	private GameAudioCatalog catalog;
+	private int sessionGeneration;
+	private bool initializedForSession;
 
 	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
 	private static void ResetStatics()
 	{
 		instance = null;
+		isShuttingDown = false;
 	}
 
 	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 	private static void Bootstrap()
 	{
-		EnsureInstance();
+		EnsureInstance(true);
 	}
 
 	private void Awake()
@@ -164,34 +174,23 @@ public sealed class AudioService : MonoBehaviour
 		gameObject.name = nameof(AudioService);
 		transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
 		DontDestroyOnLoad(gameObject);
-
-		catalog = Resources.Load<GameAudioCatalog>(CatalogResourcePath);
-		if (catalog == null)
-		{
-			WarnOnce("MissingCatalog", $"{nameof(AudioService)} could not load Resources/{CatalogResourcePath}.");
-		}
-
-		CreateVoicePool();
-		CreateLoopVoicePool();
+		InitializeForPlaySession(false);
 	}
 
 	private void LateUpdate()
 	{
+		if (!initializedForSession)
+		{
+			return;
+		}
+
 		UpdateOneShotVoices();
 		UpdateLoopVoices();
 	}
 
 	private void OnDestroy()
 	{
-		for (int i = 0; i < voices.Count; i++)
-		{
-			voices[i].Handle?.Invalidate(this);
-		}
-
-		for (int i = 0; i < loopVoices.Count; i++)
-		{
-			loopVoices[i].Handle?.Invalidate(this);
-		}
+		ShutdownVoicePools();
 
 		if (instance == this)
 		{
@@ -199,24 +198,57 @@ public sealed class AudioService : MonoBehaviour
 		}
 	}
 
+	private void OnDisable()
+	{
+		ShutdownVoicePools();
+		if (instance == this)
+		{
+			instance = null;
+		}
+	}
+
+	private void OnApplicationQuit()
+	{
+		isShuttingDown = true;
+		ShutdownVoicePools();
+	}
+
 	public static void PlayAt(GameAudioCueId cueId, Vector3 worldPosition)
 	{
-		EnsureInstance().PlayOneShotInternal(cueId, worldPosition, null);
+		AudioService service = EnsureInstance();
+		service?.PlayOneShotInternal(cueId, worldPosition, null);
 	}
 
 	public static void PlayGlobal(GameAudioCueId cueId)
 	{
-		EnsureInstance().PlayOneShotInternal(cueId, Vector3.zero, null);
+		AudioService service = EnsureInstance();
+		service?.PlayOneShotInternal(cueId, Vector3.zero, null);
 	}
 
 	public static AudioOneShotHandle PlayGlobalControlled(GameAudioCueId cueId)
 	{
-		return EnsureInstance().PlayControlledOneShotInternal(cueId, Vector3.zero, null);
+		AudioService service = EnsureInstance();
+		return service != null ? service.PlayControlledOneShotInternal(cueId, Vector3.zero, null) : null;
 	}
 
 	public static void TransitionToBulletTimeMix(bool bulletTimeActive, float transitionSeconds)
 	{
-		EnsureInstance().TransitionToBulletTimeMixInternal(bulletTimeActive, transitionSeconds);
+		AudioService service = EnsureInstance();
+		service?.TransitionToBulletTimeMixInternal(bulletTimeActive, transitionSeconds);
+	}
+
+	internal static void TransitionToBulletTimeMixIfAvailable(bool bulletTimeActive, float transitionSeconds)
+	{
+		if (isShuttingDown
+			|| !Application.isPlaying
+			|| instance == null
+			|| !instance.initializedForSession
+			|| !instance.isActiveAndEnabled)
+		{
+			return;
+		}
+
+		instance.TransitionToBulletTimeMixInternal(bulletTimeActive, transitionSeconds);
 	}
 
 	public static void PlayFollowing(GameAudioCueId cueId, Transform followTarget)
@@ -226,12 +258,14 @@ public sealed class AudioService : MonoBehaviour
 			return;
 		}
 
-		EnsureInstance().PlayOneShotInternal(cueId, followTarget.position, followTarget);
+		AudioService service = EnsureInstance();
+		service?.PlayOneShotInternal(cueId, followTarget.position, followTarget);
 	}
 
 	public static PreparedAudioCue PrepareOneShot(GameAudioCueId cueId)
 	{
-		return EnsureInstance().PrepareOneShotInternal(cueId);
+		AudioService service = EnsureInstance();
+		return service != null ? service.PrepareOneShotInternal(cueId) : null;
 	}
 
 	public static bool PlayFollowing(PreparedAudioCue preparedCue, Transform followTarget)
@@ -241,7 +275,8 @@ public sealed class AudioService : MonoBehaviour
 			return false;
 		}
 
-		return EnsureInstance().TryPlayPreparedOneShotInternal(
+		AudioService service = EnsureInstance();
+		return service != null && service.TryPlayPreparedOneShotInternal(
 			preparedCue,
 			followTarget.position,
 			followTarget,
@@ -256,25 +291,187 @@ public sealed class AudioService : MonoBehaviour
 			return null;
 		}
 
-		return EnsureInstance().PlayFollowingLoopInternal(cueId, followTarget);
+		AudioService service = EnsureInstance();
+		return service != null ? service.PlayFollowingLoopInternal(cueId, followTarget) : null;
 	}
 
-	private static AudioService EnsureInstance()
+	private static AudioService EnsureInstance(bool forceReinitialize = false)
 	{
+		if (isShuttingDown || !Application.isPlaying)
+		{
+			return null;
+		}
+
 		if (instance != null)
 		{
+			bool needsRecovery = !instance.gameObject.activeInHierarchy || !instance.isActiveAndEnabled;
+			if (!instance.gameObject.activeSelf)
+			{
+				instance.gameObject.SetActive(true);
+			}
+			instance.enabled = true;
+			instance.InitializeForPlaySession(forceReinitialize || needsRecovery);
 			return instance;
 		}
 
-		AudioService existing = FindObjectOfType<AudioService>();
+		AudioService[] existingServices = FindObjectsOfType<AudioService>(true);
+		AudioService existing = null;
+		for (int i = 0; i < existingServices.Length; i++)
+		{
+			AudioService candidate = existingServices[i];
+			if (candidate == null)
+			{
+				continue;
+			}
+
+			if (existing == null)
+			{
+				existing = candidate;
+				continue;
+			}
+
+			if (!existing.isActiveAndEnabled && candidate.isActiveAndEnabled)
+			{
+				Destroy(existing.gameObject);
+				existing = candidate;
+			}
+			else
+			{
+				Destroy(candidate.gameObject);
+			}
+		}
+
 		if (existing != null)
 		{
 			instance = existing;
+			if (!existing.gameObject.activeSelf)
+			{
+				existing.gameObject.SetActive(true);
+			}
+			existing.enabled = true;
+			existing.InitializeForPlaySession(true);
 			return existing;
 		}
 
 		GameObject serviceObject = new GameObject(nameof(AudioService));
 		return serviceObject.AddComponent<AudioService>();
+	}
+
+	private void InitializeForPlaySession(bool forceReinitialize)
+	{
+		if (initializedForSession && !forceReinitialize)
+		{
+			return;
+		}
+
+		gameObject.name = nameof(AudioService);
+		transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+		DontDestroyOnLoad(gameObject);
+		catalog = Resources.Load<GameAudioCatalog>(CatalogResourcePath);
+		lastClipIndices.Clear();
+		warnings.Clear();
+		sessionGeneration = sessionGeneration == int.MaxValue ? 1 : sessionGeneration + 1;
+		if (sessionGeneration == 0)
+		{
+			sessionGeneration = 1;
+		}
+
+		CreateVoicePool();
+		CreateLoopVoicePool();
+		ResetVoicePoolsForSession();
+		initializedForSession = true;
+
+		if (catalog == null)
+		{
+			WarnOnce("MissingCatalog", $"{nameof(AudioService)} could not load Resources/{CatalogResourcePath}.");
+		}
+	}
+
+	private void ResetVoicePoolsForSession()
+	{
+		for (int i = 0; i < voices.Count; i++)
+		{
+			Voice voice = voices[i];
+			voice.Handle?.Invalidate(this);
+			voice.Handle = null;
+			voice.Target = null;
+			voice.Generation++;
+			voice.StartedAt = float.NegativeInfinity;
+			voice.Priority = 256;
+			voice.FadeDuration = 0f;
+			voice.FadeElapsed = 0f;
+			if (voice.Source != null)
+			{
+				voice.Source.gameObject.SetActive(true);
+				voice.Source.enabled = true;
+				ResetSource(voice.Source);
+			}
+		}
+
+		for (int i = 0; i < loopVoices.Count; i++)
+		{
+			LoopVoice voice = loopVoices[i];
+			voice.Handle?.Invalidate(this);
+			voice.Handle = null;
+			voice.Target = null;
+			voice.Generation++;
+			voice.Active = false;
+			voice.BaseVolume = 0f;
+			voice.FadeDuration = 0f;
+			voice.FadeElapsed = 0f;
+			voice.ReleaseWhenFadeCompletes = false;
+			if (voice.Source != null)
+			{
+				voice.Source.gameObject.SetActive(true);
+				voice.Source.enabled = true;
+				ResetSource(voice.Source);
+			}
+		}
+	}
+
+	private void ShutdownVoicePools()
+	{
+		for (int i = 0; i < voices.Count; i++)
+		{
+			Voice voice = voices[i];
+			voice.Handle?.Invalidate(this);
+			voice.Handle = null;
+			voice.Target = null;
+			if (voice.Source != null)
+			{
+				voice.Source.Stop();
+			}
+		}
+
+		for (int i = 0; i < loopVoices.Count; i++)
+		{
+			LoopVoice voice = loopVoices[i];
+			voice.Handle?.Invalidate(this);
+			voice.Handle = null;
+			voice.Target = null;
+			voice.Active = false;
+			if (voice.Source != null)
+			{
+				voice.Source.Stop();
+			}
+		}
+
+		initializedForSession = false;
+	}
+
+	private bool PrepareSourceForPlayback(AudioSource source)
+	{
+		if (!initializedForSession || !isActiveAndEnabled || !gameObject.activeInHierarchy || source == null)
+		{
+			return false;
+		}
+
+		if (!source.gameObject.activeSelf)
+		{
+			source.gameObject.SetActive(true);
+		}
+		source.enabled = true;
+		return source.isActiveAndEnabled && source.gameObject.activeInHierarchy;
 	}
 
 	private void TransitionToBulletTimeMixInternal(bool bulletTimeActive, float transitionSeconds)
@@ -300,6 +497,18 @@ public sealed class AudioService : MonoBehaviour
 
 	private void CreateVoicePool()
 	{
+		for (int i = 0; i < voices.Count; i++)
+		{
+			if (voices[i].Source != null)
+			{
+				continue;
+			}
+
+			GameObject replacementObject = new GameObject($"Audio Voice {i + 1:00}");
+			replacementObject.transform.SetParent(transform, false);
+			voices[i].Source = replacementObject.AddComponent<AudioSource>();
+		}
+
 		for (int i = voices.Count; i < VoiceCount; i++)
 		{
 			GameObject voiceObject = new GameObject($"Audio Voice {i + 1:00}");
@@ -318,6 +527,18 @@ public sealed class AudioService : MonoBehaviour
 
 	private void CreateLoopVoicePool()
 	{
+		for (int i = 0; i < loopVoices.Count; i++)
+		{
+			if (loopVoices[i].Source != null)
+			{
+				continue;
+			}
+
+			GameObject replacementObject = new GameObject($"Looping Audio Voice {i + 1:00}");
+			replacementObject.transform.SetParent(transform, false);
+			loopVoices[i].Source = replacementObject.AddComponent<AudioSource>();
+		}
+
 		for (int i = loopVoices.Count; i < LoopVoiceCount; i++)
 		{
 			GameObject voiceObject = new GameObject($"Looping Audio Voice {i + 1:00}");
@@ -383,7 +604,7 @@ public sealed class AudioService : MonoBehaviour
 		}
 
 		float pitch = Random.Range(cue.MinPitch, cue.MaxPitch);
-		return new PreparedAudioCue(this, cue, clip, pitch);
+		return new PreparedAudioCue(this, cue, clip, pitch, sessionGeneration);
 	}
 
 	private bool TryPlayPreparedOneShotInternal(
@@ -396,6 +617,7 @@ public sealed class AudioService : MonoBehaviour
 		handle = null;
 		if (preparedCue == null
 			|| preparedCue.Owner != this
+			|| preparedCue.SessionGeneration != sessionGeneration
 			|| preparedCue.Consumed
 			|| preparedCue.Definition == null
 			|| preparedCue.Clip == null)
@@ -404,7 +626,7 @@ public sealed class AudioService : MonoBehaviour
 		}
 
 		Voice voice = SelectVoice(preparedCue.Definition.Priority);
-		if (voice == null)
+		if (voice == null || !PrepareSourceForPlayback(voice.Source))
 		{
 			return false;
 		}
@@ -424,7 +646,7 @@ public sealed class AudioService : MonoBehaviour
 		if (createHandle)
 		{
 			int voiceIndex = voices.IndexOf(voice);
-			handle = new AudioOneShotHandle(this, voiceIndex, voice.Generation);
+			handle = new AudioOneShotHandle(this, voiceIndex, voice.Generation, sessionGeneration);
 			voice.Handle = handle;
 		}
 
@@ -467,6 +689,10 @@ public sealed class AudioService : MonoBehaviour
 		}
 
 		LoopVoice voice = loopVoices[voiceIndex];
+		if (!PrepareSourceForPlayback(voice.Source))
+		{
+			return null;
+		}
 		ConfigureSource(voice.Source, cue, clip, followTarget.position);
 		voice.Source.loop = true;
 		voice.Target = followTarget;
@@ -480,7 +706,7 @@ public sealed class AudioService : MonoBehaviour
 			voice.Generation++;
 		}
 
-		AudioLoopHandle handle = new AudioLoopHandle(this, voiceIndex, voice.Generation);
+		AudioLoopHandle handle = new AudioLoopHandle(this, voiceIndex, voice.Generation, sessionGeneration);
 		voice.Handle = handle;
 		voice.Source.volume = cue.FadeInSeconds > 0f ? 0f : cue.Volume;
 		voice.Source.Play();
@@ -622,9 +848,12 @@ public sealed class AudioService : MonoBehaviour
 		}
 	}
 
-	internal bool IsOneShotHandleValid(int voiceIndex, int generation)
+	internal bool IsOneShotHandleValid(int voiceIndex, int generation, int handleSessionGeneration)
 	{
-		if (voiceIndex < 0 || voiceIndex >= voices.Count)
+		if (!initializedForSession
+			|| handleSessionGeneration != sessionGeneration
+			|| voiceIndex < 0
+			|| voiceIndex >= voices.Count)
 		{
 			return false;
 		}
@@ -632,12 +861,14 @@ public sealed class AudioService : MonoBehaviour
 		Voice voice = voices[voiceIndex];
 		return voice.Handle != null
 			&& voice.Generation == generation
+			&& voice.Source != null
+			&& voice.Source.isActiveAndEnabled
 			&& voice.Source.isPlaying;
 	}
 
-	internal void FadeOutOneShot(int voiceIndex, int generation, float seconds)
+	internal void FadeOutOneShot(int voiceIndex, int generation, int handleSessionGeneration, float seconds)
 	{
-		if (!IsOneShotHandleValid(voiceIndex, generation))
+		if (!IsOneShotHandleValid(voiceIndex, generation, handleSessionGeneration))
 		{
 			return;
 		}
@@ -673,20 +904,26 @@ public sealed class AudioService : MonoBehaviour
 		ResetSource(voice.Source);
 	}
 
-	internal bool IsLoopHandleValid(int voiceIndex, int generation)
+	internal bool IsLoopHandleValid(int voiceIndex, int generation, int handleSessionGeneration)
 	{
-		if (voiceIndex < 0 || voiceIndex >= loopVoices.Count)
+		if (!initializedForSession
+			|| handleSessionGeneration != sessionGeneration
+			|| voiceIndex < 0
+			|| voiceIndex >= loopVoices.Count)
 		{
 			return false;
 		}
 
 		LoopVoice voice = loopVoices[voiceIndex];
-		return voice.Active && voice.Generation == generation;
+		return voice.Active
+			&& voice.Generation == generation
+			&& voice.Source != null
+			&& voice.Source.isActiveAndEnabled;
 	}
 
-	internal void SetLoopHandleActive(int voiceIndex, int generation, bool active)
+	internal void SetLoopHandleActive(int voiceIndex, int generation, int handleSessionGeneration, bool active)
 	{
-		if (!TryGetLoopVoice(voiceIndex, generation, out LoopVoice voice))
+		if (!TryGetLoopVoice(voiceIndex, generation, handleSessionGeneration, out LoopVoice voice))
 		{
 			return;
 		}
@@ -701,9 +938,9 @@ public sealed class AudioService : MonoBehaviour
 		}
 	}
 
-	internal void ReleaseLoopHandle(int voiceIndex, int generation)
+	internal void ReleaseLoopHandle(int voiceIndex, int generation, int handleSessionGeneration)
 	{
-		if (!TryGetLoopVoice(voiceIndex, generation, out LoopVoice voice))
+		if (!TryGetLoopVoice(voiceIndex, generation, handleSessionGeneration, out LoopVoice voice))
 		{
 			return;
 		}
@@ -719,10 +956,10 @@ public sealed class AudioService : MonoBehaviour
 		}
 	}
 
-	private bool TryGetLoopVoice(int voiceIndex, int generation, out LoopVoice voice)
+	private bool TryGetLoopVoice(int voiceIndex, int generation, int handleSessionGeneration, out LoopVoice voice)
 	{
 		voice = null;
-		if (!IsLoopHandleValid(voiceIndex, generation))
+		if (!IsLoopHandleValid(voiceIndex, generation, handleSessionGeneration))
 		{
 			return false;
 		}

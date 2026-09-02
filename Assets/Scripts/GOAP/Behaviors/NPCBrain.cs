@@ -20,7 +20,9 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 	public List<GoalConsideration> goals;
 	[SerializeField] private float targetAwarenessInterval = 0.2f;
 	[SerializeField] private float loseTargetGraceSeconds = 1.0f;
+	[SerializeField, Min(0.05f)] private float goalDecisionInterval = 0.1f;
 	private float nextAwarenessPollTime;
+	private float nextGoalDecisionTime;
 	private float lastTargetSeenTime = float.NegativeInfinity;
 
 	public String currentGoalDebug;
@@ -38,6 +40,7 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 		bodyState = GetComponentInChildren<BodyState>();
 		AttackConfig = ResolveAttackConfig();
 		nextAwarenessPollTime = Time.time + GetAwarenessPollJitter();
+		ResetGoalDecisionSchedule();
 
 		goals = new List<GoalConsideration>(); // Initialize the list
 																					 //goals.Add(new GoalConsideration(new CooldownGoal(), true, ConsiderCooldownGoal));
@@ -55,10 +58,12 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 
 	public void ResetForPoolReuse()
 	{
+		enabled = true;
 		currentGoalInertia = 0f;
 		lastDecisionTime = 0f;
 		currentGoalDebug = string.Empty;
 		nextAwarenessPollTime = Time.time + GetAwarenessPollJitter();
+		ResetGoalDecisionSchedule();
 		lastTargetSeenTime = float.NegativeInfinity;
 		AttackConfig = ResolveAttackConfig();
 
@@ -99,14 +104,7 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 
 	private void FixedUpdate()
 	{
-		PollTargetAwareness();
-
-		//ConsiderCooldownVal = ConsiderCooldownGoal();
-		ConsiderWanderVal = ConsiderWanderGoal();
-		ConsiderOverheatTargetVal = ConsiderOverheatTargetGoal();
-		//ConsiderDeploySiphonVal = ConsiderDeploySiphonGoal();
-		//ConsiderDefendSiphonVal = ConsiderDefendSiphonGoal();
-		ConsiderTakeCoverVal = ConsiderTakeCoverGoal();
+		bool targetAwarenessChanged = PollTargetAwareness();
 
 		// if (bodyState.targetBodyState != null && bodyState.targetBodyState.Cooling_IsOverheated())
 		// {
@@ -181,29 +179,14 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.003f, 0, 1);
 		}
 
-		if (!HasHostileTarget())
+		if (targetAwarenessChanged || Time.time >= nextGoalDecisionTime)
 		{
-			AgentBehaviour.SetGoal<WanderGoal>(true);
-			currentGoalDebug = "Wander";
-			currentGoalInertia = Mathf.Clamp(ConsiderWanderGoal(), 0, maxInertia);
-		}
-		else if (bodyState.dangerLevel > 0.6f)
-		{
-			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
-			AgentBehaviour.SetGoal<TakeCoverGoal>(true);
-			currentGoalDebug = "TakeCover";
-			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
-		}
-		else
-		{
-			GoalConsideration chosenGoal = GetHighestConsiderationGoal(goals);
-			AgentBehaviour.SetGoal<OverheatHostileGoal>(true);
-			currentGoalDebug = "Attack";
-			currentGoalInertia = Mathf.Clamp(chosenGoal.Consideration(), 0, maxInertia);
+			EvaluateGoalDecision();
+			nextGoalDecisionTime = Time.time + Mathf.Max(0.05f, goalDecisionInterval);
 		}
 
 		//}
-		currentGoalInertia -= Time.deltaTime;
+		currentGoalInertia = Mathf.Max(0f, currentGoalInertia - Time.deltaTime);
 
 		if (bodyState.hitStunAmount > 0f)
 		{
@@ -225,6 +208,48 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 				return;
 			}
 		}
+	}
+
+	private void EvaluateGoalDecision()
+	{
+		if (AgentBehaviour == null || AgentBehaviour.GoapSet == null || bodyState == null)
+		{
+			return;
+		}
+
+		ConsiderWanderVal = ConsiderWanderGoal();
+		ConsiderOverheatTargetVal = ConsiderOverheatTargetGoal();
+		ConsiderTakeCoverVal = ConsiderTakeCoverGoal();
+		lastDecisionTime = Time.time;
+
+		if (!HasHostileTarget())
+		{
+			if (!(AgentBehaviour.CurrentGoal is WanderGoal))
+			{
+				AgentBehaviour.SetGoal<WanderGoal>(true);
+			}
+			currentGoalDebug = "Wander";
+			currentGoalInertia = Mathf.Clamp(ConsiderWanderVal, 0f, maxInertia);
+			return;
+		}
+
+		if (bodyState.dangerLevel > 0.6f)
+		{
+			if (!(AgentBehaviour.CurrentGoal is TakeCoverGoal))
+			{
+				AgentBehaviour.SetGoal<TakeCoverGoal>(true);
+			}
+			currentGoalDebug = "TakeCover";
+			currentGoalInertia = Mathf.Clamp(ConsiderTakeCoverVal, 0f, maxInertia);
+			return;
+		}
+
+		if (!(AgentBehaviour.CurrentGoal is OverheatHostileGoal))
+		{
+			AgentBehaviour.SetGoal<OverheatHostileGoal>(true);
+		}
+		currentGoalDebug = "Attack";
+		currentGoalInertia = Mathf.Clamp(ConsiderOverheatTargetVal, 0f, maxInertia);
 	}
 
 	private AttackConfigSO ResolveAttackConfig()
@@ -255,11 +280,11 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 		return CachedAttackConfig;
 	}
 
-	private void PollTargetAwareness()
+	private bool PollTargetAwareness()
 	{
 		if (Time.time < nextAwarenessPollTime || AgentBehaviour == null || bodyState == null)
 		{
-			return;
+			return false;
 		}
 
 		nextAwarenessPollTime = Time.time + GetTargetAwarenessInterval() + GetAwarenessPollJitter();
@@ -268,22 +293,27 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 			AttackConfig = ResolveAttackConfig();
 			if (AttackConfig == null)
 			{
-				return;
+				return false;
 			}
 		}
 
 		SharedAgentPerception.Snapshot perception = SharedAgentPerception.GetSnapshot(AgentBehaviour, AgentBehaviour.Injector, AttackConfig);
 		if (perception.HasTarget && perception.TargetBodyState != null)
 		{
+			bool targetChanged = bodyState.targetBodyState != perception.TargetBodyState;
 			bodyState.targetBodyState = perception.TargetBodyState;
 			lastTargetSeenTime = Time.time;
-			return;
+			return targetChanged;
 		}
 
 		if (Time.time - lastTargetSeenTime > loseTargetGraceSeconds)
 		{
+			bool targetChanged = bodyState.targetBodyState != null;
 			bodyState.targetBodyState = null;
+			return targetChanged;
 		}
+
+		return false;
 	}
 
 	private float GetTargetAwarenessInterval()
@@ -295,6 +325,14 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 	{
 		int agentId = AgentBehaviour != null ? Mathf.Abs(AgentBehaviour.transform.GetInstanceID()) : 0;
 		return (agentId % 5) * 0.01f;
+	}
+
+	private void ResetGoalDecisionSchedule()
+	{
+		float interval = Mathf.Max(0.05f, goalDecisionInterval);
+		uint instanceHash = unchecked((uint)GetInstanceID());
+		float phase = (instanceHash % 1000u) / 1000f;
+		nextGoalDecisionTime = Time.time + phase * interval;
 	}
 
 	public struct GoalConsideration
