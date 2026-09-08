@@ -7161,6 +7161,7 @@ MonoBehaviour:
   ammoBar: {fileID: 3807822991803202073}
   minPrimaryAimDistance: 0.38
   forearmForwardFallback: {fileID: 6322084844445424364}
+  logPlayerHitscanColliders: 0
   ActiveGun1: {fileID: 0}
   ActiveGun2: {fileID: 0}
   ActiveGun3: {fileID: 0}
@@ -9199,7 +9200,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: field of view
-      value: 153.11925
+      value: 156.5012
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: far clip plane

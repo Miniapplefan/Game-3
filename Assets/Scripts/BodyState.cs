@@ -29,6 +29,8 @@ public class BodyState : MonoBehaviour
 
 	public AttackConfigSO AttackConfig;
 	public float dangerLevel;
+	private float dangerCountdownMaximum;
+	private bool combatShuffleRequested;
 	private float losCheckInterval = 0.2f;
 	private float losCheckIntervalCache = 0.2f;
 	public bool hasLOS;
@@ -100,6 +102,7 @@ public class BodyState : MonoBehaviour
 			}
 
 			InitializeFireReadiness();
+			ResetCombatShuffleCycle();
 		}
 	}
 
@@ -133,6 +136,8 @@ public class BodyState : MonoBehaviour
 		bodyIsOverheated = false;
 		isDead = false;
 		dangerLevel = 0f;
+		dangerCountdownMaximum = 0f;
+		combatShuffleRequested = false;
 		hasLOS = false;
 		isBeingAimedAt = false;
 		isAimed = false;
@@ -149,6 +154,7 @@ public class BodyState : MonoBehaviour
 		if (bodyController != null && bodyController.isAI)
 		{
 			InitializeFireReadiness();
+			ResetCombatShuffleCycle();
 		}
 		else
 		{
@@ -156,6 +162,69 @@ public class BodyState : MonoBehaviour
 			FireReadinessState = EnemyFireReadinessState.Unset;
 			TimeToAim = 0f;
 		}
+	}
+
+	public bool CombatShuffleRequested => combatShuffleRequested;
+
+	public bool TickCombatShuffleDanger(float deltaTime, bool isActiveHostileAttack)
+	{
+		EnsureCombatShuffleCycleInitialized();
+		if (!isActiveHostileAttack || combatShuffleRequested)
+		{
+			return false;
+		}
+
+		if (isBeingAimedAt)
+		{
+			dangerLevel = Mathf.Max(0f, dangerLevel - Mathf.Max(0f, deltaTime));
+		}
+		else
+		{
+			float recoveryRate = AttackConfig != null ? Mathf.Max(0f, AttackConfig.DangerCountdownRecoveryRate) : 0.5f;
+			dangerLevel = Mathf.Min(dangerCountdownMaximum, dangerLevel + Mathf.Max(0f, deltaTime) * recoveryRate);
+		}
+
+		if (dangerLevel > 0f)
+		{
+			return false;
+		}
+
+		combatShuffleRequested = true;
+		return true;
+	}
+
+	public void CompleteCombatShuffle()
+	{
+		ResetCombatShuffleCycle();
+	}
+
+	public void CancelCombatShuffleAndResetDanger()
+	{
+		if (!combatShuffleRequested
+			&& dangerCountdownMaximum > 0f
+			&& Mathf.Approximately(dangerLevel, dangerCountdownMaximum))
+		{
+			return;
+		}
+
+		ResetCombatShuffleCycle();
+	}
+
+	private void EnsureCombatShuffleCycleInitialized()
+	{
+		if (dangerCountdownMaximum <= 0f)
+		{
+			ResetCombatShuffleCycle();
+		}
+	}
+
+	private void ResetCombatShuffleCycle()
+	{
+		float minSeconds = AttackConfig != null ? Mathf.Max(0f, AttackConfig.DangerCountdownMinSeconds) : 3f;
+		float maxSeconds = AttackConfig != null ? Mathf.Max(minSeconds, AttackConfig.DangerCountdownMaxSeconds) : 6f;
+		dangerCountdownMaximum = UnityEngine.Random.Range(minSeconds, maxSeconds);
+		dangerLevel = dangerCountdownMaximum;
+		combatShuffleRequested = false;
 	}
 
 	void UpdateAIState()

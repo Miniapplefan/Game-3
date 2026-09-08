@@ -38,5 +38,12 @@ MonoBehaviour:
   TimeToAim: 3
   HitStunToUnsetFireReadiness: 0.9
   SuppressiveShotTimeToAimIncrease: 1
+  DangerCountdownMinSeconds: 0.1
+  DangerCountdownMaxSeconds: 0.4
+  DangerCountdownRecoveryRate: 0.5
+  CombatShuffleMinDistance: 0.2
+  CombatShuffleMaxDistance: 1.5
+  CombatShuffleNavMeshSampleRadius: 0.35
+  CombatShuffleArrivalTolerance: 0.15
   AttackCost: 4
   SiphonDelay: 1

@@ -181,7 +181,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 		bool shouldAttack = seePlayer
 		&& data.bodyState.weapons.weaponRb.angularVelocity.magnitude < 0.5f
-		&& data.navMeshAgent.velocity.magnitude < 0.05f
+		&& data.navMeshAgent.velocity.magnitude < 0.2f
 		&& !data.bodyState.Weapons_currentlyFiring()
 		// && distanceToPlayer <= topRankedGun.gun.gunData.shootConfig.maxRange
 		&& data.Timer <= 1

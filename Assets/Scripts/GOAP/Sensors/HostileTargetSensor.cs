@@ -32,6 +32,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private static readonly float[] TacticalAnnulusSectorFractions = { -0.35f, 0.35f, 0f, 0f, 0f, 0.18f };
 
 	private AttackConfigSO AttackConfig;
+	private readonly Collider[] CombatShuffleClearanceColliders = new Collider[16];
 
 	// Circle and ally spacing fallback
 	public float circleRadius = 5f;
@@ -160,6 +161,11 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		public int ConsecutiveVisibleHoldFailures;
 		public bool HasVisibleHoldAnchor;
 		public Vector3 VisibleHoldAnchorTargetPosition;
+		public bool HasCombatShuffleDestination;
+		public Vector3 CombatShuffleDestination;
+		public int CombatShuffleSectorIndex = -1;
+		public Vector3 CombatShuffleStrategicClaimPosition;
+		public Transform CombatShuffleTargetTransform;
 	}
 
 	private sealed class AngleClaim
@@ -372,6 +378,11 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			return new PositionTarget(position);
 		}
 
+		if (TryResolveCombatShuffle(context, out position))
+		{
+			return CachePosition(context, position, context.TargetTransform);
+		}
+
 		if (TryResolveImmobilePosition(context, out position))
 		{
 			return CachePosition(context, position, null);
@@ -578,6 +589,254 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private PositionTarget CachePosition(SenseContext context, Vector3 position, Transform targetTransform)
 	{
 		return CachePosition(context.RuntimeState, context.Agent.transform.GetInstanceID(), position, context.AgentPosition, targetTransform);
+	}
+
+	private bool TryResolveCombatShuffle(SenseContext context, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		if (!context.BodyState.CombatShuffleRequested)
+		{
+			ClearCombatShuffleState(context.RuntimeState);
+			return false;
+		}
+
+		if (!context.HasTarget || context.TargetTransform == null || !context.CanSeeTarget)
+		{
+			context.BodyState.CancelCombatShuffleAndResetDanger();
+			ClearCombatShuffleState(context.RuntimeState);
+			context.RuntimeState.HasCachedPosition = false;
+			return false;
+		}
+
+		if (context.BodyState.legs.getMoveSpeed() <= 0f)
+		{
+			ClearCombatShuffleDestination(context.RuntimeState);
+			return true;
+		}
+
+		PrepareCombatShuffleClaim(context);
+		RefreshCombatShuffleClaim(context);
+
+		if (context.RuntimeState.HasCombatShuffleDestination)
+		{
+			if (HasReachedCombatShuffleDestination(context))
+			{
+				position = context.AgentPosition;
+				AdoptCombatShufflePosition(context);
+				context.BodyState.CompleteCombatShuffle();
+				ClearCombatShuffleState(context.RuntimeState);
+				return true;
+			}
+
+			if (IsCombatShuffleDestinationValid(context, context.RuntimeState.CombatShuffleDestination, false, out Vector3 lockedPosition))
+			{
+				context.RuntimeState.CombatShuffleDestination = lockedPosition;
+				position = lockedPosition;
+				return true;
+			}
+
+			ClearCombatShuffleDestination(context.RuntimeState);
+		}
+
+		float minDistance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleMinDistance) : 1f;
+		float maxDistance = AttackConfig != null ? Mathf.Max(minDistance, AttackConfig.CombatShuffleMaxDistance) : 2f;
+		float shuffleDistance = UnityEngine.Random.Range(minDistance, maxDistance);
+		Vector3 firingDirection = context.TargetPosition - context.AgentPosition;
+		firingDirection.y = 0f;
+		if (firingDirection.sqrMagnitude <= 0.0001f)
+		{
+			return true;
+		}
+
+		firingDirection.Normalize();
+		Vector3 right = Vector3.Cross(Vector3.up, firingDirection).normalized;
+		bool hasRight = IsCombatShuffleDestinationValid(context, context.AgentPosition + right * shuffleDistance, true, out Vector3 rightPosition);
+		bool hasLeft = IsCombatShuffleDestinationValid(context, context.AgentPosition - right * shuffleDistance, true, out Vector3 leftPosition);
+
+		if (!hasRight && !hasLeft)
+		{
+			return true;
+		}
+
+		position = hasRight && hasLeft
+			? (UnityEngine.Random.value < 0.5f ? rightPosition : leftPosition)
+			: hasRight ? rightPosition : leftPosition;
+		context.RuntimeState.HasCombatShuffleDestination = true;
+		context.RuntimeState.CombatShuffleDestination = position;
+		return true;
+	}
+
+	private void PrepareCombatShuffleClaim(SenseContext context)
+	{
+		AgentRuntimeState runtimeState = context.RuntimeState;
+		if (runtimeState.CombatShuffleTargetTransform == context.TargetTransform && runtimeState.CombatShuffleSectorIndex >= 0)
+		{
+			return;
+		}
+
+		ClearCombatShuffleState(runtimeState);
+		CleanupClaimsForTarget(context.TargetTransform, context.TargetPosition, context.WeaponRange);
+		int agentId = context.Agent.transform.GetInstanceID();
+		if (SharedAngleClaims.TryGetClaim(context.TargetTransform, agentId, out AngleClaim claim) && claim != null && claim.SectorIndex >= 0)
+		{
+			runtimeState.CombatShuffleSectorIndex = claim.SectorIndex;
+			runtimeState.CombatShuffleStrategicClaimPosition = claim.ClaimedPosition;
+		}
+		else
+		{
+			runtimeState.CombatShuffleSectorIndex = GetSectorIndex(context.TargetPosition, context.AgentPosition);
+			runtimeState.CombatShuffleStrategicClaimPosition = context.AgentPosition;
+		}
+
+		runtimeState.CombatShuffleTargetTransform = context.TargetTransform;
+	}
+
+	private void RefreshCombatShuffleClaim(SenseContext context)
+	{
+		AgentRuntimeState runtimeState = context.RuntimeState;
+		int agentId = context.Agent.transform.GetInstanceID();
+		AngleClaim claim = SharedAngleClaims.GetOrCreateClaim(context.TargetTransform, agentId);
+		if (claim == null)
+		{
+			return;
+		}
+
+		claim.SectorIndex = runtimeState.CombatShuffleSectorIndex;
+		claim.LastUpdatedTime = Time.time;
+		float attackInterval = AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeBetweenAttacks) : 1f;
+		claim.ExpiresAt = Time.time + Mathf.Max(radialClaimDuration, attackInterval + 0.5f);
+		claim.ClaimedPosition = runtimeState.CombatShuffleStrategicClaimPosition;
+		claim.LastKnownAgentPosition = context.AgentPosition;
+		claim.LastKnownTargetPosition = context.TargetPosition;
+		claim.AgentBodyState = context.BodyState;
+		runtimeState.LastClaimedSectorIndex = runtimeState.CombatShuffleSectorIndex;
+	}
+
+	private void AdoptCombatShufflePosition(SenseContext context)
+	{
+		context.RuntimeState.CombatShuffleStrategicClaimPosition = context.AgentPosition;
+		RefreshCombatShuffleClaim(context);
+	}
+
+	private bool HasReachedCombatShuffleDestination(SenseContext context)
+	{
+		NavMeshAgent navMeshAgent = context.Perception.NavMeshAgent;
+		float stoppingDistance = navMeshAgent != null ? Mathf.Max(0f, navMeshAgent.stoppingDistance) : 0f;
+		float tolerance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleArrivalTolerance) : 0.15f;
+		float arrivalDistance = stoppingDistance + tolerance;
+		if ((context.AgentPosition - context.RuntimeState.CombatShuffleDestination).sqrMagnitude > arrivalDistance * arrivalDistance)
+		{
+			return false;
+		}
+
+		return navMeshAgent == null || navMeshAgent.velocity.sqrMagnitude <= 0.0025f;
+	}
+
+	private bool IsCombatShuffleDestinationValid(SenseContext context, Vector3 rawPosition, bool requireMeaningfulDisplacement, out Vector3 position)
+	{
+		position = context.AgentPosition;
+		NavMeshAgent navMeshAgent = context.Perception.NavMeshAgent;
+		if (navMeshAgent == null || !navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
+		{
+			return false;
+		}
+
+		float sampleRadius = AttackConfig != null ? Mathf.Max(0.01f, AttackConfig.CombatShuffleNavMeshSampleRadius) : 0.35f;
+		if (!NavMesh.SamplePosition(rawPosition, out NavMeshHit navHit, sampleRadius, navMeshAgent.areaMask))
+		{
+			return false;
+		}
+
+		position = navHit.position;
+		float arrivalTolerance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleArrivalTolerance) : 0.15f;
+		float minimumDisplacement = Mathf.Max(navMeshAgent.stoppingDistance + arrivalTolerance, navMeshAgent.radius * 1.25f);
+		if (requireMeaningfulDisplacement && (position - context.AgentPosition).sqrMagnitude <= minimumDisplacement * minimumDisplacement)
+		{
+			return false;
+		}
+
+		if (GetSectorIndex(context.TargetPosition, position) != context.RuntimeState.CombatShuffleSectorIndex)
+		{
+			return false;
+		}
+
+		if (Vector3.Distance(position, context.TargetPosition) > context.WeaponRange)
+		{
+			return false;
+		}
+
+		if (!HasLineOfSight(GetCandidateLineOfSightOrigin(context.BodyState, position), context.TargetAimPosition))
+		{
+			return false;
+		}
+
+		float edgeClearance = Mathf.Max(navMeshEdgeClearance, navMeshAgent.radius);
+		if (edgeClearance > 0f
+			&& NavMesh.FindClosestEdge(position, out NavMeshHit edgeHit, navMeshAgent.areaMask)
+			&& edgeHit.distance < edgeClearance)
+		{
+			return false;
+		}
+
+		if (!HasCombatShuffleClearance(context.Agent.transform, navMeshAgent, position))
+		{
+			return false;
+		}
+
+		SharedAngleClaims.TryGetTargetState(context.TargetTransform, out TargetAngleClaimState targetState);
+		float separationSqr = tacticalClaimedPositionSeparation * tacticalClaimedPositionSeparation;
+		if (GetNearestClaimedPositionDistanceSqr(targetState, context.Agent.transform.GetInstanceID(), position) < separationSqr)
+		{
+			return false;
+		}
+
+		if (!NavMesh.CalculatePath(context.AgentPosition, position, navMeshAgent.areaMask, SharedNavMeshPath)
+			|| SharedNavMeshPath.status != NavMeshPathStatus.PathComplete)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	private bool HasCombatShuffleClearance(Transform agentTransform, NavMeshAgent navMeshAgent, Vector3 position)
+	{
+		float radius = Mathf.Max(0.05f, navMeshAgent.radius);
+		float height = Mathf.Max(navMeshAgent.height, radius * 2f);
+		Vector3 bottom = position + Vector3.up * radius;
+		Vector3 top = position + Vector3.up * (height - radius);
+		if (AttackConfig == null)
+		{
+			return false;
+		}
+
+		int mask = AttackConfig.ObstructionLayerMask | AttackConfig.AllyLayerMask;
+		int count = Physics.OverlapCapsuleNonAlloc(bottom, top, radius, CombatShuffleClearanceColliders, mask, QueryTriggerInteraction.Ignore);
+		for (int i = 0; i < count; i++)
+		{
+			Collider candidate = CombatShuffleClearanceColliders[i];
+			CombatShuffleClearanceColliders[i] = null;
+			if (candidate != null && candidate.transform.root != agentTransform.root)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private void ClearCombatShuffleDestination(AgentRuntimeState runtimeState)
+	{
+		runtimeState.HasCombatShuffleDestination = false;
+		runtimeState.CombatShuffleDestination = Vector3.zero;
+	}
+
+	private void ClearCombatShuffleState(AgentRuntimeState runtimeState)
+	{
+		ClearCombatShuffleDestination(runtimeState);
+		runtimeState.CombatShuffleSectorIndex = -1;
+		runtimeState.CombatShuffleStrategicClaimPosition = Vector3.zero;
+		runtimeState.CombatShuffleTargetTransform = null;
 	}
 
 	private bool TryGetBestRadialRecoveryPoint(IMonoAgent agent, BodyState bodyState, Vector3 targetAimPosition, Transform targetTransform, Vector3 targetPosition, float weaponRange, AgentRuntimeState runtimeState, out Vector3 bestPoint)

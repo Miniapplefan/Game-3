@@ -23,6 +23,16 @@ public class AttackConfigSO : ScriptableObject
 	public float TimeToAim = 3;
 	public float HitStunToUnsetFireReadiness = 0.9f;
 	public float SuppressiveShotTimeToAimIncrease = 1f;
+
+	[Header("Combat Shuffle")]
+	[Min(0f)] public float DangerCountdownMinSeconds = 3f;
+	[Min(0f)] public float DangerCountdownMaxSeconds = 6f;
+	[Min(0f)] public float DangerCountdownRecoveryRate = 0.5f;
+	[Min(0f)] public float CombatShuffleMinDistance = 1f;
+	[Min(0f)] public float CombatShuffleMaxDistance = 2f;
+	[Min(0.01f)] public float CombatShuffleNavMeshSampleRadius = 0.35f;
+	[Min(0f)] public float CombatShuffleArrivalTolerance = 0.15f;
+
 	public int AttackCost = 4;
 	public float SiphonDelay = 1;
 }

@@ -66,6 +66,7 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 		ResetGoalDecisionSchedule();
 		lastTargetSeenTime = float.NegativeInfinity;
 		AttackConfig = ResolveAttackConfig();
+		bodyState?.CancelCombatShuffleAndResetDanger();
 
 		if (AgentBehaviour == null)
 		{
@@ -170,14 +171,7 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 		// }
 		//************************
 
-		if (bodyState.hasLOS)
-		{
-			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.002f, 0, 1);
-		}
-		else
-		{
-			bodyState.dangerLevel = Mathf.Clamp(bodyState.dangerLevel -= 0.003f, 0, 1);
-		}
+		UpdateCombatShuffleDanger();
 
 		if (targetAwarenessChanged || Time.time >= nextGoalDecisionTime)
 		{
@@ -233,23 +227,38 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 			return;
 		}
 
-		if (bodyState.dangerLevel > 0.6f)
-		{
-			if (!(AgentBehaviour.CurrentGoal is TakeCoverGoal))
-			{
-				AgentBehaviour.SetGoal<TakeCoverGoal>(true);
-			}
-			currentGoalDebug = "TakeCover";
-			currentGoalInertia = Mathf.Clamp(ConsiderTakeCoverVal, 0f, maxInertia);
-			return;
-		}
-
 		if (!(AgentBehaviour.CurrentGoal is OverheatHostileGoal))
 		{
 			AgentBehaviour.SetGoal<OverheatHostileGoal>(true);
 		}
 		currentGoalDebug = "Attack";
 		currentGoalInertia = Mathf.Clamp(ConsiderOverheatTargetVal, 0f, maxInertia);
+	}
+
+	private void UpdateCombatShuffleDanger()
+	{
+		if (bodyState == null || AgentBehaviour == null)
+		{
+			return;
+		}
+
+		bool isHostileCombat = HasHostileTarget() && AgentBehaviour.CurrentGoal is OverheatHostileGoal;
+		if (!isHostileCombat)
+		{
+			bodyState.CancelCombatShuffleAndResetDanger();
+			return;
+		}
+
+		bool isActiveHostileAttack = AgentBehaviour.CurrentAction is OverheatHostileAction;
+		if (!bodyState.TickCombatShuffleDanger(Time.deltaTime, isActiveHostileAttack))
+		{
+			return;
+		}
+
+		if (isActiveHostileAttack)
+		{
+			AgentBehaviour.EndAction();
+		}
 	}
 
 	private AttackConfigSO ResolveAttackConfig()

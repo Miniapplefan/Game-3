@@ -11,8 +11,6 @@ using static Limb;
 
 public class BodyController : MonoBehaviour, IEnemyPoolResettable
 {
-	private const int PlayerDamageAuraRewardTenths = 1;
-	private const int PlayerKillAuraRewardTenths = 10;
 	private const int AimRaycastBufferSize = 64;
 
 	[Header("Reload Audio")]
@@ -640,7 +638,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 		if (shouldAwardPlayerAura)
 		{
-			sourceAuraManager.AddAuraTenths(PlayerDamageAuraRewardTenths);
+			sourceAuraManager.TryRegisterEnemyDamage();
 		}
 
 		legs.HandleTagging(i.limb, i.impactForce);
@@ -663,7 +661,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 		if (shouldAwardPlayerAura && isDead)
 		{
-			sourceAuraManager.AddAuraTenths(PlayerKillAuraRewardTenths);
+			sourceAuraManager.TryRegisterEnemyKill();
 		}
 
 		//heatContainer.IncreaseHeat(this, i.amount);
@@ -1571,11 +1569,47 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 	private void GetAimPoint()
 	{
+		bool aimSourceRight = IsAimSourceRight();
+		bool aimSourceLeft = IsAimSourceLeft();
+		bool refreshAssistedRight = aimSourceRight
+			&& holdAimStartRightUntilInput
+			&& aimStartHoldUsesAssistedTravelRight;
+		bool refreshAssistedLeft = aimSourceLeft
+			&& holdAimStartLeftUntilInput
+			&& aimStartHoldUsesAssistedTravelLeft;
+
+		if (refreshAssistedRight || refreshAssistedLeft)
+		{
+			bool useLeft = refreshAssistedLeft;
+			Vector3 assistedOrigin = GetAimLockOrigin();
+			Vector3 heldAimPoint = useLeft ? aimStartHoldPointLeft : aimStartHoldPointRight;
+			Vector3 assistedForward = heldAimPoint - assistedOrigin;
+			if (assistedForward.sqrMagnitude <= 0.0001f)
+			{
+				GetPlayerAimRay(out assistedOrigin, out assistedForward);
+			}
+
+			assistedForward.Normalize();
+			Vector3 assistedFallback = assistedOrigin + assistedForward * 20f;
+			Vector3 assistedTarget = ResolveAimPoint(assistedOrigin, assistedForward, assistedFallback);
+			if (useLeft)
+			{
+				aimStartHoldPointLeft = assistedTarget;
+				SetWeaponAimPointL(assistedTarget);
+			}
+			else
+			{
+				aimStartHoldPointRight = assistedTarget;
+				SetWeaponAimPointR(assistedTarget);
+			}
+
+			torsoAimPoint.position = assistedTarget;
+			return;
+		}
+
 		GetPlayerAimRay(out Vector3 origin, out Vector3 centeredForward);
 		Vector3 centeredFallback = origin + centeredForward * 20f;
 		Vector3 centeredTarget = ResolveAimPoint(origin, centeredForward, centeredFallback);
-		bool aimSourceRight = IsAimSourceRight();
-		bool aimSourceLeft = IsAimSourceLeft();
 
 		if (IsPlayerCenteredAim())
 		{
@@ -3359,7 +3393,6 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			return;
 		}
 
-		UpdateBreakoutAimAssistViewTravel();
 		UpdateBreakoutAimAssistPreviewTarget();
 		UpdateBreakoutAimAssistDebugVolumes();
 
@@ -3371,6 +3404,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			UpdateAimStartHoldsBeforeLook();
 			DoRotation();
 			GetAimPoint();
+			UpdateBreakoutAimAssistViewTravel();
 			ApplyOffhandMirrorAimPoint();
 			UpdatePendingMoveAimYaw();
 			UpdateAimSwapBlend();

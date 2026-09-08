@@ -40,12 +40,33 @@ public class AuraManager : MonoBehaviour
     [SerializeField] private float auraPressureThreshold = 4f;
     [SerializeField] private float auraPressureHalfLife = 4f;
 
-    [Header("Graze")]
+    [Header("Graze Gains (10 tenths = 1 point)")]
+    [Tooltip("Aura awarded when the player successfully grazes a projectile.")]
+    [Min(0)]
     [SerializeField] private int grazeAuraRewardTenths = 1;
+    [Tooltip("Aura Grip awarded when the player successfully grazes a projectile.")]
+    [Min(0)]
+    [SerializeField] private int grazeAuraGripRewardTenths = 1;
 
+    [Header("Enemy Damage Gains (10 tenths = 1 point)")]
+    [Tooltip("Aura awarded each time the player damages an enemy.")]
+    [Min(0)]
+    [SerializeField] private int enemyDamageAuraRewardTenths = 1;
+    [Tooltip("Aura Grip awarded each time the player damages an enemy.")]
+    [Min(0)]
+    [SerializeField] private int enemyDamageAuraGripRewardTenths = 1;
+
+    [Header("Enemy Kill Gains (10 tenths = 1 point)")]
+    [Tooltip("Additional Aura awarded when player damage kills an enemy.")]
+    [Min(0)]
+    [SerializeField] private int enemyKillAuraRewardTenths = 10;
+    [Tooltip("Additional Aura Grip awarded when player damage kills an enemy.")]
+    [Min(0)]
+    [SerializeField] private int enemyKillAuraGripRewardTenths = 10;
+
+    [Header("Aura Grip")]
     [SerializeField] private float currentAuraGrip;
     [SerializeField] private float maxAuraGrip = 3f;
-    [SerializeField] private float auraGripGainMultiplier = 1f;
     [SerializeField] private AnimationCurve gripHalfLifeByAura = new AnimationCurve(
         new Keyframe(1f, 3f),
         new Keyframe(4f, 1f)
@@ -99,9 +120,13 @@ public class AuraManager : MonoBehaviour
         auraPressureThreshold = Mathf.Max(baseAura, auraPressureThreshold);
         auraPressureHalfLife = Mathf.Max(0.0001f, auraPressureHalfLife);
         grazeAuraRewardTenths = Mathf.Max(0, grazeAuraRewardTenths);
+        grazeAuraGripRewardTenths = Mathf.Max(0, grazeAuraGripRewardTenths);
+        enemyDamageAuraRewardTenths = Mathf.Max(0, enemyDamageAuraRewardTenths);
+        enemyDamageAuraGripRewardTenths = Mathf.Max(0, enemyDamageAuraGripRewardTenths);
+        enemyKillAuraRewardTenths = Mathf.Max(0, enemyKillAuraRewardTenths);
+        enemyKillAuraGripRewardTenths = Mathf.Max(0, enemyKillAuraGripRewardTenths);
         currentAuraGrip = Mathf.Clamp(currentAuraGrip, 0f, Mathf.Max(0f, maxAuraGrip));
         maxAuraGrip = Mathf.Max(0f, maxAuraGrip);
-        auraGripGainMultiplier = Mathf.Max(0f, auraGripGainMultiplier);
         gripDepletedThreshold = Mathf.Max(0f, gripDepletedThreshold);
         minGripHalfLife = Mathf.Max(0.0001f, minGripHalfLife);
         pulseRechargeDuration = Mathf.Max(0f, pulseRechargeDuration);
@@ -111,15 +136,23 @@ public class AuraManager : MonoBehaviour
 
     public void AddAuraTenths(int amountTenth)
     {
-        if (amountTenth <= 0)
+        AddAuraAndGripTenths(amountTenth, amountTenth);
+    }
+
+    public void AddAuraAndGripTenths(int auraAmountTenths, int auraGripAmountTenths)
+    {
+        int safeAuraTenths = Mathf.Max(0, auraAmountTenths);
+        int safeAuraGripTenths = Mathf.Max(0, auraGripAmountTenths);
+        if (safeAuraTenths <= 0 && safeAuraGripTenths <= 0)
         {
             return;
         }
 
-        float auraAmount = amountTenth / 10f;
+        float auraAmount = safeAuraTenths / 10f;
+        float auraGripAmount = safeAuraGripTenths / 10f;
         currentAura += auraAmount;
         float gripCap = Mathf.Max(0f, maxAuraGrip);
-        currentAuraGrip = Mathf.Clamp(currentAuraGrip + auraAmount * Mathf.Max(0f, auraGripGainMultiplier), 0f, gripCap);
+        currentAuraGrip = Mathf.Clamp(currentAuraGrip + auraGripAmount, 0f, gripCap);
         GrantPulsesForNewThresholdCrossings();
         gripDecayAuraSnapshot = currentAura;
         timeSinceLastAuraGain = 0f;
@@ -127,14 +160,35 @@ public class AuraManager : MonoBehaviour
 
     public bool TryRegisterGraze()
     {
-        int rewardTenths = Mathf.Max(0, grazeAuraRewardTenths);
-        if (rewardTenths <= 0)
+        if (!TryApplyGain(grazeAuraRewardTenths, grazeAuraGripRewardTenths))
         {
             return false;
         }
 
-        AddAuraTenths(rewardTenths);
         GrazeAwarded?.Invoke();
+        return true;
+    }
+
+    public bool TryRegisterEnemyDamage()
+    {
+        return TryApplyGain(enemyDamageAuraRewardTenths, enemyDamageAuraGripRewardTenths);
+    }
+
+    public bool TryRegisterEnemyKill()
+    {
+        return TryApplyGain(enemyKillAuraRewardTenths, enemyKillAuraGripRewardTenths);
+    }
+
+    private bool TryApplyGain(int auraRewardTenths, int auraGripRewardTenths)
+    {
+        int safeAuraReward = Mathf.Max(0, auraRewardTenths);
+        int safeAuraGripReward = Mathf.Max(0, auraGripRewardTenths);
+        if (safeAuraReward <= 0 && safeAuraGripReward <= 0)
+        {
+            return false;
+        }
+
+        AddAuraAndGripTenths(safeAuraReward, safeAuraGripReward);
         return true;
     }
 
