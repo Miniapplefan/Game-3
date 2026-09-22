@@ -15,10 +15,17 @@ MonoBehaviour:
   defaultSnapshot: {fileID: 24500006, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
   bulletTimeSnapshot: {fileID: 24500007, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
   playerGunshot:
-    clips:
-    - {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+      outputMixerGroup: {fileID: 5260696131202295773, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 0.2
+    maxSimultaneousOneShots: 4
+    minRetriggerSeconds: 0.02
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.97, y: 1.03}
     spatialBlend: 1
     minDistance: 2
@@ -29,10 +36,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   playerEmptyGunClick:
-    clips:
-    - {fileID: 8300000, guid: 5d337a123c362429aaf693d1742f5ce1, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: 5d337a123c362429aaf693d1742f5ce1, type: 3}
+      outputMixerGroup: {fileID: 5034037570288212212, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 1
+    minRetriggerSeconds: 0.05
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.98, y: 1.02}
     spatialBlend: 0.35
     minDistance: 1
@@ -43,10 +57,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   playerReloadStarted:
-    clips:
-    - {fileID: 8300000, guid: 3df30eae4e8db4619aa2ce105150f965, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: 3df30eae4e8db4619aa2ce105150f965, type: 3}
+      outputMixerGroup: {fileID: 5469861923046414923, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: 6758493027441001001, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 2
+    minRetriggerSeconds: 0
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.98, y: 1.02}
     spatialBlend: 0.35
     minDistance: 1
@@ -57,10 +78,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   playerReloadFinished:
-    clips:
-    - {fileID: 8300000, guid: 79065ff7feaa143389b920b76515bf5c, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: 79065ff7feaa143389b920b76515bf5c, type: 3}
+      outputMixerGroup: {fileID: 4706640021453234120, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: 6758493027441001001, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 2
+    minRetriggerSeconds: 0
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.98, y: 1.02}
     spatialBlend: 0.35
     minDistance: 1
@@ -70,11 +98,39 @@ MonoBehaviour:
     loop: 0
     fadeInSeconds: 0
     fadeOutSeconds: 0
+  playerGraze:
+    variants:
+    - clip: {fileID: 8300000, guid: 056fab10858ed4542bdddab0b08b9538, type: 3}
+      outputMixerGroup: {fileID: 4818017366692596466, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
+    outputMixerGroup: {fileID: 5240380423540538734, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+    volume: 1
+    maxSimultaneousOneShots: 4
+    minRetriggerSeconds: 0.03
+    successivePitchWindowSeconds: 1
+    successivePitchStepSemitones: 1
+    successivePitchMaxSteps: 5
+    pitchRange: {x: 0.97, y: 1.03}
+    spatialBlend: 1
+    minDistance: 0.5
+    maxDistance: 12
+    rolloffMode: 0
+    priority: 48
+    loop: 0
+    fadeInSeconds: 0
+    fadeOutSeconds: 0
   bulletTimeStarted:
-    clips:
-    - {fileID: 8300000, guid: 4ba39855759a43a4182b70096f3266d6, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: 4ba39855759a43a4182b70096f3266d6, type: 3}
+      outputMixerGroup: {fileID: 5432063152290499294, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: -6201847315509001101, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 1
+    minRetriggerSeconds: 0.05
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.75, y: 0.82}
     spatialBlend: 0
     minDistance: 1
@@ -85,10 +141,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   bulletTimeEnding:
-    clips:
-    - {fileID: 8300000, guid: 5637903a5979f48c6a4c9db723e85788, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: 5637903a5979f48c6a4c9db723e85788, type: 3}
+      outputMixerGroup: {fileID: 5090529318546330031, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: -6201847315509001101, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 1
+    minRetriggerSeconds: 0.05
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 1, y: 1}
     spatialBlend: 0
     minDistance: 1
@@ -99,10 +162,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   enemyGunshot:
-    clips:
-    - {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
+      outputMixerGroup: {fileID: 4718866610232779649, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: -1632768354943943605, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 0.8
+    maxSimultaneousOneShots: 8
+    minRetriggerSeconds: 0.01
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.77, y: 0.83}
     spatialBlend: 1
     minDistance: 2
@@ -113,10 +183,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   enemyHitByPlayer:
-    clips:
-    - {fileID: 8300000, guid: dc4f4c9c5a29144008afa1532e260282, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: dc4f4c9c5a29144008afa1532e260282, type: 3}
+      outputMixerGroup: {fileID: 4617114109836934372, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: -3863647200042775362, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 4
+    minRetriggerSeconds: 0.02
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 0.87, y: 0.77}
     spatialBlend: 0.71
     minDistance: 4
@@ -127,10 +204,17 @@ MonoBehaviour:
     fadeInSeconds: 0
     fadeOutSeconds: 0
   enemyLethalBulletWarning:
-    clips:
-    - {fileID: 8300000, guid: 37297145c020a429ea5a5894c80a4575, type: 3}
+    variants:
+    - clip: {fileID: 8300000, guid: 37297145c020a429ea5a5894c80a4575, type: 3}
+      outputMixerGroup: {fileID: 5761957894615332584, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
+      selectionWeight: 1
     outputMixerGroup: {fileID: 8682057297602537484, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
     volume: 1
+    maxSimultaneousOneShots: 0
+    minRetriggerSeconds: 0
+    successivePitchWindowSeconds: 0
+    successivePitchStepSemitones: 0
+    successivePitchMaxSteps: 0
     pitchRange: {x: 1, y: 1}
     spatialBlend: 1
     minDistance: 0.5

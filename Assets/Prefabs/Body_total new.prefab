@@ -9200,7 +9200,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: field of view
-      value: 156.5012
+      value: 155.97913
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: far clip plane
@@ -11058,6 +11058,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 63065938358c6447895e856f24679be4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  deathOverlayCanvas: {fileID: 0}
   heatGauge: {fileID: 7340026714140426240}
   auraIndicator: {fileID: 5597299666007709401}
   tempIndicator: {fileID: 1545694413571250405}
@@ -11138,9 +11139,13 @@ MonoBehaviour:
   auraPressureThreshold: 2
   auraPressureHalfLife: 4
   grazeAuraRewardTenths: 1
+  grazeAuraGripRewardTenths: 1
+  enemyDamageAuraRewardTenths: 1
+  enemyDamageAuraGripRewardTenths: 1
+  enemyKillAuraRewardTenths: 10
+  enemyKillAuraGripRewardTenths: 10
   currentAuraGrip: 0
   maxAuraGrip: 3
-  auraGripGainMultiplier: 1
   gripHalfLifeByAura:
     serializedVersion: 2
     m_Curve:

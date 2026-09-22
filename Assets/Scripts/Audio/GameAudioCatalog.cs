@@ -10,6 +10,7 @@ public sealed class GameAudioCatalog : ScriptableObject
 	[SerializeField] private AudioCueDefinition playerEmptyGunClick = new AudioCueDefinition();
 	[SerializeField] private AudioCueDefinition playerReloadStarted = new AudioCueDefinition();
 	[SerializeField] private AudioCueDefinition playerReloadFinished = new AudioCueDefinition();
+	[SerializeField] private AudioCueDefinition playerGraze = new AudioCueDefinition();
 	[SerializeField] private AudioCueDefinition bulletTimeStarted = new AudioCueDefinition();
 	[SerializeField] private AudioCueDefinition bulletTimeEnding = new AudioCueDefinition();
 	[SerializeField] private AudioCueDefinition enemyGunshot = new AudioCueDefinition();
@@ -34,6 +35,9 @@ public sealed class GameAudioCatalog : ScriptableObject
 				return cue != null;
 			case GameAudioCueId.PlayerReloadFinished:
 				cue = playerReloadFinished;
+				return cue != null;
+			case GameAudioCueId.PlayerGraze:
+				cue = playerGraze;
 				return cue != null;
 			case GameAudioCueId.BulletTimeStarted:
 				cue = bulletTimeStarted;
@@ -62,6 +66,7 @@ public sealed class GameAudioCatalog : ScriptableObject
 		playerEmptyGunClick?.Validate();
 		playerReloadStarted?.Validate();
 		playerReloadFinished?.Validate();
+		playerGraze?.Validate();
 		bulletTimeStarted?.Validate();
 		bulletTimeEnding?.Validate();
 		enemyGunshot?.Validate();

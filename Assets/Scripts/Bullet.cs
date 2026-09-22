@@ -116,20 +116,35 @@ public class Bullet : MonoBehaviour
         Vector3 step = transform.forward * speed * deltaTime;
         Vector3 endPosition = startPosition + step;
 
-        if (HandleCollision(startPosition, endPosition))
+        bool hasCollision = TryGetCollision(startPosition, endPosition, out RaycastHit hit, out Vector3 travelEndPosition);
+        bool hitPlayer = hasCollision && hit.collider.GetComponentInParent<PlayerController>() != null;
+        if (!hitPlayer)
         {
+            UpdatePlayerGraze(startPosition, travelEndPosition, hasCollision);
+        }
+
+        if (hasCollision)
+        {
+            transform.position = travelEndPosition;
+            ProcessHit(hit, -step.normalized);
+            Release();
             return;
         }
 
-        transform.position = endPosition;
-        UpdatePlayerGraze(startPosition, endPosition);
+        transform.position = travelEndPosition;
 
         BulletTelegraphState targetTelegraphState = EvaluateTelegraphState();
         UpdateTelegraphState(targetTelegraphState);
     }
 
-    private bool HandleCollision(Vector3 startPosition, Vector3 endPosition)
+    private bool TryGetCollision(
+        Vector3 startPosition,
+        Vector3 endPosition,
+        out RaycastHit hit,
+        out Vector3 travelEndPosition)
     {
+        hit = default;
+        travelEndPosition = endPosition;
         Vector3 delta = endPosition - startPosition;
         float distance = delta.magnitude;
         if (distance <= Mathf.Epsilon)
@@ -138,17 +153,19 @@ public class Bullet : MonoBehaviour
         }
 
         Vector3 travelDirection = delta.normalized;
-        if (Physics.SphereCast(startPosition, collisionRadius, travelDirection, out RaycastHit hit, distance, hitMask, QueryTriggerInteraction.Ignore))
+        if (Physics.SphereCast(startPosition, collisionRadius, travelDirection, out hit, distance, hitMask, QueryTriggerInteraction.Ignore))
         {
-            ProcessHit(hit, -travelDirection);
-            Release();
+            travelEndPosition = startPosition + travelDirection * Mathf.Clamp(hit.distance, 0f, distance);
             return true;
         }
 
         return false;
     }
 
-    private void UpdatePlayerGraze(Vector3 startPosition, Vector3 endPosition)
+    private void UpdatePlayerGraze(
+        Vector3 startPosition,
+        Vector3 endPosition,
+        bool allowTerminalPhysicalPass)
     {
         if (!enablePlayerGraze || grazeResolved)
         {
@@ -179,7 +196,7 @@ public class Bullet : MonoBehaviour
             return;
         }
 
-        if (!HasPassedGrazePlayer(endPosition))
+        if (!HasPassedGrazePlayer(endPosition, allowTerminalPhysicalPass))
         {
             return;
         }
@@ -192,9 +209,9 @@ public class Bullet : MonoBehaviour
             pendingGrazePlayer.auraManager = auraManager;
         }
 
-        if (auraManager != null)
+        if (auraManager != null && auraManager.TryRegisterGraze())
         {
-            auraManager.TryRegisterGraze();
+            AudioService.PlayAt(GameAudioCueId.PlayerGraze, endPosition);
         }
 
         ClearPendingGraze();
@@ -232,7 +249,7 @@ public class Bullet : MonoBehaviour
         return null;
     }
 
-    private bool HasPassedGrazePlayer(Vector3 bulletPosition)
+    private bool HasPassedGrazePlayer(Vector3 bulletPosition, bool allowTerminalPhysicalPass)
     {
         if (pendingGrazePlayerColliders == null || pendingGrazeTravelDirection.sqrMagnitude <= Mathf.Epsilon)
         {
@@ -270,9 +287,11 @@ public class Bullet : MonoBehaviour
             return false;
         }
 
-        float outerRadius = Mathf.Max(0f, collisionRadius) + Mathf.Max(0f, grazeDistance);
+        float requiredClearance = allowTerminalPhysicalPass
+            ? Mathf.Max(0f, collisionRadius)
+            : Mathf.Max(0f, collisionRadius) + Mathf.Max(0f, grazeDistance);
         float bulletProjection = Vector3.Dot(bulletPosition, pendingGrazeTravelDirection);
-        return bulletProjection > forwardmostProjection + outerRadius;
+        return bulletProjection > forwardmostProjection + requiredClearance;
     }
 
     private static bool IsEligibleGrazePlayer(BodyController bodyController)

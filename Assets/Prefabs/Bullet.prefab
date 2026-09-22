@@ -282,7 +282,7 @@ MonoBehaviour:
   grazeMask:
     serializedVersion: 2
     m_Bits: 64
-  grazeTint: {r: 0.8160377, g: 0.9246056, b: 1, a: 1}
+  grazeTint: {r: 0.6839622, g: 0.87654775, b: 1, a: 1}
   lifetime: 10
 --- !u!136 &7999339846884550878
 CapsuleCollider:

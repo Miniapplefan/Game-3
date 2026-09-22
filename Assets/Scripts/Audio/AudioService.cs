@@ -82,8 +82,10 @@ public sealed class AudioLoopHandle
 public sealed class PreparedAudioCue
 {
 	internal AudioService Owner { get; }
+	internal GameAudioCueId CueId { get; }
 	internal AudioCueDefinition Definition { get; }
 	internal AudioClip Clip { get; }
+	internal UnityEngine.Audio.AudioMixerGroup OutputMixerGroup { get; }
 	internal float Pitch { get; }
 	internal int SessionGeneration { get; }
 	internal bool Consumed { get; set; }
@@ -92,11 +94,20 @@ public sealed class PreparedAudioCue
 		? Clip.length / Mathf.Max(0.01f, Mathf.Abs(Pitch))
 		: 0f;
 
-	internal PreparedAudioCue(AudioService owner, AudioCueDefinition definition, AudioClip clip, float pitch, int sessionGeneration)
+	internal PreparedAudioCue(
+		AudioService owner,
+		GameAudioCueId cueId,
+		AudioCueDefinition definition,
+		AudioClip clip,
+		UnityEngine.Audio.AudioMixerGroup outputMixerGroup,
+		float pitch,
+		int sessionGeneration)
 	{
 		Owner = owner;
+		CueId = cueId;
 		Definition = definition;
 		Clip = clip;
+		OutputMixerGroup = outputMixerGroup;
 		Pitch = pitch;
 		SessionGeneration = sessionGeneration;
 	}
@@ -114,6 +125,7 @@ public sealed class AudioService : MonoBehaviour
 		public AudioSource Source;
 		public Transform Target;
 		public AudioOneShotHandle Handle;
+		public GameAudioCueId? CueId;
 		public int Generation;
 		public float StartedAt;
 		public int Priority;
@@ -139,11 +151,20 @@ public sealed class AudioService : MonoBehaviour
 		public bool Active;
 	}
 
+	private sealed class SuccessivePitchState
+	{
+		public float BasePitch;
+		public int Step;
+		public float LastPlayedAt;
+	}
+
 	private static AudioService instance;
 	private static bool isShuttingDown;
 	private readonly List<Voice> voices = new List<Voice>(VoiceCount);
 	private readonly List<LoopVoice> loopVoices = new List<LoopVoice>(LoopVoiceCount);
-	private readonly Dictionary<GameAudioCueId, int> lastClipIndices = new Dictionary<GameAudioCueId, int>();
+	private readonly Dictionary<GameAudioCueId, int> lastVariantIndices = new Dictionary<GameAudioCueId, int>();
+	private readonly Dictionary<GameAudioCueId, float> lastOneShotStartedAt = new Dictionary<GameAudioCueId, float>();
+	private readonly Dictionary<GameAudioCueId, SuccessivePitchState> successivePitchStates = new Dictionary<GameAudioCueId, SuccessivePitchState>();
 	private readonly HashSet<string> warnings = new HashSet<string>();
 	private GameAudioCatalog catalog;
 	private int sessionGeneration;
@@ -368,7 +389,9 @@ public sealed class AudioService : MonoBehaviour
 		transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
 		DontDestroyOnLoad(gameObject);
 		catalog = Resources.Load<GameAudioCatalog>(CatalogResourcePath);
-		lastClipIndices.Clear();
+		lastVariantIndices.Clear();
+		lastOneShotStartedAt.Clear();
+		successivePitchStates.Clear();
 		warnings.Clear();
 		sessionGeneration = sessionGeneration == int.MaxValue ? 1 : sessionGeneration + 1;
 		if (sessionGeneration == 0)
@@ -395,6 +418,7 @@ public sealed class AudioService : MonoBehaviour
 			voice.Handle?.Invalidate(this);
 			voice.Handle = null;
 			voice.Target = null;
+			voice.CueId = null;
 			voice.Generation++;
 			voice.StartedAt = float.NegativeInfinity;
 			voice.Priority = 256;
@@ -597,14 +621,24 @@ public sealed class AudioService : MonoBehaviour
 			return null;
 		}
 
-		if (!TrySelectClip(cueId, cue, out AudioClip clip))
+		if (!TrySelectVariant(cueId, cue, out AudioClipVariant variant))
 		{
 			WarnOnce($"MissingClip:{cueId}", $"The {cueId} audio cue has no valid clips.");
 			return null;
 		}
 
 		float pitch = Random.Range(cue.MinPitch, cue.MaxPitch);
-		return new PreparedAudioCue(this, cue, clip, pitch, sessionGeneration);
+		UnityEngine.Audio.AudioMixerGroup outputMixerGroup = variant.OutputMixerGroup != null
+			? variant.OutputMixerGroup
+			: cue.OutputMixerGroup;
+		return new PreparedAudioCue(
+			this,
+			cueId,
+			cue,
+			variant.Clip,
+			outputMixerGroup,
+			pitch,
+			sessionGeneration);
 	}
 
 	private bool TryPlayPreparedOneShotInternal(
@@ -625,18 +659,31 @@ public sealed class AudioService : MonoBehaviour
 			return false;
 		}
 
-		Voice voice = SelectVoice(preparedCue.Definition.Priority);
+		float now = Time.realtimeSinceStartup;
+		if (IsWithinRetriggerCooldown(preparedCue.CueId, preparedCue.Definition, now))
+		{
+			return false;
+		}
+
+		Voice voice = SelectVoice(preparedCue.CueId, preparedCue.Definition);
 		if (voice == null || !PrepareSourceForPlayback(voice.Source))
 		{
 			return false;
 		}
 
+		float playbackPitch = ResolveSuccessivePitch(preparedCue, now);
 		ResetOneShotVoiceState(voice);
-		ConfigureSource(voice.Source, preparedCue.Definition, preparedCue.Clip, worldPosition);
-		voice.Source.pitch = preparedCue.Pitch;
+		ConfigureSource(
+			voice.Source,
+			preparedCue.Definition,
+			preparedCue.Clip,
+			preparedCue.OutputMixerGroup,
+			worldPosition);
+		voice.Source.pitch = playbackPitch;
 		voice.Target = followTarget;
+		voice.CueId = preparedCue.CueId;
 		voice.Priority = preparedCue.Definition.Priority;
-		voice.StartedAt = Time.realtimeSinceStartup;
+		voice.StartedAt = now;
 		voice.Generation++;
 		if (voice.Generation == 0)
 		{
@@ -651,6 +698,7 @@ public sealed class AudioService : MonoBehaviour
 		}
 
 		preparedCue.Consumed = true;
+		lastOneShotStartedAt[preparedCue.CueId] = now;
 		voice.Source.Play();
 		return true;
 	}
@@ -675,7 +723,7 @@ public sealed class AudioService : MonoBehaviour
 			return null;
 		}
 
-		if (!TrySelectClip(cueId, cue, out AudioClip clip))
+		if (!TrySelectVariant(cueId, cue, out AudioClipVariant variant))
 		{
 			WarnOnce($"MissingClip:{cueId}", $"The {cueId} audio cue has no valid clips.");
 			return null;
@@ -693,7 +741,10 @@ public sealed class AudioService : MonoBehaviour
 		{
 			return null;
 		}
-		ConfigureSource(voice.Source, cue, clip, followTarget.position);
+		UnityEngine.Audio.AudioMixerGroup outputMixerGroup = variant.OutputMixerGroup != null
+			? variant.OutputMixerGroup
+			: cue.OutputMixerGroup;
+		ConfigureSource(voice.Source, cue, variant.Clip, outputMixerGroup, followTarget.position);
 		voice.Source.loop = true;
 		voice.Target = followTarget;
 		voice.BaseVolume = cue.Volume;
@@ -714,60 +765,158 @@ public sealed class AudioService : MonoBehaviour
 		return handle;
 	}
 
-	private bool TrySelectClip(GameAudioCueId cueId, AudioCueDefinition cue, out AudioClip clip)
+	private bool TrySelectVariant(GameAudioCueId cueId, AudioCueDefinition cue, out AudioClipVariant variant)
 	{
-		clip = null;
-		IReadOnlyList<AudioClip> clips = cue.Clips;
-		if (clips == null || clips.Count == 0)
+		variant = null;
+		IReadOnlyList<AudioClipVariant> variants = cue.Variants;
+		if (variants == null || variants.Count == 0)
 		{
 			return false;
 		}
 
-		int validClipCount = 0;
-		for (int i = 0; i < clips.Count; i++)
+		int validVariantCount = 0;
+		for (int i = 0; i < variants.Count; i++)
 		{
-			if (clips[i] != null)
+			AudioClipVariant candidate = variants[i];
+			if (candidate != null && candidate.Clip != null && candidate.SelectionWeight > 0f)
 			{
-				validClipCount++;
+				validVariantCount++;
 			}
 		}
 
-		if (validClipCount == 0)
+		if (validVariantCount == 0)
 		{
 			return false;
 		}
 
-		bool hasLastIndex = lastClipIndices.TryGetValue(cueId, out int lastIndex);
+		bool hasLastIndex = lastVariantIndices.TryGetValue(cueId, out int lastIndex);
 		bool excludeLast = hasLastIndex
-			&& validClipCount > 1
+			&& validVariantCount > 1
 			&& lastIndex >= 0
-			&& lastIndex < clips.Count
-			&& clips[lastIndex] != null;
-		int selectableCount = validClipCount - (excludeLast ? 1 : 0);
-		int selectedOrdinal = Random.Range(0, selectableCount);
+			&& lastIndex < variants.Count
+			&& variants[lastIndex] != null
+			&& variants[lastIndex].Clip != null
+			&& variants[lastIndex].SelectionWeight > 0f;
 
-		for (int i = 0; i < clips.Count; i++)
+		float totalWeight = 0f;
+		for (int i = 0; i < variants.Count; i++)
 		{
-			if (clips[i] == null || (excludeLast && i == lastIndex))
+			AudioClipVariant candidate = variants[i];
+			if (candidate == null
+				|| candidate.Clip == null
+				|| candidate.SelectionWeight <= 0f
+				|| (excludeLast && i == lastIndex))
 			{
 				continue;
 			}
 
-			if (selectedOrdinal == 0)
-			{
-				clip = clips[i];
-				lastClipIndices[cueId] = i;
-				return true;
-			}
-
-			selectedOrdinal--;
+			totalWeight += candidate.SelectionWeight;
 		}
 
-		return false;
+		float selectedWeight = Random.value * totalWeight;
+		int fallbackIndex = -1;
+
+		for (int i = 0; i < variants.Count; i++)
+		{
+			AudioClipVariant candidate = variants[i];
+			if (candidate == null
+				|| candidate.Clip == null
+				|| candidate.SelectionWeight <= 0f
+				|| (excludeLast && i == lastIndex))
+			{
+				continue;
+			}
+
+			fallbackIndex = i;
+			selectedWeight -= candidate.SelectionWeight;
+			if (selectedWeight <= 0f)
+			{
+				variant = candidate;
+				lastVariantIndices[cueId] = i;
+				return true;
+			}
+		}
+
+		if (fallbackIndex < 0)
+		{
+			return false;
+		}
+
+		variant = variants[fallbackIndex];
+		lastVariantIndices[cueId] = fallbackIndex;
+		return true;
 	}
 
-	private Voice SelectVoice(int incomingPriority)
+	private bool IsWithinRetriggerCooldown(GameAudioCueId cueId, AudioCueDefinition cue, float now)
 	{
+		float cooldown = cue.MinRetriggerSeconds;
+		return cooldown > 0f
+			&& lastOneShotStartedAt.TryGetValue(cueId, out float lastStartedAt)
+			&& now - lastStartedAt < cooldown;
+	}
+
+	private float ResolveSuccessivePitch(PreparedAudioCue preparedCue, float now)
+	{
+		AudioCueDefinition cue = preparedCue.Definition;
+		float windowSeconds = cue.SuccessivePitchWindowSeconds;
+		float stepSemitones = cue.SuccessivePitchStepSemitones;
+		int maxSteps = cue.SuccessivePitchMaxSteps;
+		if (windowSeconds <= 0f || stepSemitones <= 0f || maxSteps <= 0)
+		{
+			successivePitchStates.Remove(preparedCue.CueId);
+			return preparedCue.Pitch;
+		}
+
+		if (!successivePitchStates.TryGetValue(preparedCue.CueId, out SuccessivePitchState state)
+			|| now - state.LastPlayedAt > windowSeconds)
+		{
+			state = new SuccessivePitchState
+			{
+				BasePitch = preparedCue.Pitch,
+				Step = 0
+			};
+			successivePitchStates[preparedCue.CueId] = state;
+		}
+		else
+		{
+			state.Step = Mathf.Min(state.Step + 1, maxSteps);
+		}
+
+		state.LastPlayedAt = now;
+		float semitoneOffset = state.Step * stepSemitones;
+		float pitchMultiplier = Mathf.Pow(2f, semitoneOffset / 12f);
+		return Mathf.Clamp(state.BasePitch * pitchMultiplier, -3f, 3f);
+	}
+
+	private Voice SelectVoice(GameAudioCueId cueId, AudioCueDefinition cue)
+	{
+		int maxInstances = cue.MaxSimultaneousOneShots;
+		if (maxInstances > 0)
+		{
+			int activeCount = 0;
+			Voice oldestMatchingVoice = null;
+			for (int i = 0; i < voices.Count; i++)
+			{
+				Voice candidate = voices[i];
+				if (!candidate.Source.isPlaying || candidate.CueId != cueId)
+				{
+					continue;
+				}
+
+				activeCount++;
+				if (oldestMatchingVoice == null || candidate.StartedAt < oldestMatchingVoice.StartedAt)
+				{
+					oldestMatchingVoice = candidate;
+				}
+			}
+
+			if (activeCount >= maxInstances && oldestMatchingVoice != null)
+			{
+				oldestMatchingVoice.Source.Stop();
+				return oldestMatchingVoice;
+			}
+		}
+
 		for (int i = 0; i < voices.Count; i++)
 		{
 			if (!voices[i].Source.isPlaying)
@@ -780,7 +929,7 @@ public sealed class AudioService : MonoBehaviour
 		for (int i = 0; i < voices.Count; i++)
 		{
 			Voice candidate = voices[i];
-			if (candidate.Priority < incomingPriority)
+			if (candidate.Priority < cue.Priority)
 			{
 				continue;
 			}
@@ -821,7 +970,10 @@ public sealed class AudioService : MonoBehaviour
 			Voice voice = voices[i];
 			if (!voice.Source.isPlaying)
 			{
-				if (voice.Target != null || voice.Handle != null || voice.FadeDuration > 0f)
+				if (voice.CueId.HasValue
+					|| voice.Target != null
+					|| voice.Handle != null
+					|| voice.FadeDuration > 0f)
 				{
 					ReleaseOneShotVoice(voice);
 				}
@@ -891,6 +1043,7 @@ public sealed class AudioService : MonoBehaviour
 		voice.Handle?.Invalidate(this);
 		voice.Handle = null;
 		voice.Target = null;
+		voice.CueId = null;
 		voice.FadeStartVolume = 0f;
 		voice.FadeDuration = 0f;
 		voice.FadeElapsed = 0f;
@@ -1039,12 +1192,17 @@ public sealed class AudioService : MonoBehaviour
 		ResetSource(voice.Source);
 	}
 
-	private static void ConfigureSource(AudioSource source, AudioCueDefinition cue, AudioClip clip, Vector3 worldPosition)
+	private static void ConfigureSource(
+		AudioSource source,
+		AudioCueDefinition cue,
+		AudioClip clip,
+		UnityEngine.Audio.AudioMixerGroup outputMixerGroup,
+		Vector3 worldPosition)
 	{
 		ResetSource(source);
 		source.transform.position = worldPosition;
 		source.clip = clip;
-		source.outputAudioMixerGroup = cue.OutputMixerGroup;
+		source.outputAudioMixerGroup = outputMixerGroup;
 		source.volume = cue.Volume;
 		source.pitch = Random.Range(cue.MinPitch, cue.MaxPitch);
 		source.spatialBlend = cue.SpatialBlend;
