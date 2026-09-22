@@ -17,6 +17,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4672
   Spread: {x: 0, y: 0, z: 0}
+  npcAccuracy: 0.5
   npcInnerConeAngle: 3
   npcInnerConeRadius: 0.15
   npcExcludedLowerArcDegrees: 0

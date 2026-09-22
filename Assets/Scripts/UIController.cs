@@ -7,6 +7,10 @@ using TMPro;
 public class UIController : MonoBehaviour
 {
     BodyController bodyController;
+
+    [Header("Death Overlay")]
+    [SerializeField] private Canvas deathOverlayCanvas;
+
     public GameObject heatGauge;
     Vector3 heatGaugeScaleCache;
     public TMP_Text auraIndicator;
@@ -74,10 +78,24 @@ public class UIController : MonoBehaviour
     private float colorGradeTransitionElapsed;
     private float colorGradeTransitionDuration;
 
+    void Awake()
+    {
+        bodyController = GetComponent<BodyController>();
+    }
+
+    void OnEnable()
+    {
+        if (bodyController != null)
+        {
+            bodyController.Died += HandleBodyDied;
+        }
+
+        SetDeathOverlayVisible(bodyController != null && !bodyController.isAI && bodyController.isDead);
+    }
+
     // Start is called before the first frame update
     void Start()
     {
-        bodyController = GetComponent<BodyController>();
         heatGaugeScaleCache = heatGauge.transform.localScale;
         // healthIndicator.text = bodyController.head.health.ToString();
         // bodyController.heatContainer.OnOverheated += enableOverheatText;
@@ -94,7 +112,30 @@ public class UIController : MonoBehaviour
 
     void OnDisable()
     {
+        if (bodyController != null)
+        {
+            bodyController.Died -= HandleBodyDied;
+        }
+
         RestoreColorGradeFeedbackIfNeeded(colorGradeTarget);
+    }
+
+    void HandleBodyDied(BodyController deadBody)
+    {
+        if (deadBody != bodyController || deadBody.isAI)
+        {
+            return;
+        }
+
+        SetDeathOverlayVisible(true);
+    }
+
+    void SetDeathOverlayVisible(bool visible)
+    {
+        if (deathOverlayCanvas != null)
+        {
+            deathOverlayCanvas.enabled = visible;
+        }
     }
 
     void FixedUpdate()

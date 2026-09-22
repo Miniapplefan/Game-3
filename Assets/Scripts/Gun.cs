@@ -30,6 +30,9 @@ public readonly struct GunReloadAudioInfo
 
 public class Gun : MonoBehaviour, IEnemyPoolResettable
 {
+	private const int NpcAccuracyMaximumBagSize = 100;
+	private const float NpcAccuracyFractionTolerance = 0.005f;
+
 	public GunDataScriptableObject gunData;
 	public Transform ModelRoot => modelRoot;
 	public Transform GripTransform => mountPoints != null ? mountPoints.Grip : null;
@@ -75,6 +78,9 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 	private BodyController bodyController;
 	private ActiveRagdollController activeRagdollController;
 	private GunSelector gunSelector;
+	private bool[] npcAccuracyBag;
+	private int npcAccuracyBagIndex;
+	private float npcAccuracyBagValue = float.NaN;
 
 
 	public void SetParent(GameObject parent, Rigidbody weap, GunSelector ownerSelector = null)
@@ -179,6 +185,8 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 
 	public void ResetForPoolReuse()
 	{
+		ResetNpcAccuracyBag();
+
 		if (gunData == null || gunData.shootConfig == null)
 		{
 			return;
@@ -281,6 +289,7 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 			}
 		}
 
+		bool npcAccurateRound = isAI && DrawNpcAccuracyOutcome();
 		ApplyMovementAimShotImpulse();
 		Dictionary<BodyController, Vector3> enemiesHitThisShot = null;
 
@@ -290,7 +299,10 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 			chargeTimeLeftCache = gunData.shootConfig.fireRate;
 			shootSystem.Play();
 			Vector3 shotCenterDirection = GetNpcShotCenterDirection();
-			Vector3 shootDirection = GetSpreadDirection(shotCenterDirection);
+			bool isAccurateNpcProjectile = npcAccurateRound && i == 0;
+			Vector3 shootDirection = isAccurateNpcProjectile
+				? shotCenterDirection.normalized
+				: GetSpreadDirection(shotCenterDirection);
 			if (isAI)
 			{
 				shootDirection = ClampDirectionOutsideNpcInnerCone(shotCenterDirection, shootDirection);
@@ -460,6 +472,98 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		return shootDirection.normalized;
+	}
+
+	private bool DrawNpcAccuracyOutcome()
+	{
+		float accuracy = Mathf.Clamp01(gunData.shootConfig.npcAccuracy);
+		if (float.IsNaN(npcAccuracyBagValue) || !Mathf.Approximately(npcAccuracyBagValue, accuracy))
+		{
+			npcAccuracyBag = null;
+			npcAccuracyBagIndex = 0;
+			npcAccuracyBagValue = accuracy;
+		}
+
+		if (accuracy <= 0f)
+		{
+			return false;
+		}
+
+		if (accuracy >= 1f)
+		{
+			return true;
+		}
+
+		if (npcAccuracyBag == null || npcAccuracyBagIndex >= npcAccuracyBag.Length)
+		{
+			BuildAndShuffleNpcAccuracyBag(accuracy);
+		}
+
+		return npcAccuracyBag[npcAccuracyBagIndex++];
+	}
+
+	private void BuildAndShuffleNpcAccuracyBag(float accuracy)
+	{
+		GetNpcAccuracyFraction(accuracy, out int accurateOutcomeCount, out int bagSize);
+		npcAccuracyBag = new bool[bagSize];
+		npcAccuracyBagIndex = 0;
+
+		for (int i = 0; i < accurateOutcomeCount; i++)
+		{
+			npcAccuracyBag[i] = true;
+		}
+
+		for (int i = npcAccuracyBag.Length - 1; i > 0; i--)
+		{
+			int swapIndex = Random.Range(0, i + 1);
+			bool outcome = npcAccuracyBag[i];
+			npcAccuracyBag[i] = npcAccuracyBag[swapIndex];
+			npcAccuracyBag[swapIndex] = outcome;
+		}
+	}
+
+	private static void GetNpcAccuracyFraction(float accuracy, out int accurateOutcomeCount, out int bagSize)
+	{
+		float clampedAccuracy = Mathf.Clamp01(accuracy);
+		if (clampedAccuracy <= 0f)
+		{
+			accurateOutcomeCount = 0;
+			bagSize = 1;
+			return;
+		}
+
+		if (clampedAccuracy >= 1f)
+		{
+			accurateOutcomeCount = 1;
+			bagSize = 1;
+			return;
+		}
+
+		for (int denominator = 2; denominator <= NpcAccuracyMaximumBagSize; denominator++)
+		{
+			int numerator = Mathf.Clamp(Mathf.RoundToInt(clampedAccuracy * denominator), 1, denominator - 1);
+			float representedAccuracy = (float)numerator / denominator;
+			if (Mathf.Abs(representedAccuracy - clampedAccuracy) <= NpcAccuracyFractionTolerance + Mathf.Epsilon)
+			{
+				accurateOutcomeCount = numerator;
+				bagSize = denominator;
+				return;
+			}
+		}
+
+		bagSize = NpcAccuracyMaximumBagSize;
+		accurateOutcomeCount = Mathf.Clamp(
+			Mathf.RoundToInt(clampedAccuracy * bagSize),
+			1,
+			bagSize - 1
+		);
+	}
+
+	private void ResetNpcAccuracyBag()
+	{
+		npcAccuracyBag = null;
+		npcAccuracyBagIndex = 0;
+		npcAccuracyBagValue = float.NaN;
 	}
 
 	private Vector3 ClampDirectionOutsideNpcInnerCone(Vector3 centerForward, Vector3 shootDirection)

@@ -7,6 +7,9 @@ public class ShootConfigScriptableObject : ScriptableObject
 	public int powerRequired = 1;
 	public LayerMask HitMask;
 	public Vector3 Spread = new Vector3(0.1f, 0.1f, 0.1f);
+	[Tooltip("Shuffled-bag chance that an NPC round uses the accurate trajectory. Does not affect player-fired rounds.")]
+	[Range(0f, 1f)]
+	public float npcAccuracy = 0.5f;
 	[Min(0f)]
 	public float npcInnerConeAngle = 3f;
 	[Min(0f)]

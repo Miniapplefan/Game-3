@@ -17,6 +17,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4672
   Spread: {x: 0.03, y: 0.03, z: 0}
+  npcAccuracy: 0.5
   rawDamage: 1
   maxRange: 100
   isBurst: 1

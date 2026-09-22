@@ -18,7 +18,7 @@ MonoBehaviour:
     clips:
     - {fileID: 8300000, guid: f1a9fea6abc7c45518d6abfea2d22314, type: 3}
     outputMixerGroup: {fileID: 484738476250506130, guid: 0673a15e2a1d94a158df9d4179b29533, type: 2}
-    volume: 0.23
+    volume: 0.2
     pitchRange: {x: 0.97, y: 1.03}
     spatialBlend: 1
     minDistance: 2
@@ -134,7 +134,7 @@ MonoBehaviour:
     pitchRange: {x: 1, y: 1}
     spatialBlend: 1
     minDistance: 0.5
-    maxDistance: 10
+    maxDistance: 20
     rolloffMode: 0
     priority: 32
     loop: 1
