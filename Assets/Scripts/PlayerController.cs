@@ -28,6 +28,7 @@ public class PlayerController : MonoBehaviour, InputController
     private bool pressingRestart;
     private bool pressingReload;
     private bool pressingShift;
+    private bool gameplayInputEnabled = true;
 
     public float sensitivity;
     [Min(0f), Tooltip("Mouse-look delta required to interrupt aim assist while the arm is moving toward its target.")]
@@ -231,9 +232,51 @@ public class PlayerController : MonoBehaviour, InputController
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
+    public void SetGameplayInputEnabled(bool enabled)
+    {
+        gameplayInputEnabled = enabled;
+
+        if (!enabled)
+        {
+            ClearGameplayInput();
+        }
+    }
+
+    private void ClearGameplayInput()
+    {
+        mouseXrotation = 0f;
+        mouseYrotation = 0f;
+
+        pressingForward = false;
+        pressingBackward = false;
+        pressingLeft = false;
+        pressingRight = false;
+        pressingAimRight = false;
+        pressingAimLeft = false;
+        pressingAimMiddle = false;
+        pressingSiphon = false;
+        pressingRestart = false;
+        pressingReload = false;
+        pressingShift = false;
+
+        pressingFire1 = false;
+        pressingFire2 = false;
+        pressingFire3 = false;
+        pendingFire1Down = false;
+        pendingFire2Down = false;
+        pendingScrollDirection = 0;
+        scrollTriggerArmed = true;
+    }
+
     // Update is called once per frame
     void Update()
     {
+        if (!gameplayInputEnabled)
+        {
+            ClearGameplayInput();
+            return;
+        }
+
         mouseYrotation = Input.GetAxis("Mouse X") * sensitivity * Time.deltaTime;
         mouseXrotation = Input.GetAxis("Mouse Y") * sensitivity * Time.deltaTime;
         mouseXrotation = Mathf.Clamp(mouseXrotation, -90f, 90f);

@@ -86,6 +86,8 @@ public class AuraManager : MonoBehaviour
     [SerializeField] private AuraGripPulseSlot threshold2Pulse = new AuraGripPulseSlot(0.66f);
 
     public float AuraFloat => currentAura; // only for UI/inspection
+    public float BaseAura => baseAura;
+    public float AuraPressureThreshold => auraPressureThreshold;
     public float AuraGripNormalized => maxAuraGrip > 0f ? Mathf.Clamp01(currentAuraGrip / maxAuraGrip) : 0f;
     public bool HasThreshold1Pulse => threshold1Pulse != null && threshold1Pulse.hasPulse;
     public bool HasThreshold2Pulse => threshold2Pulse != null && threshold2Pulse.hasPulse;

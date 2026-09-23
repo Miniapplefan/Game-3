@@ -2,7 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using CameraProjectionRenderingToolkit;
 using UnityEngine;
+using UnityEngine.Rendering.PostProcessing;
 using TMPro;
+using UnityMin = UnityEngine.MinAttribute;
 
 public class UIController : MonoBehaviour
 {
@@ -34,9 +36,9 @@ public class UIController : MonoBehaviour
     [SerializeField] private bool enableBulletTimeCprtFeedback = true;
     [SerializeField] private CPRT cprtTarget;
     [SerializeField, Range(0f, 1f)] private float bulletTimeCprtIntensity = 0.35f;
-    [SerializeField, Min(0f)] private float cprtFeedbackEnterDuration = 0.08f;
-    [SerializeField, Min(0f)] private float cprtFeedbackExitDuration = 0.2f;
-    [SerializeField, Min(0f)] private float cprtRestoreLeadTime = 1f;
+    [SerializeField, UnityMin(0f)] private float cprtFeedbackEnterDuration = 0.08f;
+    [SerializeField, UnityMin(0f)] private float cprtFeedbackExitDuration = 0.2f;
+    [SerializeField, UnityMin(0f)] private float cprtRestoreLeadTime = 1f;
 
     [Header("Bullet Time Color Grading")]
     [SerializeField] private bool enableBulletTimeColorGrading = true;
@@ -44,9 +46,18 @@ public class UIController : MonoBehaviour
     [SerializeField] private Color bulletTimeColorTint = new Color(0.7215686f, 0.8509804f, 1f, 1f);
     [SerializeField, Range(0f, 2f)] private float bulletTimeColorSaturation = 0.55f;
     [SerializeField, Range(0f, 1f)] private float bulletTimeColorGradeIntensity = 0.55f;
-    [SerializeField, Min(0f)] private float colorGradeEnterDuration = 0.2f;
-    [SerializeField, Min(0f)] private float colorGradeExitDuration = 0.5f;
-    [SerializeField, Min(0f)] private float colorGradeRestoreLeadTime = 1.4f;
+    [SerializeField, UnityMin(0f)] private float colorGradeEnterDuration = 0.2f;
+    [SerializeField, UnityMin(0f)] private float colorGradeExitDuration = 0.5f;
+    [SerializeField, UnityMin(0f)] private float colorGradeRestoreLeadTime = 1.4f;
+
+    [Header("Aura Bloom")]
+    [SerializeField] private bool enableAuraBloom = true;
+    [SerializeField] private PostProcessVolume auraBloomVolume;
+    [SerializeField, UnityMin(0f)] private float maximumAuraBloomIntensity = 30f;
+    [SerializeField, UnityMin(0f)] private float fullBoostAuraAbovePressureThreshold = 2f;
+    [SerializeField] private AnimationCurve auraBloomRamp = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+    [SerializeField, UnityMin(0f)] private float auraBloomRiseDuration = 0.4f;
+    [SerializeField, UnityMin(0f)] private float auraBloomFallDuration = 1.25f;
 
     Color color;
     private const float PulseInvisibleAlpha = 0f;
@@ -77,6 +88,10 @@ public class UIController : MonoBehaviour
     private float colorGradeTransitionTargetIntensity;
     private float colorGradeTransitionElapsed;
     private float colorGradeTransitionDuration;
+    private Bloom auraBloomSettings;
+    private bool auraBloomInitialized;
+    private float currentAuraBloomIntensity;
+    private float auraBloomVelocity;
 
     void Awake()
     {
@@ -106,6 +121,7 @@ public class UIController : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        UpdateAuraBloom();
         UpdateBulletTimeCprtFeedback();
         UpdateBulletTimeColorGrading();
     }
@@ -118,6 +134,7 @@ public class UIController : MonoBehaviour
         }
 
         RestoreColorGradeFeedbackIfNeeded(colorGradeTarget);
+        RestoreAuraBloom();
     }
 
     void HandleBodyDied(BodyController deadBody)
@@ -276,6 +293,138 @@ public class UIController : MonoBehaviour
         Color spriteColor = pulseSprite.color;
         spriteColor.a = alpha;
         pulseSprite.color = spriteColor;
+    }
+
+    void UpdateAuraBloom()
+    {
+        if (bodyController == null || bodyController.isAI || !enableAuraBloom)
+        {
+            RestoreAuraBloom();
+            return;
+        }
+
+        AuraManager auraManager = bodyController.auraManager;
+        if (auraManager == null)
+        {
+            auraManager = bodyController.GetComponent<AuraManager>();
+            bodyController.auraManager = auraManager;
+        }
+
+        if (auraManager == null)
+        {
+            RestoreAuraBloom();
+            return;
+        }
+
+        if (!TryResolveAuraBloom())
+        {
+            return;
+        }
+
+        float targetIntensity = EvaluateAuraBloomIntensity(auraManager);
+        if (!auraBloomInitialized)
+        {
+            currentAuraBloomIntensity = targetIntensity;
+            auraBloomVelocity = 0f;
+            auraBloomInitialized = true;
+        }
+        else
+        {
+            float smoothTime = targetIntensity > currentAuraBloomIntensity
+                ? Mathf.Max(0f, auraBloomRiseDuration)
+                : Mathf.Max(0f, auraBloomFallDuration);
+            currentAuraBloomIntensity = smoothTime <= 0f
+                ? targetIntensity
+                : Mathf.SmoothDamp(
+                    currentAuraBloomIntensity,
+                    targetIntensity,
+                    ref auraBloomVelocity,
+                    smoothTime,
+                    Mathf.Infinity,
+                    Time.unscaledDeltaTime);
+
+            if (Mathf.Abs(currentAuraBloomIntensity - targetIntensity) < 0.0001f)
+            {
+                currentAuraBloomIntensity = targetIntensity;
+                auraBloomVelocity = 0f;
+            }
+        }
+
+        auraBloomSettings.intensity.value = currentAuraBloomIntensity;
+    }
+
+    float EvaluateAuraBloomIntensity(AuraManager auraManager)
+    {
+        float baseAura = auraManager.BaseAura;
+        float fullBoostAura = Mathf.Max(
+            baseAura + 0.0001f,
+            auraManager.AuraPressureThreshold + Mathf.Max(0f, fullBoostAuraAbovePressureThreshold));
+        float normalizedAura = Mathf.InverseLerp(baseAura, fullBoostAura, auraManager.AuraFloat);
+        float rampValue = auraBloomRamp != null && auraBloomRamp.length > 0
+            ? auraBloomRamp.Evaluate(normalizedAura)
+            : Mathf.SmoothStep(0f, 1f, normalizedAura);
+        return Mathf.Clamp01(rampValue) * Mathf.Max(0f, maximumAuraBloomIntensity);
+    }
+
+    bool TryResolveAuraBloom()
+    {
+        if (auraBloomSettings != null)
+        {
+            return true;
+        }
+
+        if (auraBloomVolume == null)
+        {
+            PostProcessVolume[] volumes = FindObjectsOfType<PostProcessVolume>(true);
+            for (int i = 0; i < volumes.Length; i++)
+            {
+                PostProcessVolume candidate = volumes[i];
+                if (!candidate.enabled || !candidate.gameObject.activeInHierarchy || candidate.sharedProfile == null)
+                {
+                    continue;
+                }
+
+                Bloom candidateBloom;
+                if (!candidate.sharedProfile.TryGetSettings(out candidateBloom))
+                {
+                    continue;
+                }
+
+                bool isBetterCandidate = auraBloomVolume == null
+                    || candidate.isGlobal && !auraBloomVolume.isGlobal
+                    || candidate.isGlobal == auraBloomVolume.isGlobal && candidate.priority > auraBloomVolume.priority;
+                if (isBetterCandidate)
+                {
+                    auraBloomVolume = candidate;
+                }
+            }
+        }
+
+        if (auraBloomVolume == null || auraBloomVolume.sharedProfile == null)
+        {
+            return false;
+        }
+
+        PostProcessProfile runtimeProfile = auraBloomVolume.profile;
+        if (runtimeProfile == null || !runtimeProfile.TryGetSettings(out auraBloomSettings))
+        {
+            return false;
+        }
+
+        auraBloomSettings.intensity.overrideState = true;
+        return true;
+    }
+
+    void RestoreAuraBloom()
+    {
+        if (auraBloomSettings != null)
+        {
+            auraBloomSettings.intensity.value = 0f;
+        }
+
+        currentAuraBloomIntensity = 0f;
+        auraBloomVelocity = 0f;
+        auraBloomInitialized = false;
     }
 
     void UpdateBulletTimeCprtFeedback()
