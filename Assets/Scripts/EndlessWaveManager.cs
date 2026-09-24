@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -14,6 +15,11 @@ public class EndlessWaveManager : MonoBehaviour
 
 	[SerializeField, Tooltip("Empty scene objects used as enemy spawn positions and rotations.")]
 	private List<Transform> spawnPoints = new List<Transform>();
+
+	[Header("Difficulty Profiles")]
+	[SerializeField] private EndlessWaveDifficultyProfile easyDifficultyProfile;
+	[SerializeField] private EndlessWaveDifficultyProfile mediumDifficultyProfile;
+	[SerializeField] private EndlessWaveDifficultyProfile hardDifficultyProfile;
 
 	[Header("Mode")]
 	[SerializeField, Tooltip("When enabled, stop all spawning after the configured number of full waves. When disabled, spawning continues endlessly.")]
@@ -61,6 +67,13 @@ public class EndlessWaveManager : MonoBehaviour
 	[SerializeField, Tooltip("Begin spawning automatically when this component becomes enabled.")]
 	private bool autoStart = true;
 
+	[Header("Run Results")]
+	[SerializeField] private GameObject clearResultsCanvas;
+	[SerializeField] private TMP_Text killsText;
+	[SerializeField] private TMP_Text timeText;
+	[SerializeField] private TMP_Text difficultyText;
+	[SerializeField, Min(0f)] private float clearResultsDelay = 10f;
+
 	private readonly List<TrackedEnemy> trackedEnemies = new List<TrackedEnemy>();
 	private readonly List<Transform> validSpawnPoints = new List<Transform>();
 	private readonly List<Transform> waveCandidates = new List<Transform>();
@@ -68,12 +81,20 @@ public class EndlessWaveManager : MonoBehaviour
 	private readonly List<PooledEnemy> pooledEnemies = new List<PooledEnemy>();
 	private readonly HashSet<Transform> warnedOffMeshSpawnPoints = new HashSet<Transform>();
 	private Coroutine spawnCoroutine;
+	private Coroutine clearResultsCoroutine;
 	private Transform poolRoot;
 	private bool hasSpawnedOpeningWave;
+	private bool hasStartedRun;
+	private bool hasCompletedRun;
+	private float runStartTime;
+	private float completedRunTime;
+	private RoomDifficulty activeDifficulty = RoomDifficulty.Easy;
 
 	public int ActiveEnemyCount { get; private set; }
 	public int TrackedCorpseCount { get; private set; }
 	public int WavesSpawned { get; private set; }
+	public int EnemiesDefeated { get; private set; }
+	public float CompletedRunTime => completedRunTime;
 	public int AvailablePoolCount => availableEnemies.Count;
 	public int TotalPoolCount => pooledEnemies.Count;
 	public bool IsSpawning => spawnCoroutine != null;
@@ -142,8 +163,93 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private void Awake()
 	{
+		ApplySelectedDifficulty();
+		ResetRunResults();
+		RebuildSpawnPointsFromChildren();
 		EnsurePoolRoot();
 		PrewarmPool();
+	}
+
+	private void ApplySelectedDifficulty()
+	{
+		RoomDifficulty selectedDifficulty = RoomDifficultySelection.Get();
+		activeDifficulty = selectedDifficulty;
+		EndlessWaveDifficultyProfile selectedProfile = GetDifficultyProfile(selectedDifficulty);
+
+		if (selectedProfile == null && selectedDifficulty != RoomDifficulty.Easy)
+		{
+			Debug.LogWarning(
+				$"No profile is assigned for {selectedDifficulty}; falling back to Easy.",
+				this);
+			activeDifficulty = RoomDifficulty.Easy;
+			selectedProfile = easyDifficultyProfile;
+		}
+
+		if (selectedProfile == null)
+		{
+			Debug.LogError(
+				$"{nameof(EndlessWaveManager)} has no usable difficulty profile. Inspector values will be used.",
+				this);
+			NormalizeRuntimeValues();
+			return;
+		}
+
+		ApplyDifficultyProfile(selectedProfile);
+	}
+
+	private EndlessWaveDifficultyProfile GetDifficultyProfile(RoomDifficulty difficulty)
+	{
+		switch (difficulty)
+		{
+			case RoomDifficulty.Medium:
+				return mediumDifficultyProfile;
+			case RoomDifficulty.Hard:
+				return hardDifficultyProfile;
+			default:
+				return easyDifficultyProfile;
+		}
+	}
+
+	public void ApplyDifficultyProfile(EndlessWaveDifficultyProfile profile)
+	{
+		if (profile == null)
+		{
+			Debug.LogError("Cannot apply a null endless-wave difficulty profile.", this);
+			return;
+		}
+
+		limitWaveCount = profile.LimitWaveCount;
+		numberOfWaves = profile.NumberOfWaves;
+		maxActiveEnemies = profile.MaxActiveEnemies;
+		waveSize = profile.WaveSize;
+		minWaveInterval = profile.MinWaveInterval;
+		maxWaveInterval = profile.MaxWaveInterval;
+		minTrickleInterval = profile.MinTrickleInterval;
+		maxTrickleInterval = profile.MaxTrickleInterval;
+		NormalizeRuntimeValues();
+	}
+
+	private void RebuildSpawnPointsFromChildren()
+	{
+		if (spawnPoints == null)
+		{
+			spawnPoints = new List<Transform>();
+		}
+		else
+		{
+			spawnPoints.Clear();
+		}
+
+		for (int i = 0; i < transform.childCount; i++)
+		{
+			Transform child = transform.GetChild(i);
+			if (child == poolRoot || child.name == "Enemy Pool")
+			{
+				continue;
+			}
+
+			spawnPoints.Add(child);
+		}
 	}
 
 	private void OnEnable()
@@ -166,6 +272,12 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private void OnDestroy()
 	{
+		if (clearResultsCoroutine != null)
+		{
+			StopCoroutine(clearResultsCoroutine);
+			clearResultsCoroutine = null;
+		}
+
 		for (int i = pooledEnemies.Count - 1; i >= 0; i--)
 		{
 			PooledEnemy enemy = pooledEnemies[i];
@@ -190,6 +302,7 @@ public class EndlessWaveManager : MonoBehaviour
 		corpseLifetime = Mathf.Max(0f, corpseLifetime);
 		prewarmPoolSize = Mathf.Max(0, prewarmPoolSize);
 		navMeshSpawnSampleRadius = Mathf.Max(0.1f, navMeshSpawnSampleRadius);
+		clearResultsDelay = Mathf.Max(0f, clearResultsDelay);
 
 		NormalizeIntervalRange(ref minWaveInterval, ref maxWaveInterval);
 		NormalizeIntervalRange(ref minTrickleInterval, ref maxTrickleInterval);
@@ -212,6 +325,12 @@ public class EndlessWaveManager : MonoBehaviour
 		{
 			Debug.LogError($"{nameof(EndlessWaveManager)} cannot start: {validationError}", this);
 			return;
+		}
+
+		if (!hasStartedRun)
+		{
+			hasStartedRun = true;
+			runStartTime = Time.unscaledTime;
 		}
 
 		if (!hasSpawnedOpeningWave && !HasReachedWaveLimit)
@@ -391,6 +510,7 @@ public class EndlessWaveManager : MonoBehaviour
 					enemy.CleanupTime = Time.time + corpseLifetime;
 					ActiveEnemyCount = Mathf.Max(0, ActiveEnemyCount - 1);
 					TrackedCorpseCount++;
+					EnemiesDefeated++;
 				}
 			}
 
@@ -400,6 +520,69 @@ public class EndlessWaveManager : MonoBehaviour
 				RemoveTrackedEnemyAt(i, EnemyState.Corpse);
 			}
 		}
+
+		TryCompleteRun();
+	}
+
+	private void ResetRunResults()
+	{
+		hasStartedRun = false;
+		hasCompletedRun = false;
+		runStartTime = 0f;
+		completedRunTime = 0f;
+		EnemiesDefeated = 0;
+
+		if (clearResultsCanvas != null)
+		{
+			clearResultsCanvas.SetActive(false);
+		}
+	}
+
+	private void TryCompleteRun()
+	{
+		if (!hasStartedRun
+			|| hasCompletedRun
+			|| !HasReachedWaveLimit
+			|| ActiveEnemyCount > 0)
+		{
+			return;
+		}
+
+		hasCompletedRun = true;
+		completedRunTime = Mathf.Max(0f, Time.unscaledTime - runStartTime);
+		clearResultsCoroutine = StartCoroutine(ShowClearResultsAfterDelay());
+	}
+
+	private IEnumerator ShowClearResultsAfterDelay()
+	{
+		if (clearResultsDelay > 0f)
+		{
+			yield return new WaitForSecondsRealtime(clearResultsDelay);
+		}
+
+		if (killsText != null)
+		{
+			killsText.text = $"Kills: {EnemiesDefeated}";
+		}
+
+		if (timeText != null)
+		{
+			int minutes = Mathf.FloorToInt(completedRunTime / 60f);
+			float seconds = completedRunTime - minutes * 60f;
+			timeText.text = $"Time: {minutes:00}:{seconds:00.00}";
+		}
+
+		if (difficultyText != null)
+		{
+			difficultyText.text = $"Difficulty: {activeDifficulty}";
+		}
+
+		if (clearResultsCanvas != null)
+		{
+			clearResultsCanvas.SetActive(true);
+		}
+
+		clearResultsCoroutine = null;
 	}
 
 	private void RemoveTrackedEnemyAt(int index, EnemyState state)
@@ -789,6 +972,7 @@ public class EndlessWaveManager : MonoBehaviour
 		corpseLifetime = Mathf.Max(0f, corpseLifetime);
 		prewarmPoolSize = Mathf.Max(0, prewarmPoolSize);
 		navMeshSpawnSampleRadius = Mathf.Max(0.1f, navMeshSpawnSampleRadius);
+		clearResultsDelay = Mathf.Max(0f, clearResultsDelay);
 		NormalizeIntervalRange(ref minWaveInterval, ref maxWaveInterval);
 		NormalizeIntervalRange(ref minTrickleInterval, ref maxTrickleInterval);
 	}

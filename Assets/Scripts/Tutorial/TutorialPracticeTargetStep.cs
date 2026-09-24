@@ -15,6 +15,9 @@ public class TutorialPracticeTargetStep : MonoBehaviour
     [Header("Targets")]
     public List<TutorialPracticeTargetSpawn> targetSpawns = new List<TutorialPracticeTargetSpawn>();
 
+    [Tooltip("Scene objects to deactivate while this tutorial step is active.")]
+    public List<GameObject> targetDespawns = new List<GameObject>();
+
     [Header("Inputs")]
     public List<TutorialStepInputAction> requiredInputs = new List<TutorialStepInputAction>();
 
@@ -34,6 +37,7 @@ public class TutorialPracticeTargetStep : MonoBehaviour
     readonly List<PracticeTarget> subscribedTargets = new List<PracticeTarget>();
     readonly List<BodyController> subscribedBodyTargets = new List<BodyController>();
     readonly List<GameObject> spawnedTargetObjects = new List<GameObject>();
+    readonly Dictionary<GameObject, bool> targetDespawnActiveStates = new Dictionary<GameObject, bool>();
 
     InputController playerInput;
     bool hasCompleted;
@@ -45,6 +49,7 @@ public class TutorialPracticeTargetStep : MonoBehaviour
         ResetStepState();
         ResolvePlayerInput();
         ApplyTutorialText();
+        ApplyTargetDespawns();
         ActivateTrackedTargets();
         TryCompleteStep();
     }
@@ -54,6 +59,7 @@ public class TutorialPracticeTargetStep : MonoBehaviour
         StopRetryCoroutine();
         UnsubscribeFromTargets();
         DestroySpawnedTargets();
+        RestoreTargetDespawns();
     }
 
     void Update()
@@ -131,6 +137,42 @@ public class TutorialPracticeTargetStep : MonoBehaviour
         {
             tutorialText.text = tutorialTextValue;
         }
+    }
+
+    void ApplyTargetDespawns()
+    {
+        targetDespawnActiveStates.Clear();
+
+        for (int i = 0; i < targetDespawns.Count; i++)
+        {
+            GameObject targetDespawn = targetDespawns[i];
+            if (targetDespawn == null || targetDespawnActiveStates.ContainsKey(targetDespawn))
+            {
+                continue;
+            }
+
+            if (transform.IsChildOf(targetDespawn.transform))
+            {
+                Debug.LogWarning($"TutorialPracticeTargetStep on {name} cannot despawn itself or one of its parent objects.", this);
+                continue;
+            }
+
+            targetDespawnActiveStates.Add(targetDespawn, targetDespawn.activeSelf);
+            targetDespawn.SetActive(false);
+        }
+    }
+
+    void RestoreTargetDespawns()
+    {
+        foreach (KeyValuePair<GameObject, bool> targetDespawnState in targetDespawnActiveStates)
+        {
+            if (targetDespawnState.Key != null)
+            {
+                targetDespawnState.Key.SetActive(targetDespawnState.Value);
+            }
+        }
+
+        targetDespawnActiveStates.Clear();
     }
 
     void ActivateTrackedTargets()

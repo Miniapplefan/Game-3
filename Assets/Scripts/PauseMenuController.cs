@@ -12,6 +12,9 @@ public class PauseMenuController : MonoBehaviour
     [SerializeField] private Slider sensitivitySlider;
     [SerializeField] private Button tutorialButton;
     [SerializeField] private Button roomButton;
+    [SerializeField] private Toggle easyToggle;
+    [SerializeField] private Toggle mediumToggle;
+    [SerializeField] private Toggle hardToggle;
     [SerializeField] private PlayerController playerController;
 
     private bool isOpen;
@@ -45,6 +48,21 @@ public class PauseMenuController : MonoBehaviour
         if (roomButton == null)
         {
             roomButton = FindButton("RoomButton");
+        }
+
+        if (easyToggle == null)
+        {
+            easyToggle = FindToggle("Toggle-Easy");
+        }
+
+        if (mediumToggle == null)
+        {
+            mediumToggle = FindToggle("Toggle-Medium");
+        }
+
+        if (hardToggle == null)
+        {
+            hardToggle = FindToggle("Toggle-Hard");
         }
 
         if (playerController == null || pauseMenuPanel == null || sensitivitySlider == null)
@@ -86,6 +104,8 @@ public class PauseMenuController : MonoBehaviour
         playerController.sensitivity = initialSensitivity;
         sensitivitySlider.onValueChanged.AddListener(SetSensitivity);
 
+        InitializeDifficultyToggles();
+
         if (tutorialButton != null)
         {
             tutorialButton.onClick.AddListener(LoadTutorial);
@@ -126,6 +146,77 @@ public class PauseMenuController : MonoBehaviour
         }
 
         return null;
+    }
+
+    private Toggle FindToggle(string objectName)
+    {
+        if (pauseMenuPanel == null)
+        {
+            return null;
+        }
+
+        Toggle[] toggles = pauseMenuPanel.GetComponentsInChildren<Toggle>(true);
+        for (int i = 0; i < toggles.Length; i++)
+        {
+            if (toggles[i].name == objectName)
+            {
+                return toggles[i];
+            }
+        }
+
+        return null;
+    }
+
+    private void InitializeDifficultyToggles()
+    {
+        RoomDifficulty selectedDifficulty = RoomDifficultySelection.Get();
+
+        if (easyToggle != null)
+        {
+            easyToggle.SetIsOnWithoutNotify(selectedDifficulty == RoomDifficulty.Easy);
+            easyToggle.onValueChanged.AddListener(OnEasyToggleChanged);
+        }
+
+        if (mediumToggle != null)
+        {
+            mediumToggle.SetIsOnWithoutNotify(selectedDifficulty == RoomDifficulty.Medium);
+            mediumToggle.onValueChanged.AddListener(OnMediumToggleChanged);
+        }
+
+        if (hardToggle != null)
+        {
+            hardToggle.SetIsOnWithoutNotify(selectedDifficulty == RoomDifficulty.Hard);
+            hardToggle.onValueChanged.AddListener(OnHardToggleChanged);
+        }
+
+        if (easyToggle == null || mediumToggle == null || hardToggle == null)
+        {
+            Debug.LogWarning("Pause menu could not find all three difficulty toggles.", this);
+        }
+    }
+
+    private void OnEasyToggleChanged(bool isOn)
+    {
+        if (isOn)
+        {
+            RoomDifficultySelection.Set(RoomDifficulty.Easy);
+        }
+    }
+
+    private void OnMediumToggleChanged(bool isOn)
+    {
+        if (isOn)
+        {
+            RoomDifficultySelection.Set(RoomDifficulty.Medium);
+        }
+    }
+
+    private void OnHardToggleChanged(bool isOn)
+    {
+        if (isOn)
+        {
+            RoomDifficultySelection.Set(RoomDifficulty.Hard);
+        }
     }
 
     private void Update()
@@ -252,6 +343,21 @@ public class PauseMenuController : MonoBehaviour
             roomButton.onClick.RemoveListener(LoadRoomTest);
         }
 
+        if (easyToggle != null)
+        {
+            easyToggle.onValueChanged.RemoveListener(OnEasyToggleChanged);
+        }
+
+        if (mediumToggle != null)
+        {
+            mediumToggle.onValueChanged.RemoveListener(OnMediumToggleChanged);
+        }
+
+        if (hardToggle != null)
+        {
+            hardToggle.onValueChanged.RemoveListener(OnHardToggleChanged);
+        }
+
         if (shouldRestoreGameplay)
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -268,4 +374,5 @@ public class PauseMenuController : MonoBehaviour
             activeInstance = null;
         }
     }
+
 }

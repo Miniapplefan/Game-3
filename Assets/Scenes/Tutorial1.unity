@@ -232,6 +232,7 @@ MonoBehaviour:
   targetSpawns:
   - targetPrefab: {fileID: 3997164938346136878, guid: ab4b0d84866ddd846be04b1f6fd3efa7, type: 3}
     spawnPoint: {fileID: 788093515}
+  targetDespawns: []
   requiredInputs: 0700000002000000
   nextStepObject: {fileID: 496400914}
   deactivateSelfOnComplete: 1
@@ -643,6 +644,9 @@ MonoBehaviour:
   - {fileID: 1435033416}
   - {fileID: 1312817423}
   - {fileID: 757896835}
+  easyDifficultyProfile: {fileID: 0}
+  mediumDifficultyProfile: {fileID: 0}
+  hardDifficultyProfile: {fileID: 0}
   limitWaveCount: 1
   numberOfWaves: 10
   maxActiveEnemies: 16
@@ -1124,6 +1128,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   targetSpawns: []
+  targetDespawns: []
   requiredInputs: 08000000
   nextStepObject: {fileID: 1572805535}
   deactivateSelfOnComplete: 1
@@ -1196,6 +1201,7 @@ MonoBehaviour:
     spawnPoint: {fileID: 1357244854}
   - targetPrefab: {fileID: 3997164938346136878, guid: ab4b0d84866ddd846be04b1f6fd3efa7, type: 3}
     spawnPoint: {fileID: 145607708}
+  targetDespawns: []
   requiredInputs: 0200000003000000
   nextStepObject: {fileID: 2001468615}
   deactivateSelfOnComplete: 1
@@ -1234,6 +1240,7 @@ MonoBehaviour:
   targetSpawns:
   - targetPrefab: {fileID: 3997164938346136878, guid: ab4b0d84866ddd846be04b1f6fd3efa7, type: 3}
     spawnPoint: {fileID: 616246047}
+  targetDespawns: []
   requiredInputs: 0700000002000000
   nextStepObject: {fileID: 470586073}
   deactivateSelfOnComplete: 1
@@ -3464,6 +3471,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   targetSpawns: []
+  targetDespawns: []
   requiredInputs: 04000000
   nextStepObject: {fileID: 2025962106}
   deactivateSelfOnComplete: 1
@@ -9606,6 +9614,7 @@ MonoBehaviour:
   targetSpawns:
   - targetPrefab: {fileID: 3997164938346136878, guid: ab4b0d84866ddd846be04b1f6fd3efa7, type: 3}
     spawnPoint: {fileID: 2072242119}
+  targetDespawns: []
   requiredInputs: 0600000002000000
   nextStepObject: {fileID: 1765270998}
   deactivateSelfOnComplete: 1
@@ -9659,6 +9668,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   targetSpawns: []
+  targetDespawns: []
   requiredInputs: 08000000
   nextStepObject: {fileID: 27715790}
   deactivateSelfOnComplete: 1
@@ -10161,6 +10171,7 @@ MonoBehaviour:
   targetSpawns:
   - targetPrefab: {fileID: 3997164938346136878, guid: ab4b0d84866ddd846be04b1f6fd3efa7, type: 3}
     spawnPoint: {fileID: 4820221345674711539}
+  targetDespawns: []
   requiredInputs: 0600000002000000
   nextStepObject: {fileID: 1753795137}
   deactivateSelfOnComplete: 1
@@ -10946,18 +10957,6 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_projectionMatrixMode
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 3108864567864582954, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: aimAssistBreakoutMouseDeadZone
-      value: 0.3
-      objectReference: {fileID: 0}
-    - target: {fileID: 3957327853304994012, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: isGodMode
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 5359900809183358901, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: enableBulletTimePulses
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5410714147512533004, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
