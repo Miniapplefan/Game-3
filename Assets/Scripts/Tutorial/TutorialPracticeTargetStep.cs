@@ -357,6 +357,12 @@ public class TutorialPracticeTargetStep : MonoBehaviour
                 return playerInput.getAimMiddle();
             case TutorialStepInputAction.Shift:
                 return playerInput.getShift();
+            case TutorialStepInputAction.Q:
+                return Input.GetKeyDown(KeyCode.Q);
+            case TutorialStepInputAction.E:
+                return Input.GetKeyDown(KeyCode.E);
+            case TutorialStepInputAction.Spacebar:
+                return Input.GetKeyDown(KeyCode.Space);
             default:
                 return false;
         }

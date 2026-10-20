@@ -214,13 +214,17 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	private GameObject breakoutAimAssistDebugRightVolume;
 	private Material breakoutAimAssistDebugLeftMaterial;
 	private Material breakoutAimAssistDebugRightMaterial;
+	private const float FrontRoutedAimSwapThreshold = 175f;
+	private const float HeadAimTargetProxyDistance = 20f;
 	[Header("Aim Swap Blend")]
 	public float aimSwapDuration = 0.1f;
 	public AnimationCurve aimSwapCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 	private bool isAimSwapInProgress = false;
 	private float aimSwapElapsed = 0f;
-	private Vector3 aimSwapStartWeights;
-	private Vector3 aimSwapTargetWeights;
+	private Vector4 aimSwapStartWeights;
+	private Vector4 aimSwapTargetWeights;
+	private bool isFrontRoutedAimSwap = false;
+	private float frontRoutedAimSwapSplit = 0.5f;
 	[Header("Dual Arm Head Aim Blend")]
 	[SerializeField, Range(0f, 180f), Tooltip("Arm separation at or below which the parked arm keeps its near weight.")]
 	private float dualArmHeadBlendNearAngle = 30f;
@@ -263,6 +267,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	private Transform headAimTargetProxyCentered;
 	private Transform headAimTargetProxyRight;
 	private Transform headAimTargetProxyLeft;
+	private Transform headAimTargetProxyFrontBridge;
 	private bool headAimUsesProxyTargets = false;
 	[Header("Aim Scroll")]
 	public float aimScrollToggleCooldown = 0.12f;
@@ -568,7 +573,13 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		leftAssistedViewTravel.active = false;
 		isAimSwapInProgress = false;
 		aimSwapElapsed = 0f;
+		isFrontRoutedAimSwap = false;
+		frontRoutedAimSwapSplit = 0.5f;
 		dualArmHeadParkedWeightVelocity = 0f;
+		if (headAimConstraint != null)
+		{
+			ApplyAimSwapWeights(1f, 0f, 0f, 0f);
+		}
 		standbyDelayTimer = 0f;
 		deferStandbyRight = false;
 		deferStandbyLeft = false;
@@ -867,6 +878,11 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		CancelAllBreakoutAimAssistTravel();
+		isAimSwapInProgress = false;
+		aimSwapElapsed = 0f;
+		isFrontRoutedAimSwap = false;
+		frontRoutedAimSwapSplit = 0.5f;
+		dualArmHeadParkedWeightVelocity = 0f;
 		isDead = true;
 		bodyState.isDead = true;
 		Died?.Invoke(this);
@@ -1286,6 +1302,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	{
 		CancelBreakoutAimAssistTravel(true);
 		CancelBreakoutAimAssistTravel(false);
+		bool switchingFromBrokenOutLeft = isAimingLeft && startedAimingRight;
 		if (isAimingLeft)
 		{
 			CaptureRelativeAimLeft();
@@ -1336,7 +1353,12 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			}
 		}
 
-		StartAimSwapBlend(0f, 1f, startedAimingLeft ? GetDesiredDualArmHeadParkedWeight() : 0f);
+		StartAimSwapBlend(
+			0f,
+			1f,
+			startedAimingLeft ? GetDesiredDualArmHeadParkedWeight() : 0f,
+			switchingFromBrokenOutLeft && ShouldUseFrontRoutedAimSwap(),
+			false);
 		if (shouldTriggerBulletTime)
 		{
 			TryTriggerBulletTimeImmediately();
@@ -1347,6 +1369,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 	{
 		CancelBreakoutAimAssistTravel(false);
 		CancelBreakoutAimAssistTravel(true);
+		bool switchingFromBrokenOutRight = isAimingRight && startedAimingLeft;
 		if (isAimingRight)
 		{
 			CaptureRelativeAimRight();
@@ -1403,7 +1426,12 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			}
 		}
 
-		StartAimSwapBlend(0f, startedAimingRight ? GetDesiredDualArmHeadParkedWeight() : 0f, 1f);
+		StartAimSwapBlend(
+			0f,
+			startedAimingRight ? GetDesiredDualArmHeadParkedWeight() : 0f,
+			1f,
+			switchingFromBrokenOutRight && ShouldUseFrontRoutedAimSwap(),
+			true);
 		if (shouldTriggerBulletTime)
 		{
 			TryTriggerBulletTimeImmediately();
@@ -2269,6 +2297,10 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			"HeadAimTargetProxy_L",
 			weaponAimPointL.position,
 			weaponAimPointL.parent);
+		headAimTargetProxyFrontBridge = CreateHeadAimTargetProxy(
+			"HeadAimTargetProxy_FrontBridge",
+			GetFrontBridgeHeadAimTargetProxyPosition(),
+			headObjectTransformCache != null ? headObjectTransformCache.parent : transform);
 
 		var centeredSource = sources[0];
 		var rightSource = sources[1];
@@ -2279,6 +2311,17 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		sources[0] = centeredSource;
 		sources[1] = rightSource;
 		sources[2] = leftSource;
+		if (sources.Count == 3)
+		{
+			sources.Add(new WeightedTransform(headAimTargetProxyFrontBridge, 0f));
+		}
+		else
+		{
+			var frontBridgeSource = sources[3];
+			frontBridgeSource.transform = headAimTargetProxyFrontBridge;
+			frontBridgeSource.weight = 0f;
+			sources[3] = frontBridgeSource;
+		}
 		headAimConstraint.data.sourceObjects = sources;
 		headAimUsesProxyTargets = true;
 
@@ -2322,6 +2365,22 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		{
 			headAimTargetProxyLeft.position = GetHeadAimTargetProxyPosition(true);
 		}
+		if (headAimTargetProxyFrontBridge != null)
+		{
+			headAimTargetProxyFrontBridge.position = GetFrontBridgeHeadAimTargetProxyPosition();
+		}
+	}
+
+	private Vector3 GetFrontBridgeHeadAimTargetProxyPosition()
+	{
+		Vector3 origin = GetAimLockOrigin();
+		Vector3 forward = GetTorsoYawPitchRotation() * Vector3.forward;
+		if (forward.sqrMagnitude <= 0.0001f)
+		{
+			forward = transform.forward;
+		}
+
+		return origin + forward.normalized * HeadAimTargetProxyDistance;
 	}
 
 	private Vector3 GetHeadAimTargetProxyPosition(bool useLeft)
@@ -4719,7 +4778,12 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		ResetWeaponAimPoint(true, true);
 	}
 
-	private void StartAimSwapBlend(float targetW0, float targetW1, float targetW2)
+	private void StartAimSwapBlend(
+		float targetW0,
+		float targetW1,
+		float targetW2,
+		bool useFrontRoute = false,
+		bool incomingUsesLeft = false)
 	{
 		if (headAimConstraint == null)
 		{
@@ -4727,17 +4791,96 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		var a = headAimConstraint.data.sourceObjects;
-		aimSwapStartWeights = new Vector3(a[0].weight, a[1].weight, a[2].weight);
-		aimSwapTargetWeights = new Vector3(targetW0, targetW1, targetW2);
+		float frontBridgeWeight = a.Count > 3 ? a[3].weight : 0f;
+		aimSwapStartWeights = new Vector4(a[0].weight, a[1].weight, a[2].weight, frontBridgeWeight);
+		isFrontRoutedAimSwap = useFrontRoute && a.Count > 3 && headAimTargetProxyFrontBridge != null;
+		if (isFrontRoutedAimSwap)
+		{
+			aimSwapTargetWeights = incomingUsesLeft
+				? new Vector4(0f, 0f, 1f, 0f)
+				: new Vector4(0f, 1f, 0f, 0f);
+			frontRoutedAimSwapSplit = GetFrontRoutedAimSwapSplit(incomingUsesLeft);
+		}
+		else
+		{
+			aimSwapTargetWeights = new Vector4(targetW0, targetW1, targetW2, 0f);
+			frontRoutedAimSwapSplit = 0.5f;
+		}
 		aimSwapElapsed = 0f;
 		isAimSwapInProgress = true;
 		dualArmHeadParkedWeightVelocity = 0f;
 
 		if (aimSwapDuration <= 0f)
 		{
-			ApplyAimSwapWeights(targetW0, targetW1, targetW2);
+			ApplyAimSwapWeights(
+				aimSwapTargetWeights.x,
+				aimSwapTargetWeights.y,
+				aimSwapTargetWeights.z,
+				aimSwapTargetWeights.w);
 			isAimSwapInProgress = false;
+			isFrontRoutedAimSwap = false;
 		}
+	}
+
+	private bool ShouldUseFrontRoutedAimSwap()
+	{
+		if (isAimSwapInProgress && isFrontRoutedAimSwap)
+		{
+			return true;
+		}
+
+		if (!TryGetBrokenOutArmSignedYaws(out float rightYaw, out float leftYaw))
+		{
+			return false;
+		}
+
+		bool armsAreOnOppositeSides = rightYaw * leftYaw < 0f;
+		float unwrappedSeparation = Mathf.Abs(rightYaw - leftYaw);
+		return armsAreOnOppositeSides && unwrappedSeparation >= FrontRoutedAimSwapThreshold;
+	}
+
+	private float GetFrontRoutedAimSwapSplit(bool incomingUsesLeft)
+	{
+		if (!TryGetBrokenOutArmSignedYaws(out float rightYaw, out float leftYaw))
+		{
+			return 0.5f;
+		}
+
+		float outgoingYaw = incomingUsesLeft ? rightYaw : leftYaw;
+		float incomingYaw = incomingUsesLeft ? leftYaw : rightYaw;
+		float totalFrontRouteAngle = Mathf.Abs(outgoingYaw) + Mathf.Abs(incomingYaw);
+		if (totalFrontRouteAngle <= 0.0001f)
+		{
+			return 0.5f;
+		}
+
+		return Mathf.Clamp(Mathf.Abs(outgoingYaw) / totalFrontRouteAngle, 0.001f, 0.999f);
+	}
+
+	private bool TryGetBrokenOutArmSignedYaws(out float rightYaw, out float leftYaw)
+	{
+		rightYaw = 0f;
+		leftYaw = 0f;
+		if (weaponAimPoint == null || weaponAimPointL == null)
+		{
+			return false;
+		}
+
+		Vector3 origin = GetAimLockOrigin();
+		Vector3 rightDirection = Vector3.ProjectOnPlane(weaponAimPoint.position - origin, Vector3.up);
+		Vector3 leftDirection = Vector3.ProjectOnPlane(weaponAimPointL.position - origin, Vector3.up);
+		Vector3 torsoForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+		if (rightDirection.sqrMagnitude <= 0.0001f
+			|| leftDirection.sqrMagnitude <= 0.0001f
+			|| torsoForward.sqrMagnitude <= 0.0001f)
+		{
+			return false;
+		}
+
+		torsoForward.Normalize();
+		rightYaw = Vector3.SignedAngle(torsoForward, rightDirection.normalized, Vector3.up);
+		leftYaw = Vector3.SignedAngle(torsoForward, leftDirection.normalized, Vector3.up);
+		return true;
 	}
 
 	private void TryTriggerBulletTimeImmediately()
@@ -4766,8 +4909,10 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		{
 			isAimSwapInProgress = false;
 			aimSwapElapsed = 0f;
+			isFrontRoutedAimSwap = false;
+			frontRoutedAimSwapSplit = 0.5f;
 			dualArmHeadParkedWeightVelocity = 0f;
-			ApplyAimSwapWeights(1f, 0f, 0f);
+			ApplyAimSwapWeights(1f, 0f, 0f, 0f);
 		}
 
 		if (releaseFrozenAimPointsOnSwapComplete || freezeAimPointRight || freezeAimPointLeft)
@@ -4786,20 +4931,55 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 		if (aimSwapDuration <= 0f)
 		{
+			ApplyAimSwapWeights(
+				aimSwapTargetWeights.x,
+				aimSwapTargetWeights.y,
+				aimSwapTargetWeights.z,
+				aimSwapTargetWeights.w);
 			isAimSwapInProgress = false;
+			isFrontRoutedAimSwap = false;
+			frontRoutedAimSwapSplit = 0.5f;
 			return;
 		}
 
-		RefreshDualArmHeadAimSwapTarget();
+		if (!isFrontRoutedAimSwap)
+		{
+			RefreshDualArmHeadAimSwapTarget();
+		}
 		aimSwapElapsed += Time.deltaTime;
 		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
 		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
-		Vector3 w = Vector3.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
-		ApplyAimSwapWeights(w.x, w.y, w.z);
+		Vector4 w;
+		if (isFrontRoutedAimSwap)
+		{
+			Vector4 frontBridgeWeights = new Vector4(0f, 0f, 0f, 1f);
+			if (curvedT <= frontRoutedAimSwapSplit)
+			{
+				float firstLegT = frontRoutedAimSwapSplit > 0.0001f
+					? curvedT / frontRoutedAimSwapSplit
+					: 1f;
+				w = Vector4.Lerp(aimSwapStartWeights, frontBridgeWeights, Mathf.Clamp01(firstLegT));
+			}
+			else
+			{
+				float secondLegDuration = 1f - frontRoutedAimSwapSplit;
+				float secondLegT = secondLegDuration > 0.0001f
+					? (curvedT - frontRoutedAimSwapSplit) / secondLegDuration
+					: 1f;
+				w = Vector4.Lerp(frontBridgeWeights, aimSwapTargetWeights, Mathf.Clamp01(secondLegT));
+			}
+		}
+		else
+		{
+			w = Vector4.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
+		}
+		ApplyAimSwapWeights(w.x, w.y, w.z, w.w);
 
 		if (t >= 1f)
 		{
 			isAimSwapInProgress = false;
+			isFrontRoutedAimSwap = false;
+			frontRoutedAimSwapSplit = 0.5f;
 			if (releaseFrozenAimPointsOnSwapComplete)
 			{
 				releaseFrozenAimPointsOnSwapComplete = false;
@@ -4817,8 +4997,8 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 
 		float parkedWeight = GetDesiredDualArmHeadParkedWeight();
 		aimSwapTargetWeights = isAimingLeft
-			? new Vector3(0f, parkedWeight, 1f)
-			: new Vector3(0f, 1f, parkedWeight);
+			? new Vector4(0f, parkedWeight, 1f, 0f)
+			: new Vector4(0f, 1f, parkedWeight, 0f);
 	}
 
 	private void UpdateDualArmHeadAimBlend()
@@ -4894,9 +5074,19 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		return Mathf.Lerp(nearWeight, farWeight, curvedT);
 	}
 
-	private void ApplyAimSwapWeights(float w0, float w1, float w2)
+	private void ApplyAimSwapWeights(float w0, float w1, float w2, float w3 = 0f)
 	{
+		if (headAimConstraint == null)
+		{
+			return;
+		}
+
 		var a = headAimConstraint.data.sourceObjects;
+		if (a.Count < 3)
+		{
+			return;
+		}
+
 		var a0 = a[0];
 		var a1 = a[1];
 		var a2 = a[2];
@@ -4906,6 +5096,12 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;
+		if (a.Count > 3)
+		{
+			var a3 = a[3];
+			a3.weight = w3;
+			a[3] = a3;
+		}
 		headAimConstraint.data.sourceObjects = a;
 	}
 
@@ -5415,8 +5611,8 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		var a = headAimConstraint.data.sourceObjects;
-		aimSwapStartWeights = new Vector3(a[0].weight, a[1].weight, a[2].weight);
-		aimSwapTargetWeights = new Vector3(targetW0, targetW1, targetW2);
+		aimSwapStartWeights = new Vector4(a[0].weight, a[1].weight, a[2].weight, 0f);
+		aimSwapTargetWeights = new Vector4(targetW0, targetW1, targetW2, 0f);
 		aimSwapElapsed = 0f;
 		isAimSwapInProgress = true;
 
@@ -5443,7 +5639,7 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 		aimSwapElapsed += Time.deltaTime;
 		float t = Mathf.Clamp01(aimSwapElapsed / aimSwapDuration);
 		float curvedT = aimSwapCurve != null ? aimSwapCurve.Evaluate(t) : t;
-		Vector3 w = Vector3.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
+		Vector4 w = Vector4.Lerp(aimSwapStartWeights, aimSwapTargetWeights, curvedT);
 		ApplyAimSwapWeightsAI(w.x, w.y, w.z);
 
 		if (t >= 1f)

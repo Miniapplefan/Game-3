@@ -9,5 +9,8 @@ public enum TutorialStepInputAction
     ScrollUp,
     ScrollDown,
     AimMiddle,
-    Shift
+    Shift,
+    Q,
+    E,
+    Spacebar
 }

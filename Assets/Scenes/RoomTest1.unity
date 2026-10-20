@@ -20593,7 +20593,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 147.24615
+      value: 156.26596
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture
@@ -20601,10 +20601,6 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_projectionMatrixMode
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 3666043301315100652, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
-      propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5410714147512533004, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}

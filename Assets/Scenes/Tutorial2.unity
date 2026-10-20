@@ -781,6 +781,9 @@ MonoBehaviour:
   - {fileID: 1435033416}
   - {fileID: 1312817423}
   - {fileID: 757896835}
+  easyDifficultyProfile: {fileID: 0}
+  mediumDifficultyProfile: {fileID: 0}
+  hardDifficultyProfile: {fileID: 0}
   limitWaveCount: 1
   numberOfWaves: 10
   maxActiveEnemies: 16
@@ -794,6 +797,11 @@ MonoBehaviour:
   allowPoolExpansion: 1
   navMeshSpawnSampleRadius: 2
   autoStart: 1
+  clearResultsCanvas: {fileID: 0}
+  killsText: {fileID: 0}
+  timeText: {fileID: 0}
+  difficultyText: {fileID: 0}
+  clearResultsDelay: 10
 --- !u!4 &229631145
 Transform:
   m_ObjectHideFlags: 0
@@ -2396,12 +2404,12 @@ MonoBehaviour:
   - targetPrefab: {fileID: 5413632779564383119, guid: ef7ef5cd4ed854851aeb14ae2a35d38f, type: 3}
     spawnPoint: {fileID: 2069980617}
   targetDespawns: []
-  requiredInputs: 0700000002000000
+  requiredInputs: 0b00000002000000
   nextStepObject: {fileID: 940513183}
   deactivateSelfOnComplete: 1
   retryDelaySeconds: 0.25
   tutorialText: {fileID: 457902116}
-  tutorialTextValue: 
+  tutorialTextValue: flick again
 --- !u!4 &840851718
 Transform:
   m_ObjectHideFlags: 0
@@ -2847,12 +2855,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetSpawns: []
   targetDespawns: []
-  requiredInputs: 08000000
+  requiredInputs: 0c000000
   nextStepObject: {fileID: 392961929}
   deactivateSelfOnComplete: 1
   retryDelaySeconds: 0.25
   tutorialText: {fileID: 457902116}
-  tutorialTextValue: Press middle mouse button to recenter arm
+  tutorialTextValue: recenter
 --- !u!4 &940513185
 Transform:
   m_ObjectHideFlags: 0
@@ -2982,12 +2990,12 @@ MonoBehaviour:
   - targetPrefab: {fileID: 5413632779564383119, guid: ef7ef5cd4ed854851aeb14ae2a35d38f, type: 3}
     spawnPoint: {fileID: 2069980617}
   targetDespawns: []
-  requiredInputs: 0600000002000000
+  requiredInputs: 0a00000002000000
   nextStepObject: {fileID: 961538923}
   deactivateSelfOnComplete: 1
   retryDelaySeconds: 0.25
   tutorialText: {fileID: 457902116}
-  tutorialTextValue: SCROLL UP to flick left arm
+  tutorialTextValue: Q to flick left arm
 --- !u!4 &954988626
 Transform:
   m_ObjectHideFlags: 0
@@ -3042,7 +3050,7 @@ MonoBehaviour:
   - targetPrefab: {fileID: 5413632779564383119, guid: ef7ef5cd4ed854851aeb14ae2a35d38f, type: 3}
     spawnPoint: {fileID: 2069980617}
   targetDespawns: []
-  requiredInputs: 0600000002000000
+  requiredInputs: 0a00000002000000
   nextStepObject: {fileID: 2034020402}
   deactivateSelfOnComplete: 1
   retryDelaySeconds: 0.25
@@ -3383,12 +3391,12 @@ MonoBehaviour:
   - targetPrefab: {fileID: 5413632779564383119, guid: ef7ef5cd4ed854851aeb14ae2a35d38f, type: 3}
     spawnPoint: {fileID: 2069980617}
   targetDespawns: []
-  requiredInputs: 0700000002000000
+  requiredInputs: 0b00000002000000
   nextStepObject: {fileID: 840851716}
   deactivateSelfOnComplete: 1
   retryDelaySeconds: 0.25
   tutorialText: {fileID: 457902116}
-  tutorialTextValue: 
+  tutorialTextValue: E to flick right arm
 --- !u!4 &1020419062
 Transform:
   m_ObjectHideFlags: 0
@@ -10862,12 +10870,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   targetSpawns: []
   targetDespawns: []
-  requiredInputs: 08000000
+  requiredInputs: 0c000000
   nextStepObject: {fileID: 1020419060}
   deactivateSelfOnComplete: 1
   retryDelaySeconds: 0.25
   tutorialText: {fileID: 457902116}
-  tutorialTextValue: middle mouse button to recenter arm
+  tutorialTextValue: SPACE to recenter arm
 --- !u!4 &2034020404
 Transform:
   m_ObjectHideFlags: 0
@@ -11508,7 +11516,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: field of view
-      value: 147.24615
+      value: 156.26596
       objectReference: {fileID: 0}
     - target: {fileID: 2857187716034250571, guid: 76a523dc554bb4ec1bd9351646b8093f, type: 3}
       propertyPath: m_TargetTexture

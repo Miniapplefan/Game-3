@@ -66,6 +66,7 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 	public float reloadTimeCache;
 	private float reloadAudioDelaySeconds;
 	private bool reloadCompletionUsesAudioTime;
+	private bool emptyClickPlayedForCurrentEmptyMagazine;
 	private float chargeTimeLeftCache;
 	private float prepTimeLeftCache;
 	private Transform prepInd;
@@ -186,6 +187,7 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 	public void ResetForPoolReuse()
 	{
 		ResetNpcAccuracyBag();
+		emptyClickPlayedForCurrentEmptyMagazine = false;
 
 		if (gunData == null || gunData.shootConfig == null)
 		{
@@ -213,9 +215,17 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 
 	public bool Shoot(bool triggerPressedThisFrame = false)
 	{
-		if (triggerPressedThisFrame && !isAI && !isReloading && currentShotsInMag <= 0)
+		if (!isAI && !isReloading)
 		{
-			EmptyTriggerPulled?.Invoke(this);
+			if (currentShotsInMag > 0)
+			{
+				emptyClickPlayedForCurrentEmptyMagazine = false;
+			}
+			else if (triggerPressedThisFrame || !emptyClickPlayedForCurrentEmptyMagazine)
+			{
+				EmptyTriggerPulled?.Invoke(this);
+				emptyClickPlayedForCurrentEmptyMagazine = true;
+			}
 		}
 
 		if (chargeTimeLeftCache <= 0)
@@ -276,6 +286,13 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 	{
 
 		if (isReloading) return false;
+		if (!TryGetCenterShotQuery(
+			out Ray centerShotRay,
+			out float shotMaxRange,
+			out LayerMask shotHitMask))
+		{
+			return false;
+		}
 
 		if (!isAI)
 		{
@@ -298,7 +315,7 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 			//lastShootTime = Time.time;
 			chargeTimeLeftCache = gunData.shootConfig.fireRate;
 			shootSystem.Play();
-			Vector3 shotCenterDirection = GetNpcShotCenterDirection();
+			Vector3 shotCenterDirection = centerShotRay.direction;
 			bool isAccurateNpcProjectile = npcAccurateRound && i == 0;
 			Vector3 shootDirection = isAccurateNpcProjectile
 				? shotCenterDirection.normalized
@@ -314,22 +331,23 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 			if (isAI)
 			{
 				//				Debug.Log("FIRING AI BULLET");
-				Instantiate(gunData.npcBulletPrefab, shootSystem.transform.position, Quaternion.LookRotation(shootDirection));
+				Instantiate(gunData.npcBulletPrefab, centerShotRay.origin, Quaternion.LookRotation(shootDirection));
 			}
 			else
 			{
 				if (Physics.Raycast(
-						shootSystem.transform.position,
+						centerShotRay.origin,
 						shootDirection,
 						out RaycastHit hit,
-						gunData.shootConfig.maxRange,
-						gunData.shootConfig.HitMask
+						shotMaxRange,
+						shotHitMask,
+						QueryTriggerInteraction.UseGlobal
 					))
 				{
 					gunSelector?.LogPlayerHitscanCollider(hit.collider);
 					StartCoroutine(
 						PlayTrail(
-							shootSystem.transform.position,
+							centerShotRay.origin,
 							hit.point,
 							hit
 						)
@@ -352,8 +370,8 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 				{
 					StartCoroutine(
 						PlayTrail(
-							shootSystem.transform.position,
-							shootSystem.transform.position + (shootDirection * gunData.shootConfig.maxRange),
+							centerShotRay.origin,
+							centerShotRay.origin + shootDirection * shotMaxRange,
 							new RaycastHit()
 						)
 					);
@@ -446,6 +464,25 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 		}
 
 		return bodyController;
+	}
+
+	public bool TryGetCenterShotQuery(
+		out Ray centerShotRay,
+		out float maxRange,
+		out LayerMask hitMask)
+	{
+		centerShotRay = default;
+		maxRange = 0f;
+		hitMask = default;
+		if (shootSystem == null || gunData == null || gunData.shootConfig == null)
+		{
+			return false;
+		}
+
+		centerShotRay = new Ray(shootSystem.transform.position, GetNpcShotCenterDirection());
+		maxRange = gunData.shootConfig.maxRange;
+		hitMask = gunData.shootConfig.HitMask;
+		return true;
 	}
 
 	private Vector3 GetSpreadDirection(Vector3 forward)

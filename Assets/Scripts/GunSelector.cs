@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using TMPro;
 
@@ -29,10 +30,9 @@ public class GunSelector : MonoBehaviour
 	private LineRenderer laser;
 	public TMP_Text ammoIndicator;
 	public Image ammoBar;
-	private Vector3 raycastPoint;
-	private bool hasRaycastPoint;
 	private Quaternion initialLocalRotation;
 	private BodyController bodyController;
+	private ActiveRagdollController activeRagdollController;
 	private Transform ammoIndicatorHeadTarget;
 	private bool hasAmmoIndicatorState;
 	private bool lastAmmoIndicatorReloading;
@@ -54,9 +54,10 @@ public class GunSelector : MonoBehaviour
 	public Gun ActiveGun2;
 	public Gun ActiveGun3;
 	bool isAI;
-	public LayerMask raycastLayerMask;
-	private float lastRaycastTime;
-	private float raycastInterval = 0.5f; // Adjust this value as needed
+	[FormerlySerializedAs("raycastLayerMask")]
+	[SerializeField] private LayerMask gunHolderAimLayerMask;
+	private float lastGunHolderAimTime;
+	private float gunHolderAimInterval = 0.5f;
 
 	public Transform[] gunHolders;
 
@@ -70,20 +71,36 @@ public class GunSelector : MonoBehaviour
 		laser = GetComponent<LineRenderer>();
 		isAI = GetComponentInParent<AIController>() != null ? true : false;
 		bodyController = GetComponentInParent<BodyController>();
+		activeRagdollController = bodyController != null
+			? bodyController.GetComponentInChildren<ActiveRagdollController>()
+			: null;
 		ammoIndicatorHeadTarget = ResolveAmmoIndicatorHeadTarget();
 	}
 
 	void Update()
 	{
-		if (Time.time - lastRaycastTime >= raycastInterval)
+		if (Time.time - lastGunHolderAimTime >= gunHolderAimInterval)
 		{
-			PerformRaycast();
+			UpdateGunHolderAim();
 			RotateAmmoIndicatorTowardHead();
-			lastRaycastTime = Time.time;
+			lastGunHolderAimTime = Time.time;
 		}
 	}
 
 	void FixedUpdate()
+	{
+		UpdateAmmoIndicator();
+	}
+
+	private void LateUpdate()
+	{
+		if (activeRagdollController == null || !activeRagdollController.isActiveAndEnabled)
+		{
+			RefreshAimLaser();
+		}
+	}
+
+	internal void RefreshAimLaser()
 	{
 		bool shouldDrawLaser = !isAI && IsOwningArmAimed();
 		SetLaserVisible(shouldDrawLaser);
@@ -91,14 +108,9 @@ public class GunSelector : MonoBehaviour
 		{
 			DrawPrimaryMuzzleLaser();
 		}
-		UpdateAmmoIndicator();
 	}
 
-	private void LateUpdate()
-	{
-	}
-
-	void PerformRaycast()
+	void UpdateGunHolderAim()
 	{
 		Transform muzzle = GetPrimaryMuzzleTransform();
 		if (muzzle == null)
@@ -108,18 +120,14 @@ public class GunSelector : MonoBehaviour
 
 		RaycastHit hit;
 		float maxRange = GetPrimaryGunMaxRange();
-		if (Physics.Raycast(muzzle.position, muzzle.forward, out hit, maxRange, raycastLayerMask))
+		if (Physics.Raycast(muzzle.position, muzzle.forward, out hit, maxRange, gunHolderAimLayerMask))
 		{
-			raycastPoint = hit.point;
-			hasRaycastPoint = true;
 			// Rotate the guns to look at the hit point
 			RotateGuns(hit.point);
 		}
 		else
 		{
-			raycastPoint = muzzle.position + muzzle.forward * maxRange;
-			hasRaycastPoint = true;
-			RotateGuns(raycastPoint);
+			RotateGuns(muzzle.position + muzzle.forward * maxRange);
 		}
 	}
 
@@ -206,23 +214,31 @@ public class GunSelector : MonoBehaviour
 
 	private void DrawPrimaryMuzzleLaser()
 	{
-		Transform muzzle = GetPrimaryMuzzleTransform();
-		if (muzzle == null || laser == null)
+		if (
+			laser == null
+			|| ActiveGun1 == null
+			|| !ActiveGun1.TryGetCenterShotQuery(
+				out Ray centerShotRay,
+				out float maxRange,
+				out LayerMask hitMask)
+		)
 		{
 			CollapseLaser();
 			return;
 		}
 
-		if (!hasRaycastPoint)
+		Vector3 endPosition = centerShotRay.GetPoint(maxRange);
+		if (Physics.Raycast(
+			centerShotRay,
+			out RaycastHit hit,
+			maxRange,
+			hitMask,
+			QueryTriggerInteraction.UseGlobal))
 		{
-			raycastPoint = muzzle.position + muzzle.forward * GetPrimaryGunMaxRange();
-			hasRaycastPoint = true;
+			endPosition = hit.point;
 		}
 
-		float dist = Vector3.Distance(muzzle.position, raycastPoint);
-		Vector3 startPosition = muzzle.position;
-		Vector3 endPosition = muzzle.position + muzzle.forward * dist;
-		DrawLaser(startPosition, endPosition, dist);
+		DrawLaser(centerShotRay.origin, endPosition);
 	}
 
 	private bool IsOwningArmAimed()
@@ -288,10 +304,8 @@ public class GunSelector : MonoBehaviour
 		laser.SetPosition(1, transform.position);
 	}
 
-	private void DrawLaser(Vector3 startPosition, Vector3 endPosition, float dist)
+	private void DrawLaser(Vector3 startPosition, Vector3 endPosition)
 	{
-		// laser.startWidth = dist / 200;
-		// laser.endWidth = dist / 200;
 		laser.SetPosition(0, startPosition);
 		laser.SetPosition(1, endPosition);
 	}

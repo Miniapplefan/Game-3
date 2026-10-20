@@ -1371,6 +1371,15 @@ MonoBehaviour:
   aimLeftKey: 0
   reloadKey: 0
   restartKey: 0
+  breakoutLeftBinding:
+    source: 2
+    key: 0
+  breakoutRightBinding:
+    source: 3
+    key: 0
+  recenterArmBinding:
+    source: 1
+    key: 325
   sensitivity: 100
   scrollSensitivity: 0.1
   pressingFire1: 0

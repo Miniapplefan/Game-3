@@ -447,6 +447,12 @@ public class ActiveRagdollController : MonoBehaviour, IEnemyPoolResettable
 			UpdateMovementShotError(false);
 		}
 
+		bodyController.guns?.RefreshAimLaser();
+		if (bodyController.gunsL != bodyController.guns)
+		{
+			bodyController.gunsL?.RefreshAimLaser();
+		}
+
 		//AnimatedRightWeapon.transform.rotation = t;
 		//RagdollRightArm.LookAt(target.transform.position, Vector3.up);
 		//AnimatedRightArm.LookAt(target.transform.position, Vector3.up);

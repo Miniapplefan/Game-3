@@ -3,6 +3,49 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+public enum PlayerInputBindingSource
+{
+    None,
+    [InspectorName("Keyboard or Mouse Button")]
+    KeyCode,
+    [InspectorName("Scroll Up")]
+    ScrollUp,
+    [InspectorName("Scroll Down")]
+    ScrollDown
+}
+
+[System.Serializable]
+public struct PlayerInputBinding
+{
+    [SerializeField] private PlayerInputBindingSource source;
+    [SerializeField] private KeyCode key;
+
+    public PlayerInputBindingSource Source => source;
+    public KeyCode Key => key;
+
+    public PlayerInputBinding(PlayerInputBindingSource source, KeyCode key = KeyCode.None)
+    {
+        this.source = source;
+        this.key = key;
+    }
+
+    public bool IsConfigured()
+    {
+        return source != PlayerInputBindingSource.None
+            && (source != PlayerInputBindingSource.KeyCode || key != KeyCode.None);
+    }
+
+    public bool UsesSameInputAs(PlayerInputBinding other)
+    {
+        if (!IsConfigured() || !other.IsConfigured() || source != other.source)
+        {
+            return false;
+        }
+
+        return source != PlayerInputBindingSource.KeyCode || key == other.key;
+    }
+}
+
 [DefaultExecutionOrder(-100)]
 public class PlayerController : MonoBehaviour, InputController
 {
@@ -11,11 +54,19 @@ public class PlayerController : MonoBehaviour, InputController
     public KeyCode leftKey;
     public KeyCode rightKey;
     public KeyCode siphonKey;
-    public KeyCode aimRightKey;
-    public KeyCode aimLeftKey;
+    public KeyCode leanRightKey;
+    public KeyCode leanLeftKey;
     public KeyCode reloadKey;
     public KeyCode restartKey;
     public KeyCode shiftKey;
+
+    [Header("Arm Input Bindings")]
+    [SerializeField, Tooltip("Input that breaks out or retriggers the left arm. This replaces the default Scroll Up input.")]
+    private PlayerInputBinding breakoutLeftBinding = new PlayerInputBinding(PlayerInputBindingSource.ScrollUp);
+    [SerializeField, Tooltip("Input that breaks out or retriggers the right arm. This replaces the default Scroll Down input.")]
+    private PlayerInputBinding breakoutRightBinding = new PlayerInputBinding(PlayerInputBindingSource.ScrollDown);
+    [SerializeField, Tooltip("Input that recenters the active arm. This replaces the default Middle Mouse Button input.")]
+    private PlayerInputBinding recenterArmBinding = new PlayerInputBinding(PlayerInputBindingSource.KeyCode, KeyCode.Mouse2);
 
     private bool pressingForward;
     private bool pressingBackward;
@@ -23,12 +74,14 @@ public class PlayerController : MonoBehaviour, InputController
     private bool pressingRight;
     private bool pressingAimRight;
     private bool pressingAimLeft;
-    private bool pressingAimMiddle;
     private bool pressingSiphon;
     private bool pressingRestart;
     private bool pressingReload;
     private bool pressingShift;
     private bool gameplayInputEnabled = true;
+    private bool pendingBreakoutLeft;
+    private bool pendingBreakoutRight;
+    private bool pendingRecenterArm;
 
     public float sensitivity;
     [Min(0f), Tooltip("Mouse-look delta required to interrupt aim assist while the arm is moving toward its target.")]
@@ -41,7 +94,6 @@ public class PlayerController : MonoBehaviour, InputController
     public float scrollDirectionChangeBlockTime = 0.05f;
     [Range(0f, 1f)]
     public float scrollReleaseThresholdRatio = 0.35f;
-    private int pendingScrollDirection = 0;
     private bool scrollTriggerArmed = true;
     private float nextScrollEventTime = 0f;
     private float blockOppositeDirectionUntil = 0f;
@@ -105,7 +157,7 @@ public class PlayerController : MonoBehaviour, InputController
 
     public bool getAimMiddle()
     {
-        return pressingAimMiddle;
+        return ConsumePendingAction(ref pendingRecenterArm);
     }
 
     public bool getFire1()
@@ -139,31 +191,27 @@ public class PlayerController : MonoBehaviour, InputController
 
     public bool getScroll()
     {
-        return pendingScrollDirection != 0;
+        return pendingBreakoutLeft || pendingBreakoutRight;
     }
 
     public bool getScrollUp()
     {
-        return ConsumeScrollDirection(1);
+        return ConsumePendingAction(ref pendingBreakoutLeft);
     }
 
     public bool getScrollDown()
     {
-        return ConsumeScrollDirection(-1);
+        return ConsumePendingAction(ref pendingBreakoutRight);
     }
 
-    private bool ConsumeScrollDirection(int direction)
+    private static bool ConsumePendingAction(ref bool pendingAction)
     {
-        if (pendingScrollDirection != direction)
-        {
-            return false;
-        }
-
-        pendingScrollDirection = 0;
-        return true;
+        bool wasPending = pendingAction;
+        pendingAction = false;
+        return wasPending;
     }
 
-    private void UpdateScrollInput()
+    private int ReadScrollDirection()
     {
         float scrollWheelInput = Input.GetAxis("Mouse ScrollWheel");
         float threshold = Mathf.Max(0.0001f, scrollSensitivity);
@@ -172,12 +220,12 @@ public class PlayerController : MonoBehaviour, InputController
         if (Mathf.Abs(scrollWheelInput) <= releaseThreshold)
         {
             scrollTriggerArmed = true;
-            return;
+            return 0;
         }
 
         if (!scrollTriggerArmed || Mathf.Abs(scrollWheelInput) < threshold)
         {
-            return;
+            return 0;
         }
 
         int direction = scrollWheelInput > 0f ? 1 : -1;
@@ -192,17 +240,50 @@ public class PlayerController : MonoBehaviour, InputController
 
         if (inDebounceWindow || isOppositeBounce)
         {
-            return;
-        }
-
-        if (pendingScrollDirection == 0)
-        {
-            pendingScrollDirection = direction;
+            return 0;
         }
 
         lastScrollDirection = direction;
         nextScrollEventTime = now + Mathf.Max(0f, scrollDebounceTime);
         blockOppositeDirectionUntil = now + Mathf.Max(0f, scrollDirectionChangeBlockTime);
+        return direction;
+    }
+
+    private void UpdateArmActionInput()
+    {
+        int scrollDirection = ReadScrollDirection();
+        bool breakoutLeftPressed = WasBindingPressed(breakoutLeftBinding, scrollDirection);
+        bool breakoutRightPressed = WasBindingPressed(breakoutRightBinding, scrollDirection);
+        bool recenterPressed = WasBindingPressed(recenterArmBinding, scrollDirection);
+
+        bool breakoutLeftConflicts = breakoutLeftPressed
+            && ((breakoutRightPressed && breakoutLeftBinding.UsesSameInputAs(breakoutRightBinding))
+                || (recenterPressed && breakoutLeftBinding.UsesSameInputAs(recenterArmBinding)));
+        bool breakoutRightConflicts = breakoutRightPressed
+            && ((breakoutLeftPressed && breakoutRightBinding.UsesSameInputAs(breakoutLeftBinding))
+                || (recenterPressed && breakoutRightBinding.UsesSameInputAs(recenterArmBinding)));
+        bool recenterConflicts = recenterPressed
+            && ((breakoutLeftPressed && recenterArmBinding.UsesSameInputAs(breakoutLeftBinding))
+                || (breakoutRightPressed && recenterArmBinding.UsesSameInputAs(breakoutRightBinding)));
+
+        pendingBreakoutLeft |= breakoutLeftPressed && !breakoutLeftConflicts;
+        pendingBreakoutRight |= breakoutRightPressed && !breakoutRightConflicts;
+        pendingRecenterArm |= recenterPressed && !recenterConflicts;
+    }
+
+    private static bool WasBindingPressed(PlayerInputBinding binding, int scrollDirection)
+    {
+        switch (binding.Source)
+        {
+            case PlayerInputBindingSource.KeyCode:
+                return binding.Key != KeyCode.None && Input.GetKeyDown(binding.Key);
+            case PlayerInputBindingSource.ScrollUp:
+                return scrollDirection > 0;
+            case PlayerInputBindingSource.ScrollDown:
+                return scrollDirection < 0;
+            default:
+                return false;
+        }
     }
 
     public bool getSiphon()
@@ -253,7 +334,6 @@ public class PlayerController : MonoBehaviour, InputController
         pressingRight = false;
         pressingAimRight = false;
         pressingAimLeft = false;
-        pressingAimMiddle = false;
         pressingSiphon = false;
         pressingRestart = false;
         pressingReload = false;
@@ -264,8 +344,13 @@ public class PlayerController : MonoBehaviour, InputController
         pressingFire3 = false;
         pendingFire1Down = false;
         pendingFire2Down = false;
-        pendingScrollDirection = 0;
+        pendingBreakoutLeft = false;
+        pendingBreakoutRight = false;
+        pendingRecenterArm = false;
         scrollTriggerArmed = true;
+        nextScrollEventTime = 0f;
+        blockOppositeDirectionUntil = 0f;
+        lastScrollDirection = 0;
     }
 
     // Update is called once per frame
@@ -290,17 +375,16 @@ public class PlayerController : MonoBehaviour, InputController
         pendingFire2Down |= Input.GetMouseButtonDown(1);
         pressingFire1 = Input.GetMouseButton(0);
         pressingFire2 = Input.GetMouseButton(1);
-        pressingAimMiddle = Input.GetMouseButton(2);
 
         pressingReload = Input.GetKey(reloadKey);
 
-        pressingAimRight = Input.GetKey(aimRightKey);
-        pressingAimLeft = Input.GetKey(aimLeftKey);
+        pressingAimRight = Input.GetKey(leanRightKey);
+        pressingAimLeft = Input.GetKey(leanLeftKey);
 
 
         pressingSiphon = Input.GetKey(siphonKey);
         pressingRestart = Input.GetKey(restartKey);
         pressingShift = Input.GetKey(shiftKey);
-        UpdateScrollInput();
+        UpdateArmActionInput();
     }
 }
