@@ -242,6 +242,12 @@ public class NPCBrain : MonoBehaviour, IEnemyPoolResettable
 			return;
 		}
 
+		if (bodyState.isDead)
+		{
+			bodyState.CancelCombatShuffleAndResetDanger();
+			return;
+		}
+
 		bool isHostileCombat = HasHostileTarget() && AgentBehaviour.CurrentGoal is OverheatHostileGoal;
 		if (!isHostileCombat)
 		{

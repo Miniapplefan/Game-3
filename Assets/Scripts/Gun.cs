@@ -487,28 +487,26 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 
 	private Vector3 GetSpreadDirection(Vector3 forward)
 	{
-		Vector3 shootDirection = forward
-			+ new Vector3(
-				Random.Range(
-					-gunData.shootConfig.Spread.x,
-					gunData.shootConfig.Spread.x
-				),
-				Random.Range(
-					-gunData.shootConfig.Spread.y,
-					gunData.shootConfig.Spread.y
-				),
-				Random.Range(
-					-gunData.shootConfig.Spread.z,
-					gunData.shootConfig.Spread.z
-				)
-			);
+		Vector3 center = forward.normalized;
+		Quaternion spreadFrame = Quaternion.LookRotation(
+			center,
+			shootSystem.transform.up
+		);
 
-		if (shootDirection.sqrMagnitude <= Mathf.Epsilon)
-		{
-			return forward.normalized;
-		}
+		Vector3 localSpread = new Vector3(
+			Random.Range(
+				-gunData.shootConfig.Spread.x,
+				gunData.shootConfig.Spread.x
+			),
+			Random.Range(
+				-gunData.shootConfig.Spread.y,
+				gunData.shootConfig.Spread.y
+			),
+			0f
+		);
 
-		return shootDirection.normalized;
+		Vector3 worldSpread = spreadFrame * localSpread;
+		return (center + worldSpread).normalized;
 	}
 
 	private bool DrawNpcAccuracyOutcome()

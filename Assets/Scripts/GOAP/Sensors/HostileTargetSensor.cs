@@ -594,57 +594,95 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 	private bool TryResolveCombatShuffle(SenseContext context, out Vector3 position)
 	{
 		position = context.AgentPosition;
-		if (!context.BodyState.CombatShuffleRequested)
+		AgentRuntimeState runtimeState = context.RuntimeState;
+
+		if (runtimeState.HasCombatShuffleDestination && !context.BodyState.IsCombatShuffleActive)
 		{
-			ClearCombatShuffleState(context.RuntimeState);
+			ClearCombatShuffleState(runtimeState);
+			runtimeState.HasCachedPosition = false;
+		}
+
+		if (!runtimeState.HasCombatShuffleDestination && context.BodyState.IsCombatShuffleActive)
+		{
+			context.BodyState.FinishCombatShuffle();
+		}
+
+		bool hasActiveShuffle = runtimeState.HasCombatShuffleDestination;
+		bool hasPendingRequest = context.BodyState.HasPendingCombatShuffleRequest;
+		if (!hasActiveShuffle && !hasPendingRequest)
+		{
+			ClearCombatShuffleState(runtimeState);
 			return false;
 		}
 
-		if (!context.HasTarget || context.TargetTransform == null || !context.CanSeeTarget)
+		bool activeTargetChanged = hasActiveShuffle && runtimeState.CombatShuffleTargetTransform != context.TargetTransform;
+		if (context.BodyState.isDead
+			|| !context.HasTarget
+			|| context.TargetTransform == null
+			|| !context.CanSeeTarget
+			|| activeTargetChanged)
 		{
 			context.BodyState.CancelCombatShuffleAndResetDanger();
-			ClearCombatShuffleState(context.RuntimeState);
-			context.RuntimeState.HasCachedPosition = false;
+			ClearCombatShuffleState(runtimeState);
+			runtimeState.HasCachedPosition = false;
 			return false;
 		}
 
 		if (context.BodyState.legs.getMoveSpeed() <= 0f)
 		{
-			ClearCombatShuffleDestination(context.RuntimeState);
+			context.BodyState.CancelCombatShuffleAndResetDanger();
+			ClearCombatShuffleState(runtimeState);
 			return true;
+		}
+
+		if (hasActiveShuffle)
+		{
+			RefreshCombatShuffleClaim(context);
+
+			if (HasReachedCombatShuffleDestination(context))
+			{
+				position = context.AgentPosition;
+				AdoptCombatShufflePosition(context);
+				context.BodyState.FinishCombatShuffle();
+				ClearCombatShuffleState(runtimeState);
+				if (!context.BodyState.HasPendingCombatShuffleRequest)
+				{
+					return true;
+				}
+			}
+			else if (!IsActiveCombatShufflePathReachable(context))
+			{
+				context.BodyState.FinishCombatShuffle();
+				ClearCombatShuffleState(runtimeState);
+				return true;
+			}
+			else
+			{
+				position = runtimeState.CombatShuffleDestination;
+				return true;
+			}
+		}
+
+		if (!context.BodyState.TryConsumeCombatShuffleRequest())
+		{
+			return false;
 		}
 
 		PrepareCombatShuffleClaim(context);
 		RefreshCombatShuffleClaim(context);
 
-		if (context.RuntimeState.HasCombatShuffleDestination)
-		{
-			if (HasReachedCombatShuffleDestination(context))
-			{
-				position = context.AgentPosition;
-				AdoptCombatShufflePosition(context);
-				context.BodyState.CompleteCombatShuffle();
-				ClearCombatShuffleState(context.RuntimeState);
-				return true;
-			}
-
-			if (IsCombatShuffleDestinationValid(context, context.RuntimeState.CombatShuffleDestination, false, out Vector3 lockedPosition))
-			{
-				context.RuntimeState.CombatShuffleDestination = lockedPosition;
-				position = lockedPosition;
-				return true;
-			}
-
-			ClearCombatShuffleDestination(context.RuntimeState);
-		}
-
-		float minDistance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleMinDistance) : 1f;
-		float maxDistance = AttackConfig != null ? Mathf.Max(minDistance, AttackConfig.CombatShuffleMaxDistance) : 2f;
+		NavMeshAgent navMeshAgent = context.Perception.NavMeshAgent;
+		float configuredMinDistance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleMinDistance) : 1f;
+		float minimumDisplacement = GetMinimumCombatShuffleDisplacement(navMeshAgent) + 0.01f;
+		float minDistance = Mathf.Max(configuredMinDistance, minimumDisplacement);
+		float configuredMaxDistance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleMaxDistance) : 2f;
+		float maxDistance = Mathf.Max(minDistance, configuredMaxDistance);
 		float shuffleDistance = UnityEngine.Random.Range(minDistance, maxDistance);
 		Vector3 firingDirection = context.TargetPosition - context.AgentPosition;
 		firingDirection.y = 0f;
 		if (firingDirection.sqrMagnitude <= 0.0001f)
 		{
+			ClearCombatShuffleState(runtimeState);
 			return true;
 		}
 
@@ -655,15 +693,33 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		if (!hasRight && !hasLeft)
 		{
+			ClearCombatShuffleState(runtimeState);
 			return true;
 		}
 
 		position = hasRight && hasLeft
 			? (UnityEngine.Random.value < 0.5f ? rightPosition : leftPosition)
 			: hasRight ? rightPosition : leftPosition;
-		context.RuntimeState.HasCombatShuffleDestination = true;
-		context.RuntimeState.CombatShuffleDestination = position;
+		runtimeState.HasCombatShuffleDestination = true;
+		runtimeState.CombatShuffleDestination = position;
+		context.BodyState.BeginCombatShuffle();
 		return true;
+	}
+
+	private bool IsActiveCombatShufflePathReachable(SenseContext context)
+	{
+		NavMeshAgent navMeshAgent = context.Perception.NavMeshAgent;
+		if (navMeshAgent == null || !navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
+		{
+			return false;
+		}
+
+		return NavMesh.CalculatePath(
+			context.AgentPosition,
+			context.RuntimeState.CombatShuffleDestination,
+			navMeshAgent.areaMask,
+			SharedNavMeshPath)
+			&& SharedNavMeshPath.status == NavMeshPathStatus.PathComplete;
 	}
 
 	private void PrepareCombatShuffleClaim(SenseContext context)
@@ -724,12 +780,18 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		float stoppingDistance = navMeshAgent != null ? Mathf.Max(0f, navMeshAgent.stoppingDistance) : 0f;
 		float tolerance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleArrivalTolerance) : 0.15f;
 		float arrivalDistance = stoppingDistance + tolerance;
-		if ((context.AgentPosition - context.RuntimeState.CombatShuffleDestination).sqrMagnitude > arrivalDistance * arrivalDistance)
+		return (context.AgentPosition - context.RuntimeState.CombatShuffleDestination).sqrMagnitude <= arrivalDistance * arrivalDistance;
+	}
+
+	private float GetMinimumCombatShuffleDisplacement(NavMeshAgent navMeshAgent)
+	{
+		if (navMeshAgent == null)
 		{
-			return false;
+			return 0f;
 		}
 
-		return navMeshAgent == null || navMeshAgent.velocity.sqrMagnitude <= 0.0025f;
+		float arrivalTolerance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleArrivalTolerance) : 0.15f;
+		return Mathf.Max(navMeshAgent.stoppingDistance + arrivalTolerance, navMeshAgent.radius * 1.25f);
 	}
 
 	private bool IsCombatShuffleDestinationValid(SenseContext context, Vector3 rawPosition, bool requireMeaningfulDisplacement, out Vector3 position)
@@ -748,8 +810,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 		}
 
 		position = navHit.position;
-		float arrivalTolerance = AttackConfig != null ? Mathf.Max(0f, AttackConfig.CombatShuffleArrivalTolerance) : 0.15f;
-		float minimumDisplacement = Mathf.Max(navMeshAgent.stoppingDistance + arrivalTolerance, navMeshAgent.radius * 1.25f);
+		float minimumDisplacement = GetMinimumCombatShuffleDisplacement(navMeshAgent);
 		if (requireMeaningfulDisplacement && (position - context.AgentPosition).sqrMagnitude <= minimumDisplacement * minimumDisplacement)
 		{
 			return false;

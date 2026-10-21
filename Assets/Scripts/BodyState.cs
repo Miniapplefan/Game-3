@@ -30,7 +30,8 @@ public class BodyState : MonoBehaviour
 	public AttackConfigSO AttackConfig;
 	public float dangerLevel;
 	private float dangerCountdownMaximum;
-	private bool combatShuffleRequested;
+	private bool combatShuffleRequestPending;
+	private bool combatShuffleActive;
 	private float losCheckInterval = 0.2f;
 	private float losCheckIntervalCache = 0.2f;
 	public bool hasLOS;
@@ -127,6 +128,10 @@ public class BodyState : MonoBehaviour
 	private void OnDisable()
 	{
 		ClearSuppressiveAimGunOverlaps();
+		if (bodyController != null && bodyController.isAI)
+		{
+			CancelCombatShuffleAndResetDanger();
+		}
 	}
 
 	public void ResetForPoolReuse()
@@ -137,7 +142,8 @@ public class BodyState : MonoBehaviour
 		isDead = false;
 		dangerLevel = 0f;
 		dangerCountdownMaximum = 0f;
-		combatShuffleRequested = false;
+		combatShuffleRequestPending = false;
+		combatShuffleActive = false;
 		hasLOS = false;
 		isBeingAimedAt = false;
 		isAimed = false;
@@ -164,12 +170,13 @@ public class BodyState : MonoBehaviour
 		}
 	}
 
-	public bool CombatShuffleRequested => combatShuffleRequested;
+	public bool HasPendingCombatShuffleRequest => combatShuffleRequestPending;
+	public bool IsCombatShuffleActive => combatShuffleActive;
 
 	public bool TickCombatShuffleDanger(float deltaTime, bool isActiveHostileAttack)
 	{
 		EnsureCombatShuffleCycleInitialized();
-		if (!isActiveHostileAttack || combatShuffleRequested)
+		if (!isActiveHostileAttack)
 		{
 			return false;
 		}
@@ -189,18 +196,41 @@ public class BodyState : MonoBehaviour
 			return false;
 		}
 
-		combatShuffleRequested = true;
+		RollCombatShuffleCountdown();
+		if (combatShuffleRequestPending)
+		{
+			return false;
+		}
+
+		combatShuffleRequestPending = true;
 		return true;
 	}
 
-	public void CompleteCombatShuffle()
+	public bool TryConsumeCombatShuffleRequest()
 	{
-		ResetCombatShuffleCycle();
+		if (!combatShuffleRequestPending)
+		{
+			return false;
+		}
+
+		combatShuffleRequestPending = false;
+		return true;
+	}
+
+	public void BeginCombatShuffle()
+	{
+		combatShuffleActive = true;
+	}
+
+	public void FinishCombatShuffle()
+	{
+		combatShuffleActive = false;
 	}
 
 	public void CancelCombatShuffleAndResetDanger()
 	{
-		if (!combatShuffleRequested
+		if (!combatShuffleRequestPending
+			&& !combatShuffleActive
 			&& dangerCountdownMaximum > 0f
 			&& Mathf.Approximately(dangerLevel, dangerCountdownMaximum))
 		{
@@ -220,11 +250,17 @@ public class BodyState : MonoBehaviour
 
 	private void ResetCombatShuffleCycle()
 	{
+		combatShuffleRequestPending = false;
+		combatShuffleActive = false;
+		RollCombatShuffleCountdown();
+	}
+
+	private void RollCombatShuffleCountdown()
+	{
 		float minSeconds = AttackConfig != null ? Mathf.Max(0f, AttackConfig.DangerCountdownMinSeconds) : 3f;
 		float maxSeconds = AttackConfig != null ? Mathf.Max(minSeconds, AttackConfig.DangerCountdownMaxSeconds) : 6f;
 		dangerCountdownMaximum = UnityEngine.Random.Range(minSeconds, maxSeconds);
 		dangerLevel = dangerCountdownMaximum;
-		combatShuffleRequested = false;
 	}
 
 	void UpdateAIState()
