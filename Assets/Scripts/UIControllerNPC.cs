@@ -35,12 +35,14 @@ public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
     AimAssistTarget aimAssistTarget;
     BodyController npcBodyController;
     BodyController playerBodyController;
+    IHealthDisplaySource healthSource;
 
 
     void Awake()
     {
         aimAssistTarget = GetComponent<AimAssistTarget>();
         npcBodyController = GetComponent<BodyController>();
+        ResolveHealthSource();
         ResolvePlayerBodyController();
 
         if (AimIndicator != null)
@@ -74,7 +76,12 @@ public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
     // Update is called once per frame
     void Update()
     {
-        if (bodyState != null && bodyState.isDead)
+        if (healthSource == null)
+        {
+            ResolveHealthSource();
+        }
+
+        if (healthSource != null && healthSource.IsDead)
         {
             SetAimIndicatorsActive(false);
             SetHealthIndicatorActive(false);
@@ -146,6 +153,21 @@ public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
         }
     }
 
+    void ResolveHealthSource()
+    {
+        if (bodyState != null)
+        {
+            healthSource = bodyState;
+            return;
+        }
+
+        healthSource = GetComponent<IHealthDisplaySource>();
+        if (healthSource == null)
+        {
+            healthSource = GetComponentInParent<IHealthDisplaySource>();
+        }
+    }
+
     public void ResetForPoolReuse()
     {
         aimIndicatorsVisible = true;
@@ -159,6 +181,8 @@ public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
         healthBarDeltaHideTimer = 0f;
         lastDisplayedHealth = float.NaN;
         maxHealth = float.NaN;
+        healthSource = null;
+        ResolveHealthSource();
 
         if (AimIndicator != null) AimIndicator.SetActive(false);
         if (healthIndicator != null) healthIndicator.gameObject.SetActive(true);
@@ -300,14 +324,19 @@ public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
 
     void UpdateHealthIndicator()
     {
-        if (bodyState == null || bodyState.head == null)
+        if (healthSource == null)
         {
             return;
         }
 
-        float currentHealth = bodyState.head.currentHealth;
+        float currentHealth = Mathf.Max(0f, healthSource.CurrentHealth);
+        float sourceMaximumHealth = Mathf.Max(0f, healthSource.MaximumHealth);
 
-        if (float.IsNaN(maxHealth))
+        if (sourceMaximumHealth > 0f)
+        {
+            maxHealth = sourceMaximumHealth;
+        }
+        else if (float.IsNaN(maxHealth))
         {
             maxHealth = Mathf.Max(0f, currentHealth);
         }

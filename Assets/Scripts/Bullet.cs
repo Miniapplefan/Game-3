@@ -24,6 +24,8 @@ public class Bullet : MonoBehaviour
     [SerializeField] float collisionRadius = 0.1f;
     [SerializeField] float telegraphRadiusMultiplier = 1.1f;
     [SerializeField] int marchingCubesDamage = 1;
+    [SerializeField, Tooltip("Prevents this bullet from killing the player while preserving hit and graze detection.")]
+    private bool harmless;
     [SerializeField] float telegraphMaxDistance = 0f;
     [SerializeField] private BulletTimeChannel bulletTimeChannel = BulletTimeChannel.EnemyBullet;
 
@@ -325,7 +327,7 @@ public class Bullet : MonoBehaviour
         if (player != null)
         {
             BodyController bodyController = hit.collider.GetComponentInParent<BodyController>();
-            if (bodyController != null && !bodyController.isGodMode)
+            if (bodyController != null && !bodyController.isGodMode && !harmless)
             {
                 bodyController.DieFacingIncomingDirection(incomingDirection);
             }
@@ -414,14 +416,24 @@ public class Bullet : MonoBehaviour
 
     private BulletTelegraphState EvaluateTelegraphState()
     {
-        if (!hasPlayerCandidate)
+        if (hasPlayerCandidate && HasLineOfSightToPlayer())
+        {
+            return BulletTelegraphState.Lethal;
+        }
+
+        if (!enablePlayerGraze || grazeResolved)
         {
             return BulletTelegraphState.Neutral;
         }
 
-        if (HasLineOfSightToPlayer())
+        if (pendingGrazePlayer != null)
         {
-            return BulletTelegraphState.Lethal;
+            return BulletTelegraphState.Graze;
+        }
+
+        if (!hasPlayerCandidate)
+        {
+            return BulletTelegraphState.Neutral;
         }
 
         return HasGrazeTrajectoryToPlayer()

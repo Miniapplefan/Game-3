@@ -2851,6 +2851,18 @@ public class BodyController : MonoBehaviour, IEnemyPoolResettable
 			return;
 		}
 
+		// The first recenter press only clears the focused arm. If the other arm
+		// is still broken out and parked while centered, a second press clears it.
+		if (startedAimingLeft)
+		{
+			RecenterLeftArm();
+			return;
+		}
+
+		if (startedAimingRight)
+		{
+			RecenterRightArm();
+		}
 	}
 
 	// private void doCooling()

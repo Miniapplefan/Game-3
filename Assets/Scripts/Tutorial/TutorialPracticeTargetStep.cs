@@ -21,6 +21,9 @@ public class TutorialPracticeTargetStep : MonoBehaviour
     [Header("Inputs")]
     public List<TutorialStepInputAction> requiredInputs = new List<TutorialStepInputAction>();
 
+    [Tooltip("Inputs that immediately fail and restart the current attempt when detected.")]
+    public List<TutorialStepInputAction> bannedInputs = new List<TutorialStepInputAction>();
+
     [Header("Flow")]
     public GameObject nextStepObject;
     public bool deactivateSelfOnComplete = true;
@@ -74,7 +77,18 @@ public class TutorialPracticeTargetStep : MonoBehaviour
             ResolvePlayerInput();
         }
 
-        if (playerInput == null || remainingInputs.Count == 0)
+        if (playerInput == null)
+        {
+            return;
+        }
+
+        if (IsAnyBannedInputSatisfied())
+        {
+            RestartTargetAttempt();
+            return;
+        }
+
+        if (remainingInputs.Count == 0)
         {
             return;
         }
@@ -368,10 +382,29 @@ public class TutorialPracticeTargetStep : MonoBehaviour
         }
     }
 
+    bool IsAnyBannedInputSatisfied()
+    {
+        for (int i = 0; i < bannedInputs.Count; i++)
+        {
+            if (IsInputSatisfied(bannedInputs[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     void TryCompleteStep()
     {
-        if (hasCompleted)
+        if (hasCompleted || retryCoroutine != null)
         {
+            return;
+        }
+
+        if (playerInput != null && IsAnyBannedInputSatisfied())
+        {
+            RestartTargetAttempt();
             return;
         }
 

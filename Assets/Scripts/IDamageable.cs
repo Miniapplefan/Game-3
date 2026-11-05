@@ -22,3 +22,10 @@ public interface IDamageable
 {
 	void TakeDamage(DamageInfo i);
 }
+
+public interface IHealthDisplaySource
+{
+	float CurrentHealth { get; }
+	float MaximumHealth { get; }
+	bool IsDead { get; }
+}

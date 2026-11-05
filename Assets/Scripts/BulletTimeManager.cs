@@ -12,7 +12,10 @@ public enum BulletTimeChannel
 	PlayerActiveRagdoll,
 	PlayerAura,
 	PlayerAuraGrip,
-	PlayerPulseRecharge
+	PlayerPulseRecharge,
+	PracticeTargetMovement,
+	PracticeTargetFireRate,
+	VFX
 }
 
 public class BulletTimeManager : MonoBehaviour
@@ -40,6 +43,8 @@ public class BulletTimeManager : MonoBehaviour
 	[SerializeField, Range(0f, 1f)] private float enemyHitReactionScale = 0.25f;
 	[SerializeField] private bool affectEnemyFireRate = true;
 	[SerializeField, Range(0f, 1f)] private float enemyFireRateScale = 0.25f;
+	[SerializeField, Range(0f, 1f)] private float practiceTargetMovementScale = 0.25f;
+	[SerializeField, Range(0f, 1f)] private float practiceTargetFireRateScale = 0.25f;
 
 	[Header("Player Channels")]
 	[SerializeField] private bool affectPlayerMovement = false;
@@ -54,6 +59,10 @@ public class BulletTimeManager : MonoBehaviour
 	[SerializeField, Range(0f, 1f)] private float playerAuraGripScale = 0.25f;
 	[SerializeField] private bool affectPlayerPulseRecharge = true;
 	[SerializeField, Range(0f, 1f)] private float playerPulseRechargeScale = 0.25f;
+
+	[Header("VFX Channels")]
+	[SerializeField] private bool affectVFX = true;
+	[SerializeField, Range(0f, 1f)] private float vfxScale = 0.25f;
 
 	private float elapsed;
 	private bool active;
@@ -203,6 +212,10 @@ public class BulletTimeManager : MonoBehaviour
 				return affectEnemyHitReactions;
 			case BulletTimeChannel.EnemyFireRate:
 				return affectEnemyFireRate;
+			case BulletTimeChannel.PracticeTargetMovement:
+				return true;
+			case BulletTimeChannel.PracticeTargetFireRate:
+				return true;
 			case BulletTimeChannel.PlayerMovement:
 				return affectPlayerMovement;
 			case BulletTimeChannel.PlayerFireRate:
@@ -215,6 +228,8 @@ public class BulletTimeManager : MonoBehaviour
 				return affectPlayerAuraGrip;
 			case BulletTimeChannel.PlayerPulseRecharge:
 				return affectPlayerPulseRecharge;
+			case BulletTimeChannel.VFX:
+				return affectVFX;
 			default:
 				return false;
 		}
@@ -232,6 +247,10 @@ public class BulletTimeManager : MonoBehaviour
 				return Mathf.Clamp01(enemyHitReactionScale);
 			case BulletTimeChannel.EnemyFireRate:
 				return Mathf.Clamp01(enemyFireRateScale);
+			case BulletTimeChannel.PracticeTargetMovement:
+				return Mathf.Clamp01(practiceTargetMovementScale);
+			case BulletTimeChannel.PracticeTargetFireRate:
+				return Mathf.Clamp01(practiceTargetFireRateScale);
 			case BulletTimeChannel.PlayerMovement:
 				return Mathf.Clamp01(playerMovementScale);
 			case BulletTimeChannel.PlayerFireRate:
@@ -244,6 +263,8 @@ public class BulletTimeManager : MonoBehaviour
 				return Mathf.Clamp01(playerAuraGripScale);
 			case BulletTimeChannel.PlayerPulseRecharge:
 				return Mathf.Clamp01(playerPulseRechargeScale);
+			case BulletTimeChannel.VFX:
+				return Mathf.Clamp01(vfxScale);
 			default:
 				return Mathf.Clamp01(defaultScale);
 		}

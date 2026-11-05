@@ -1,0 +1,109 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7315385762198256510
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1526426609210558254}
+  - component: {fileID: 2827305431943121373}
+  m_Layer: 0
+  m_Name: BulletTimeManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1526426609210558254
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7315385762198256510}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 6.969373, y: 1.9479523, z: 15.564987}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2827305431943121373
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7315385762198256510}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00ca886c8a9d462cb6ba008be35c1466, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  duration: 2
+  defaultScale: 0.1
+  intensityCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0.08979438
+      outSlope: 0.08979438
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.13114755
+    - serializedVersion: 3
+      time: 0.61308706
+      value: 0.8218115
+      inSlope: -0.7572671
+      outSlope: -0.7572671
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.0755313
+      outWeight: 0.96094835
+    - serializedVersion: 3
+      time: 0.9945068
+      value: 0.009424455
+      inSlope: -4.0870028
+      outSlope: -4.0870028
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.026078098
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  endSoundLeadTime: 0.5
+  endSoundRetriggerFadeSeconds: 0.08
+  audioEffectEnterSeconds: 0.12
+  audioEffectExitSeconds: 0.3
+  affectEnemyMovement: 1
+  enemyMovementScale: 0.1
+  affectEnemyBullets: 1
+  enemyBulletScale: 0.1
+  affectEnemyHitReactions: 1
+  enemyHitReactionScale: 0.15
+  affectEnemyFireRate: 1
+  enemyFireRateScale: 0.1
+  practiceTargetMovementScale: 0.012
+  practiceTargetFireRateScale: 0.25
+  affectPlayerMovement: 1
+  playerMovementScale: 0.2
+  affectPlayerFireRate: 1
+  playerFireRateScale: 0.6
+  affectPlayerActiveRagdoll: 1
+  playerActiveRagdollScale: 0.7
+  affectPlayerAura: 1
+  playerAuraScale: 0.25
+  affectPlayerAuraGrip: 1
+  playerAuraGripScale: 0.25
+  affectPlayerPulseRecharge: 1
+  playerPulseRechargeScale: 0.01
+  affectVFX: 1
+  vfxScale: 0.6

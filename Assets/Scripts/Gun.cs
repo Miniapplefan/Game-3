@@ -879,7 +879,7 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 		{
 			// if (targetBodyController.cooling.isOverheated)
 			// {
-			bodyVFXController.doBloodParticles(hit.point, Quaternion.Euler(hit.normal));
+			bodyVFXController.doBloodParticles(hit.point, hit.normal);
 			// }
 			// TODO make these hit particles object pooled
 			Destroy(Instantiate(gunData.shootConfig.hitParticles, hit.point, Quaternion.Euler(hit.normal)).gameObject, 1f);
@@ -888,7 +888,19 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 		if (practiceTarget != null && targetBodyController == null)
 		{
 			Destroy(Instantiate(gunData.shootConfig.hitParticles, hit.point, Quaternion.Euler(hit.normal)).gameObject, 1f);
-			practiceTarget.DestroyTarget();
+
+			BodyController sourceBodyController = GetOwnerBodyController();
+			float damageAmount = gunData.shootConfig.rawDamage;
+			if (sourceBodyController != null && !sourceBodyController.isAI)
+			{
+				damageAmount *= sourceBodyController.getAuraDamageMultiplier();
+			}
+
+			DamageInfo damageInfo = new DamageInfo(damageAmount);
+			damageInfo.impactForce = gunData.shootConfig.impactForce;
+			damageInfo.impactVector = shootSystem.transform.forward * gunData.shootConfig.impactForce;
+			damageInfo.sourceBodyController = sourceBodyController;
+			practiceTarget.TakeDamage(damageInfo);
 		}
 
 		return damagedEnemy;

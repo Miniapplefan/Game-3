@@ -25,7 +25,7 @@ public static class BulletPool
 			ObjectPool<Bullet> createdPool = null;
 			createdPool = new ObjectPool<Bullet>(
 				() => CreateBullet(prefab, createdPool),
-				OnGetBullet,
+				null,
 				OnReleaseBullet,
 				OnDestroyBullet,
 				collectionCheck: false,
@@ -44,6 +44,7 @@ public static class BulletPool
 
 		bullet.transform.SetPositionAndRotation(position, rotation);
 		bullet.SetTrailEnabled(enableTrail);
+		bullet.gameObject.SetActive(true);
 		return bullet;
 	}
 
@@ -65,14 +66,6 @@ public static class BulletPool
 		bullet.SetPoolRelease(pool.Release);
 		instance.SetActive(false);
 		return bullet;
-	}
-
-	private static void OnGetBullet(Bullet bullet)
-	{
-		if (bullet != null)
-		{
-			bullet.gameObject.SetActive(true);
-		}
 	}
 
 	private static void OnReleaseBullet(Bullet bullet)

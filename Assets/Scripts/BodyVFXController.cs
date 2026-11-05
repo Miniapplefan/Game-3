@@ -11,6 +11,11 @@ public class BodyVFXController : MonoBehaviour
     public Transform DissipateParticleTransform2;
     public ParticleSystem HeatDissipationParticles;
     public ParticleSystem BloodParticles;
+    [Header("Blood Particle Randomization")]
+    [SerializeField, Range(0f, 89f)] private float minimumBloodTilt = 10f;
+    [SerializeField, Range(0f, 89f)] private float maximumBloodTilt = 30f;
+    [SerializeField, Min(0f)] private float minimumBloodStartSpeed = 9f;
+    [SerializeField, Min(0f)] private float maximumBloodStartSpeed = 11f;
     private ParticleSystem OverheatParticle1;
     private ParticleSystem OverheatParticle2;
     private ParticleSystem DissipateParticle1;
@@ -85,11 +90,56 @@ public class BodyVFXController : MonoBehaviour
     //     emission.rateOverTime = 0;
     // }
 
-    public void doBloodParticles(Vector3 hitLocation, Quaternion hitNormal)
+    public void doBloodParticles(Vector3 hitLocation, Vector3 hitNormal)
     {
-        var blood = Instantiate(BloodParticles, hitLocation, hitNormal).gameObject;
-        blood.transform.SetParent(this.gameObject.transform);
-        Destroy(blood, 2f);
+        const float directionEpsilon = 0.000001f;
+
+        Vector3 surfaceNormal = hitNormal.sqrMagnitude > directionEpsilon
+            ? hitNormal.normalized
+            : transform.forward;
+
+        Vector3 surfaceTangent = Vector3.ProjectOnPlane(Random.onUnitSphere, surfaceNormal);
+        if (surfaceTangent.sqrMagnitude <= directionEpsilon)
+        {
+            Vector3 fallbackAxis = Mathf.Abs(surfaceNormal.y) < 0.999f
+                ? Vector3.up
+                : Vector3.right;
+            surfaceTangent = Vector3.Cross(surfaceNormal, fallbackAxis);
+        }
+        surfaceTangent.Normalize();
+
+        float side = Random.value < 0.5f ? -1f : 1f;
+        float minimumTilt = Mathf.Clamp(Mathf.Min(minimumBloodTilt, maximumBloodTilt), 0f, 89f);
+        float maximumTilt = Mathf.Clamp(Mathf.Max(minimumBloodTilt, maximumBloodTilt), 0f, 89f);
+        float tiltRadians = Random.Range(minimumTilt, maximumTilt) * Mathf.Deg2Rad;
+        Vector3 burstDirection = (
+            surfaceNormal * Mathf.Cos(tiltRadians)
+            + surfaceTangent * side * Mathf.Sin(tiltRadians)
+        ).normalized;
+        Quaternion burstRotation = Quaternion.FromToRotation(Vector3.forward, burstDirection);
+
+        ParticleSystem blood = Instantiate(BloodParticles, hitLocation, burstRotation);
+        blood.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        blood.transform.SetParent(transform);
+
+        float minimumStartSpeed = Mathf.Max(0f, Mathf.Min(minimumBloodStartSpeed, maximumBloodStartSpeed));
+        float maximumStartSpeed = Mathf.Max(0f, Mathf.Max(minimumBloodStartSpeed, maximumBloodStartSpeed));
+        var main = blood.main;
+        main.startSpeed = new ParticleSystem.MinMaxCurve(minimumStartSpeed, maximumStartSpeed);
+
+        blood.Play(true);
+        StartCoroutine(UpdateParticleSimulationSpeed(blood));
+        Destroy(blood.gameObject, 2f);
+    }
+
+    private IEnumerator UpdateParticleSimulationSpeed(ParticleSystem particleSystem)
+    {
+        while (particleSystem != null)
+        {
+            var main = particleSystem.main;
+            main.simulationSpeed = BulletTimeManager.GetScale(BulletTimeChannel.VFX);
+            yield return null;
+        }
     }
 
     // public void playOverheatParticles()

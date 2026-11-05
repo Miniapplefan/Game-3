@@ -4604,6 +4604,10 @@ PrefabInstance:
       propertyPath: gunHolders.Array.data[2]
       value: 
       objectReference: {fileID: 60973816656844232}
+    - target: {fileID: 5897900684820935691, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: gunHolderAimLayerMask.m_Bits
+      value: 576
+      objectReference: {fileID: 0}
     - target: {fileID: 5897900684926935050, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_Data.m_SourceObjects.m_Item0.transform
       value: 
@@ -5810,6 +5814,10 @@ MonoBehaviour:
   DissipateParticleTransform2: {fileID: 300262867669857134}
   HeatDissipationParticles: {fileID: 9056568595549153658, guid: 9b707753df01d4708bbeae12929593c8, type: 3}
   BloodParticles: {fileID: 9056568595549153658, guid: 8bd3ccf5a88fe4d57bdf856deb9776f5, type: 3}
+  minimumBloodTilt: 50
+  maximumBloodTilt: 80
+  minimumBloodStartSpeed: 9
+  maximumBloodStartSpeed: 11
 --- !u!114 &722765477829234200
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5852,10 +5860,11 @@ MonoBehaviour:
   colorGradeEnterDuration: 0.2
   colorGradeExitDuration: 0.5
   colorGradeRestoreLeadTime: 1.4
-  enableAuraLuminanceLift: 1
-  maximumAuraLuminanceLiftPercent: 25
+  enableAuraBloom: 1
+  auraBloomVolume: {fileID: 0}
+  maximumAuraBloomIntensity: 30
   fullBoostAuraAbovePressureThreshold: 2
-  auraLuminanceLiftRamp:
+  auraBloomRamp:
     serializedVersion: 2
     m_Curve:
     - serializedVersion: 3
@@ -5879,8 +5888,8 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  auraLuminanceLiftRiseDuration: 0.4
-  auraLuminanceLiftFallDuration: 1.25
+  auraBloomRiseDuration: 0.4
+  auraBloomFallDuration: 1.25
 --- !u!114 &7400733204409723228
 MonoBehaviour:
   m_ObjectHideFlags: 0

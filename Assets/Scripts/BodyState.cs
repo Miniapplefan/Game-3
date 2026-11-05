@@ -10,7 +10,7 @@ public enum EnemyFireReadinessState
 	Set
 }
 
-public class BodyState : MonoBehaviour
+public class BodyState : MonoBehaviour, IHealthDisplaySource
 {
 	public BodyController bodyController;
 	public HeatContainer heatContainer;
@@ -26,6 +26,12 @@ public class BodyState : MonoBehaviour
 	public float bodyHeat;
 	public bool bodyIsOverheated;
 	public bool isDead;
+
+	public float CurrentHealth => head != null ? Mathf.Max(0f, head.currentHealth) : 0f;
+	public float MaximumHealth => bodyController != null && bodyController.isAI
+		? Mathf.Max(0f, bodyController.aiHealth)
+		: (head != null ? Mathf.Max(0f, head.getMaxHealth()) : 0f);
+	public bool IsDead => isDead;
 
 	public AttackConfigSO AttackConfig;
 	public float dangerLevel;

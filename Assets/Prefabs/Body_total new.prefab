@@ -11516,6 +11516,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 4885569250478154194}
     - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
+      propertyPath: breakoutAimAssistBoxDepth
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 4653353993334332494, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: dualArmHeadBlendNearAngle
       value: 65
       objectReference: {fileID: 0}
@@ -11737,7 +11741,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684391768438, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 0.02
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684391768438, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_LocalPosition.y
@@ -11745,7 +11749,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684391768438, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: -0.3
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684391768438, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: m_LocalRotation.w
@@ -11801,7 +11805,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: field of view
-      value: 156.26596
+      value: 153.56601
       objectReference: {fileID: 0}
     - target: {fileID: 5897900684698878937, guid: 277d1a17dec1c4f3888e58085225ee22, type: 3}
       propertyPath: far clip plane
@@ -13727,7 +13731,7 @@ MonoBehaviour:
   thermalConductivity: 0
   currentAir: {fileID: 0}
   airGrid: {fileID: 0}
-  isBeingFlamed: 0
+  isBeingFlamed: 1
   structuralMaterial: {fileID: 0}
   ambientTemperature: 0
   dissipationRateFromAirCurrents: 1
@@ -13755,6 +13759,10 @@ MonoBehaviour:
   DissipateParticleTransform2: {fileID: 2458627064291312741}
   HeatDissipationParticles: {fileID: 9056568595549153658, guid: 9b707753df01d4708bbeae12929593c8, type: 3}
   BloodParticles: {fileID: 9056568595549153658, guid: 8bd3ccf5a88fe4d57bdf856deb9776f5, type: 3}
+  minimumBloodTilt: 10
+  maximumBloodTilt: 30
+  minimumBloodStartSpeed: 9
+  maximumBloodStartSpeed: 11
 --- !u!114 &3462004102631177710
 MonoBehaviour:
   m_ObjectHideFlags: 0
