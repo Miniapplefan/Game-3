@@ -32,13 +32,23 @@ public class AirGrid : MonoBehaviour
             float newTemperature = currentTemp;
 
             int3 currentPos = new int3(x, y, z);
-            int[] dx = { 1, -1, 0, 0, 0, 0 };
-            int[] dy = { 0, 0, 1, -1, 0, 0 };
-            int[] dz = { 0, 0, 0, 0, 1, -1 };
 
             for (int i = 0; i < 6; i++)
             {
-                int3 neighborPos = currentPos + new int3(dx[i], dy[i], dz[i]);
+                // Burst jobs cannot allocate managed arrays. Resolve the six
+                // cardinal neighbor offsets as value types instead.
+                int3 neighborOffset;
+                switch (i)
+                {
+                    case 0: neighborOffset = new int3(1, 0, 0); break;
+                    case 1: neighborOffset = new int3(-1, 0, 0); break;
+                    case 2: neighborOffset = new int3(0, 1, 0); break;
+                    case 3: neighborOffset = new int3(0, -1, 0); break;
+                    case 4: neighborOffset = new int3(0, 0, 1); break;
+                    default: neighborOffset = new int3(0, 0, -1); break;
+                }
+
+                int3 neighborPos = currentPos + neighborOffset;
 
                 if (neighborPos.x >= 0 && neighborPos.x < gridDimensions.x &&
                     neighborPos.y >= 0 && neighborPos.y < gridDimensions.y &&
