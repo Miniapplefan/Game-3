@@ -34,6 +34,13 @@ public class BodyState : MonoBehaviour, IHealthDisplaySource
 	public bool IsDead => isDead;
 
 	public AttackConfigSO AttackConfig;
+	private NPCCombatTuning combatTuning;
+	public float ConfiguredTimeToAim => combatTuning != null
+		? Mathf.Max(0f, combatTuning.TimeToAim)
+		: (AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeToAim) : 0f);
+	public float ConfiguredTimeBetweenAttacks => combatTuning != null
+		? Mathf.Max(0f, combatTuning.TimeBetweenAttacks)
+		: (AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeBetweenAttacks) : 1f);
 	public float dangerLevel;
 	private float dangerCountdownMaximum;
 	private bool combatShuffleRequestPending;
@@ -83,6 +90,7 @@ public class BodyState : MonoBehaviour, IHealthDisplaySource
 	{
 		bodyController = bc;
 		heatContainer = heat;
+		combatTuning = GetComponentInParent<NPCCombatTuning>(true);
 		navMeshAgent = GetComponentInParent<NavMeshAgent>();
 
 		cooling = systems.OfType<CoolingModel>().FirstOrDefault();
@@ -360,7 +368,7 @@ public class BodyState : MonoBehaviour, IHealthDisplaySource
 	private void EnterUnsetFireReadiness()
 	{
 		FireReadinessState = EnemyFireReadinessState.Unset;
-		TimeToAim = AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeToAim) : 0f;
+		TimeToAim = ConfiguredTimeToAim;
 		isAimed = false;
 	}
 
@@ -733,7 +741,7 @@ public class BodyState : MonoBehaviour, IHealthDisplaySource
 			return;
 		}
 
-		TimeToAim = Mathf.Clamp(TimeToAim + AttackConfig.SuppressiveShotTimeToAimIncrease, 0f, AttackConfig.TimeToAim);
+		TimeToAim = Mathf.Clamp(TimeToAim + AttackConfig.SuppressiveShotTimeToAimIncrease, 0f, ConfiguredTimeToAim);
 		isAimed = false;
 	}
 

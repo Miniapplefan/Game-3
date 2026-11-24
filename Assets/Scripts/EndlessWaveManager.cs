@@ -9,8 +9,22 @@ public class EndlessWaveManager : MonoBehaviour
 {
 	private const float MinimumSpawnInterval = 0.01f;
 
+	[System.Serializable]
+	private sealed class EnemySpawnEntry
+	{
+		[Tooltip("Enemy prefab to spawn. It must contain a BodyController in its hierarchy.")]
+		public GameObject Prefab;
+
+		[Min(0f), Tooltip("Relative chance for this enemy type to be selected. For example, weights of 3 and 1 produce probabilities of 75% and 25%.")]
+		public float SpawnWeight = 1f;
+	}
+
 	[Header("Enemy")]
-	[SerializeField, Tooltip("The enemy prefab spawned by this manager. It must contain a BodyController in its hierarchy.")]
+	[SerializeField, Tooltip("Enemy types available to this manager. Spawn weights are relative and do not need to add up to 1 or 100.")]
+	private List<EnemySpawnEntry> enemyTypes = new List<EnemySpawnEntry>();
+
+	// Retained so existing scenes automatically migrate their previous single-prefab assignment.
+	[SerializeField, HideInInspector]
 	private GameObject enemyPrefab;
 
 	[SerializeField, Tooltip("Empty scene objects used as enemy spawn positions and rotations.")]
@@ -54,7 +68,7 @@ public class EndlessWaveManager : MonoBehaviour
 	private float corpseLifetime = 5f;
 
 	[Header("Pooling")]
-	[SerializeField, Min(0), Tooltip("Enemies created up front so later waves do not need to instantiate them. Set this near the expected peak of living enemies plus visible corpses.")]
+	[SerializeField, Min(0), Tooltip("Enemies created up front per enabled enemy prefab so later waves do not need to instantiate them.")]
 	private int prewarmPoolSize = 10;
 
 	[SerializeField, Tooltip("Create additional pooled enemies if every prewarmed enemy is in use.")]
@@ -77,7 +91,7 @@ public class EndlessWaveManager : MonoBehaviour
 	private readonly List<TrackedEnemy> trackedEnemies = new List<TrackedEnemy>();
 	private readonly List<Transform> validSpawnPoints = new List<Transform>();
 	private readonly List<Transform> waveCandidates = new List<Transform>();
-	private readonly Queue<PooledEnemy> availableEnemies = new Queue<PooledEnemy>();
+	private readonly Dictionary<GameObject, Queue<PooledEnemy>> availableEnemiesByPrefab = new Dictionary<GameObject, Queue<PooledEnemy>>();
 	private readonly List<PooledEnemy> pooledEnemies = new List<PooledEnemy>();
 	private readonly HashSet<Transform> warnedOffMeshSpawnPoints = new HashSet<Transform>();
 	private Coroutine spawnCoroutine;
@@ -95,7 +109,19 @@ public class EndlessWaveManager : MonoBehaviour
 	public int WavesSpawned { get; private set; }
 	public int EnemiesDefeated { get; private set; }
 	public float CompletedRunTime => completedRunTime;
-	public int AvailablePoolCount => availableEnemies.Count;
+	public int AvailablePoolCount
+	{
+		get
+		{
+			int count = 0;
+			foreach (Queue<PooledEnemy> availableEnemies in availableEnemiesByPrefab.Values)
+			{
+				count += availableEnemies.Count;
+			}
+
+			return count;
+		}
+	}
 	public int TotalPoolCount => pooledEnemies.Count;
 	public bool IsSpawning => spawnCoroutine != null;
 	public bool HasReachedWaveLimit => limitWaveCount && WavesSpawned >= numberOfWaves;
@@ -115,6 +141,7 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private sealed class PooledEnemy
 	{
+		public GameObject SourcePrefab;
 		public GameObject Root;
 		public BodyController Body;
 		public TransformState[] Transforms;
@@ -163,6 +190,7 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private void Awake()
 	{
+		EnsureEnemyTypesInitialized();
 		ApplySelectedDifficulty();
 		ResetRunResults();
 		RebuildSpawnPointsFromChildren();
@@ -288,7 +316,7 @@ public class EndlessWaveManager : MonoBehaviour
 		}
 
 		trackedEnemies.Clear();
-		availableEnemies.Clear();
+		availableEnemiesByPrefab.Clear();
 		pooledEnemies.Clear();
 		ActiveEnemyCount = 0;
 		TrackedCorpseCount = 0;
@@ -296,6 +324,7 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private void OnValidate()
 	{
+		EnsureEnemyTypesInitialized();
 		numberOfWaves = Mathf.Max(1, numberOfWaves);
 		maxActiveEnemies = Mathf.Max(1, maxActiveEnemies);
 		waveSize = Mathf.Clamp(waveSize, 1, maxActiveEnemies);
@@ -459,12 +488,18 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private bool SpawnEnemy(Transform spawnPoint)
 	{
-		if (enemyPrefab == null || spawnPoint == null || ActiveEnemyCount >= maxActiveEnemies)
+		if (spawnPoint == null || ActiveEnemyCount >= maxActiveEnemies)
 		{
 			return false;
 		}
 
-		PooledEnemy enemy = TakeFromPool();
+		EnemySpawnEntry selectedEnemyType = SelectEnemyType();
+		if (selectedEnemyType == null || selectedEnemyType.Prefab == null)
+		{
+			return false;
+		}
+
+		PooledEnemy enemy = TakeFromPool(selectedEnemyType.Prefab);
 		if (enemy == null)
 		{
 			return false;
@@ -612,22 +647,31 @@ public class EndlessWaveManager : MonoBehaviour
 
 	private void PrewarmPool()
 	{
-		if (enemyPrefab == null || enemyPrefab.GetComponentInChildren<BodyController>(true) == null)
+		EnsureEnemyTypesInitialized();
+		HashSet<GameObject> prewarmedPrefabs = new HashSet<GameObject>();
+		for (int enemyTypeIndex = 0; enemyTypeIndex < enemyTypes.Count; enemyTypeIndex++)
 		{
-			return;
-		}
-
-		for (int i = pooledEnemies.Count; i < prewarmPoolSize; i++)
-		{
-			if (CreatePooledEnemy() == null)
+			EnemySpawnEntry enemyType = enemyTypes[enemyTypeIndex];
+			if (!IsEnemyTypeEnabled(enemyType)
+				|| enemyType.Prefab.GetComponentInChildren<BodyController>(true) == null
+				|| !prewarmedPrefabs.Add(enemyType.Prefab))
 			{
-				break;
+				continue;
+			}
+
+			for (int i = 0; i < prewarmPoolSize; i++)
+			{
+				if (CreatePooledEnemy(enemyType.Prefab) == null)
+				{
+					break;
+				}
 			}
 		}
 	}
 
-	private PooledEnemy TakeFromPool()
+	private PooledEnemy TakeFromPool(GameObject sourcePrefab)
 	{
+		Queue<PooledEnemy> availableEnemies = GetAvailableQueue(sourcePrefab);
 		while (availableEnemies.Count > 0)
 		{
 			PooledEnemy enemy = availableEnemies.Dequeue();
@@ -643,30 +687,36 @@ public class EndlessWaveManager : MonoBehaviour
 			return null;
 		}
 
-		PooledEnemy expandedEnemy = CreatePooledEnemy();
+		PooledEnemy expandedEnemy = CreatePooledEnemy(sourcePrefab);
 		if (expandedEnemy == null)
 		{
 			return null;
 		}
 
 		// Newly created entries are queued by CreatePooledEnemy.
-		return TakeFromPool();
+		return TakeFromPool(sourcePrefab);
 	}
 
-	private PooledEnemy CreatePooledEnemy()
+	private PooledEnemy CreatePooledEnemy(GameObject sourcePrefab)
 	{
+		if (sourcePrefab == null)
+		{
+			return null;
+		}
+
 		EnsurePoolRoot();
-		GameObject enemyRoot = Instantiate(enemyPrefab, poolRoot);
+		GameObject enemyRoot = Instantiate(sourcePrefab, poolRoot);
 		BodyController body = enemyRoot.GetComponentInChildren<BodyController>(true);
 		if (body == null)
 		{
-			Debug.LogError($"Enemy prefab '{enemyPrefab.name}' has no {nameof(BodyController)} in its hierarchy.", enemyPrefab);
+			Debug.LogError($"Enemy prefab '{sourcePrefab.name}' has no {nameof(BodyController)} in its hierarchy.", sourcePrefab);
 			Destroy(enemyRoot);
 			return null;
 		}
 
 		PooledEnemy enemy = new PooledEnemy
 		{
+			SourcePrefab = sourcePrefab,
 			Root = enemyRoot,
 			Body = body,
 			Transforms = CaptureTransforms(enemyRoot),
@@ -685,7 +735,7 @@ public class EndlessWaveManager : MonoBehaviour
 
 		enemyRoot.SetActive(false);
 		pooledEnemies.Add(enemy);
-		availableEnemies.Enqueue(enemy);
+		GetAvailableQueue(sourcePrefab).Enqueue(enemy);
 		return enemy;
 	}
 
@@ -807,7 +857,18 @@ public class EndlessWaveManager : MonoBehaviour
 		enemy.Root.transform.SetParent(poolRoot, false);
 		enemy.Resetters = FindPoolResettables(enemy.Root);
 		enemy.IsAvailable = true;
-		availableEnemies.Enqueue(enemy);
+		GetAvailableQueue(enemy.SourcePrefab).Enqueue(enemy);
+	}
+
+	private Queue<PooledEnemy> GetAvailableQueue(GameObject sourcePrefab)
+	{
+		if (!availableEnemiesByPrefab.TryGetValue(sourcePrefab, out Queue<PooledEnemy> availableEnemies))
+		{
+			availableEnemies = new Queue<PooledEnemy>();
+			availableEnemiesByPrefab.Add(sourcePrefab, availableEnemies);
+		}
+
+		return availableEnemies;
 	}
 
 	private static TransformState[] CaptureTransforms(GameObject root)
@@ -934,16 +995,34 @@ public class EndlessWaveManager : MonoBehaviour
 	private bool TryValidateConfiguration(out string validationError)
 	{
 		NormalizeRuntimeValues();
+		EnsureEnemyTypesInitialized();
 
-		if (enemyPrefab == null)
+		if (enemyTypes == null || enemyTypes.Count == 0)
 		{
-			validationError = "no enemy prefab is assigned.";
+			validationError = "no enemy types are assigned.";
 			return false;
 		}
 
-		if (enemyPrefab.GetComponentInChildren<BodyController>(true) == null)
+		bool hasEnabledEnemyType = false;
+		for (int i = 0; i < enemyTypes.Count; i++)
 		{
-			validationError = $"the enemy prefab must contain a {nameof(BodyController)} in its hierarchy.";
+			EnemySpawnEntry enemyType = enemyTypes[i];
+			if (!IsEnemyTypeEnabled(enemyType))
+			{
+				continue;
+			}
+
+			hasEnabledEnemyType = true;
+			if (enemyType.Prefab.GetComponentInChildren<BodyController>(true) == null)
+			{
+				validationError = $"enemy prefab '{enemyType.Prefab.name}' must contain a {nameof(BodyController)} in its hierarchy.";
+				return false;
+			}
+		}
+
+		if (!hasEnabledEnemyType)
+		{
+			validationError = "at least one enemy type must have a prefab and a spawn weight greater than zero.";
 			return false;
 		}
 
@@ -962,6 +1041,66 @@ public class EndlessWaveManager : MonoBehaviour
 
 		validationError = null;
 		return true;
+	}
+
+	private void EnsureEnemyTypesInitialized()
+	{
+		if (enemyTypes == null)
+		{
+			enemyTypes = new List<EnemySpawnEntry>();
+		}
+
+		if (enemyTypes.Count == 0 && enemyPrefab != null)
+		{
+			enemyTypes.Add(new EnemySpawnEntry
+			{
+				Prefab = enemyPrefab,
+				SpawnWeight = 1f
+			});
+		}
+	}
+
+	private EnemySpawnEntry SelectEnemyType()
+	{
+		float totalWeight = 0f;
+		for (int i = 0; i < enemyTypes.Count; i++)
+		{
+			EnemySpawnEntry enemyType = enemyTypes[i];
+			if (IsEnemyTypeEnabled(enemyType))
+			{
+				totalWeight += enemyType.SpawnWeight;
+			}
+		}
+
+		if (totalWeight <= 0f)
+		{
+			return null;
+		}
+
+		float selection = Random.value * totalWeight;
+		EnemySpawnEntry lastEnabledEnemyType = null;
+		for (int i = 0; i < enemyTypes.Count; i++)
+		{
+			EnemySpawnEntry enemyType = enemyTypes[i];
+			if (!IsEnemyTypeEnabled(enemyType))
+			{
+				continue;
+			}
+
+			lastEnabledEnemyType = enemyType;
+			selection -= enemyType.SpawnWeight;
+			if (selection <= 0f)
+			{
+				return enemyType;
+			}
+		}
+
+		return lastEnabledEnemyType;
+	}
+
+	private static bool IsEnemyTypeEnabled(EnemySpawnEntry enemyType)
+	{
+		return enemyType != null && enemyType.Prefab != null && enemyType.SpawnWeight > 0f;
 	}
 
 	private void NormalizeRuntimeValues()

@@ -61,6 +61,11 @@ public class GunSelector : MonoBehaviour
 
 	public Transform[] gunHolders;
 
+	public void ConfigurePrimaryWeapon(GunType weaponType)
+	{
+		Gun1 = weaponType;
+	}
+
 	private void Start()
 	{
 		initialLocalRotation = transform.localRotation;

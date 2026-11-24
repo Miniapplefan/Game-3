@@ -67,7 +67,7 @@ public class OverheatHostileAction : ActionBase<AttackData>, IInjectable
 
 	public override void Start(IMonoAgent agent, AttackData data)
 	{
-		data.Timer = AttackConfig.TimeBetweenAttacks;
+		data.Timer = data.bodyState.ConfiguredTimeBetweenAttacks;
 		limbConsiderations = new List<LimbConsideration>();
 		limbConsiderations.Add(new LimbConsideration(LimbToTarget.Head, () => ConsiderHead(agent, data)));
 		// limbConsiderations.Add(new LimbConsideration(LimbToTarget.RightArm, () => ConsiderRightArm(agent, data)));

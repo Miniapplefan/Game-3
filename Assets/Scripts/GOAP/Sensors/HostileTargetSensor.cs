@@ -759,7 +759,9 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 
 		claim.SectorIndex = runtimeState.CombatShuffleSectorIndex;
 		claim.LastUpdatedTime = Time.time;
-		float attackInterval = AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeBetweenAttacks) : 1f;
+		float attackInterval = context.BodyState != null
+			? context.BodyState.ConfiguredTimeBetweenAttacks
+			: (AttackConfig != null ? Mathf.Max(0f, AttackConfig.TimeBetweenAttacks) : 1f);
 		claim.ExpiresAt = Time.time + Mathf.Max(radialClaimDuration, attackInterval + 0.5f);
 		claim.ClaimedPosition = runtimeState.CombatShuffleStrategicClaimPosition;
 		claim.LastKnownAgentPosition = context.AgentPosition;
@@ -2718,7 +2720,7 @@ public class HostileTargetSensor : LocalTargetSensorBase, IInjectable
 			if (colBodyState == null)
 				continue;
 
-			if (!(colBodyState.TimeToAim < colBodyState.AttackConfig.TimeToAim) || colBodyState.isDead)
+			if (!(colBodyState.TimeToAim < colBodyState.ConfiguredTimeToAim) || colBodyState.isDead)
 			{
 				continue;
 			}

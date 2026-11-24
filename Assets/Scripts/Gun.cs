@@ -309,6 +309,7 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 		bool npcAccurateRound = isAI && DrawNpcAccuracyOutcome();
 		ApplyMovementAimShotImpulse();
 		Dictionary<BodyController, Vector3> enemiesHitThisShot = null;
+		weapon.AddForce(Vector3.up * gunData.shootConfig.recoil, ForceMode.Impulse);
 
 		for (int i = 0; i < gunData.shootConfig.bulletsPerShot; i++)
 		{
@@ -325,9 +326,6 @@ public class Gun : MonoBehaviour, IEnemyPoolResettable
 				shootDirection = ClampDirectionOutsideNpcInnerCone(shotCenterDirection, shootDirection);
 				shootDirection = ClampDirectionOutsideNpcExcludedLowerArc(shotCenterDirection, shootDirection);
 			}
-			Vector3 recoilDirection = modelRoot != null ? modelRoot.up.normalized : transform.up.normalized;
-			weapon.AddForce(recoilDirection * gunData.shootConfig.recoil, ForceMode.Impulse);
-
 			if (isAI)
 			{
 				//				Debug.Log("FIRING AI BULLET");

@@ -97,12 +97,12 @@ public class UIControllerNPC : MonoBehaviour, IEnemyPoolResettable
         UpdateDamageIndicatorTimer();
         UpdateHealthIndicator();
 
-        if (bodyState == null || AttackConfig == null || Mathf.Approximately(AttackConfig.TimeToAim, 0f))
+        if (bodyState == null || Mathf.Approximately(bodyState.ConfiguredTimeToAim, 0f))
         {
             return;
         }
 
-        float aimProgress01 = Mathf.Clamp01(1f - (bodyState.TimeToAim / AttackConfig.TimeToAim));
+        float aimProgress01 = Mathf.Clamp01(1f - (bodyState.TimeToAim / bodyState.ConfiguredTimeToAim));
         float dist = Mathf.Lerp(3f, 0.8f, aimProgress01);
 
         // Preserve the other axes from each line's current LOCAL position
